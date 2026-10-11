@@ -848,7 +848,7 @@ impl BattleView {
         // Empty cells, with the lit cells a step can go to.
         for (team, slot) in all_cells(b) {
             let p = l.cell_pos(team, slot);
-            if b.at(team, slot).is_some_and(|i| self.fighter(i).alive()) {
+            if self.shown_at(team, slot).is_some() {
                 continue;
             }
             chrome::empty_cell(Rect::new(p.x, p.y, l.card.x, l.card.y), CellIcon::of(b.formation, slot), true);
@@ -910,7 +910,7 @@ impl BattleView {
         // (Razdor's choice, a player's wish, as Razdor's first battle grid had): the original
         // frames only a target under the mouse.
         if let Some((team, slot)) = hovered_cell.filter(|_| ongoing && !input_blocked()) {
-            let framed = match b.at(team, slot).filter(|&i| self.fighter(i).alive()) {
+            let framed = match self.shown_at(team, slot) {
                 Some(i) => targets.contains(&i) || (Some(i) == active && self.fx.is_none()),
                 None => Some(team) == acting && moves.contains(&slot),
             };
@@ -1018,6 +1018,16 @@ impl BattleView {
     /// ([`Fx::shown`]).
     fn fighter(&self, id: usize) -> &Fighter {
         self.fx.as_ref().and_then(|fx| fx.shown(id)).unwrap_or(&self.battle.fighters[id])
+    }
+
+    /// The living fighter shown in a cell: while an action plays, where the fighters stood
+    /// before it ([`BattleView::fighter`]), so a shooter that steps up as it ends does not
+    /// empty its new cell early.
+    fn shown_at(&self, team: Team, slot: Slot) -> Option<usize> {
+        (0..self.battle.fighters.len()).find(|&i| {
+            let f = self.fighter(i);
+            f.listed() && f.alive() && f.team == team && f.slot == slot
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
