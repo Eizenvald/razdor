@@ -219,7 +219,7 @@ pub fn scenario_select(scenarios: &[ScenarioEntry], has_install: bool) -> Option
     let list = scenario_groups(scenarios);
     let mut picked = PICKED.with(|p| p.get()).min(list.len().saturating_sub(1));
     // The list: per group a round icon and the name, and a campaign's chapters under it in
-    // small type; the picked group's block is lit. The wheel scrolls it.
+    // small type; the picked group's block is lit. The wheel and the scrollbar scroll it.
     let rows = win.rect(12.0, 36.0, 270.0, 396.0);
     chrome::text_box(rows);
     let (head_h, chapter_h) = (30.0 * k, 18.0 * k);
@@ -232,7 +232,12 @@ pub fn scenario_select(scenarios: &[ScenarioEntry], has_install: bool) -> Option
         scroll = wheel_scroll(scroll, wheel());
     }
     scroll = scroll.clamp(0.0, max_scroll);
+    // Razdor's scrollbar on the right when the list does not all fit (a touch screen has no
+    // wheel); the rows give it room.
+    let barred = max_scroll > 0.0;
+    scrollbar_px(Rect::new(rows.x + rows.w - 16.0 * k, rows.y + 4.0 * k, 12.0 * k, rows.h - 8.0 * k), &mut scroll, max_scroll, rows.h / k, 15.0);
     SCROLL.with(|s| s.set(scroll));
+    let row_w = rows.w - if barred { 22.0 * k } else { 8.0 * k };
     let mut next = None;
     let mut y = rows.y + 6.0 * k - scroll * k;
     // The rows are clipped to the box, so a block only partly in view shows its part (a
@@ -240,7 +245,7 @@ pub fn scenario_select(scenarios: &[ScenarioEntry], has_install: bool) -> Option
     let inside = Rect::new(rows.x, rows.y + 2.0 * k, rows.w, rows.h - 4.0 * k);
     let clip = crate::ui::widgets::Clip::new(inside);
     for (row, g) in list.iter().enumerate() {
-        let r = Rect::new(rows.x + 4.0 * k, y, rows.w - 8.0 * k, block_h(g) - 2.0 * k);
+        let r = Rect::new(rows.x + 4.0 * k, y, row_w, block_h(g) - 2.0 * k);
         y += block_h(g);
         if r.y >= inside.y + inside.h || r.y + r.h <= inside.y {
             continue;

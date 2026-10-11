@@ -102,10 +102,13 @@ pub fn frame(view: &mut SetupView, content: &Content, assets: &Assets, audio: &m
         }
     }
     view.scroll = view.scroll.min(max_scroll);
+    // Razdor's scrollbar on the right when the types do not all fit (a touch screen has no wheel).
+    let bar_w = if max_scroll > 0 { 14.0 * k } else { 0.0 };
+    scrollbar(Rect::new(lx + lw - 14.0 * k, list_y + 2.0 * k, 12.0 * k, list_h - 4.0 * k), &mut view.scroll, ROWS, types.len());
     let full = view.session.setup.army(view.side).len() >= view.session.setup.capacity();
     for (n, &id) in types.iter().enumerate().skip(view.scroll).take(ROWS) {
         let y = list_y + (n - view.scroll) as f32 * row_h;
-        let rr = Rect::new(lx + 2.0 * k, y + 1.0 * k, lw - 4.0 * k, row_h - 2.0 * k);
+        let rr = Rect::new(lx + 2.0 * k, y + 1.0 * k, lw - 4.0 * k - bar_w, row_h - 2.0 * k);
         if row(rr, false) && !full {
             cue(Cue::Button);
             view.session.setup.add(view.side, id);

@@ -1041,9 +1041,40 @@ pub fn scrollbar(r: Rect, first: &mut usize, shown: usize, total: usize) -> bool
     *first != before
 }
 
+/// A pixel scroll of `scroll` (of `most`, with `view` in sight) as a scrollbar's (first,
+/// shown, total) in steps of `step`: the content's end is the bar's end.
+fn bar_steps(scroll: f32, most: f32, view: f32, step: f32) -> (usize, usize, usize) {
+    let shown = ((view / step).floor() as usize).max(1);
+    let steps = (most / step).ceil() as usize;
+    let first = if scroll >= most { steps } else { (scroll / step).round() as usize };
+    (first.min(steps), shown, shown + steps)
+}
+
+/// [`scrollbar`] for content scrolled in pixels: `scroll` of `most`, `view` in sight, an
+/// arrow moving `step`. Returns true when `scroll` changed.
+pub fn scrollbar_px(r: Rect, scroll: &mut f32, most: f32, view: f32, step: f32) -> bool {
+    if most <= 0.0 {
+        return false;
+    }
+    let (mut first, shown, total) = bar_steps(*scroll, most, view, step);
+    if !scrollbar(r, &mut first, shown, total) {
+        return false;
+    }
+    *scroll = (first as f32 * step).min(most);
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pixel_scrollbar_spans_the_whole_content() {
+        assert_eq!(bar_steps(0.0, 100.0, 396.0, 15.0), (0, 26, 33), "at the top");
+        assert_eq!(bar_steps(100.0, 100.0, 396.0, 15.0), (7, 26, 33), "the content's end is the bar's end");
+        assert_eq!(bar_steps(44.0, 100.0, 396.0, 15.0), (3, 26, 33));
+        assert_eq!(bar_steps(0.0, 0.0, 396.0, 15.0), (0, 26, 26), "all in sight: nothing to scroll");
+    }
 
     #[test]
     fn a_key_tapped_within_a_frame_is_not_held() {

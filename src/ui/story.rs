@@ -212,6 +212,22 @@ pub fn journal(game: &Game, assets: &super::assets::Assets, view: &mut JournalVi
             view.scroll = view.scroll.saturating_sub(1);
         }
     }
+    // Razdor's scrollbar on the right when the lines do not all fit (a touch screen has no
+    // wheel); as the selection is kept in sight, a scroll past it selects the nearest entry
+    // in view.
+    let bar_w = if lines.len() > fits { 16.0 } else { 0.0 };
+    if scrollbar(Rect::new(lx + lw - 16.0, ly + 6.0, 12.0, lh - 12.0), &mut view.scroll, fits, lines.len()) {
+        let sel = line_of(view.selected);
+        let end = (view.scroll + fits).min(lines.len());
+        if sel < view.scroll || sel >= end {
+            let near = |l: &&Line| matches!(l, Line::Row(_));
+            let pick = if sel < view.scroll { lines[view.scroll..end].iter().find(near) } else { lines[view.scroll..end].iter().rev().find(near) };
+            if let Some(&Line::Row(k)) = pick {
+                view.selected = k;
+                view.text_scroll = 0;
+            }
+        }
+    }
     // Keep the selected line in sight, with its chapter's heading when it is just above.
     let sel = line_of(view.selected);
     let top = if sel > 0 && matches!(lines[sel - 1], Line::Heading(_)) { sel - 1 } else { sel };
@@ -229,27 +245,27 @@ pub fn journal(game: &Game, assets: &super::assets::Assets, view: &mut JournalVi
         let k = match *line {
             Line::Heading(chapter) => {
                 let mut head = game.journal.chapter_heading(chapter);
-                while measure(&head, 19.0).width > lw - 30.0 && head.chars().count() > 3 {
+                while measure(&head, 19.0).width > lw - 30.0 - bar_w && head.chars().count() > 3 {
                     head.pop();
                 }
-                text_centered(&head, lx + lw / 2.0, ry + 27.0, 19.0, Color::new(0.55, 0.12, 0.06, 1.0));
-                draw_line(lx + 14.0, ry + rh - 6.0, lx + lw - 14.0, ry + rh - 6.0, 1.0, Color::new(0.55, 0.36, 0.2, 0.7));
+                text_centered(&head, lx + (lw - bar_w) / 2.0, ry + 27.0, 19.0, Color::new(0.55, 0.12, 0.06, 1.0));
+                draw_line(lx + 14.0, ry + rh - 6.0, lx + lw - 14.0 - bar_w, ry + rh - 6.0, 1.0, Color::new(0.55, 0.36, 0.2, 0.7));
                 continue;
             }
             Line::Row(k) => k,
         };
         let row = &rows[k];
         if view.selected == k {
-            draw_rectangle(lx + 4.0, ry, lw - 8.0, rh - 2.0, Color::new(0.72, 0.6, 0.4, 1.0));
+            draw_rectangle(lx + 4.0, ry, lw - 8.0 - bar_w, rh - 2.0, Color::new(0.72, 0.6, 0.4, 1.0));
         }
         let mut title = row.title.clone();
-        while measure(&title, 18.0).width > lw - 30.0 && title.chars().count() > 3 {
+        while measure(&title, 18.0).width > lw - 30.0 - bar_w && title.chars().count() > 3 {
             title.pop();
         }
         text(&title, lx + 14.0, ry + 18.0, 18.0, ink);
         let date = row.date.map_or_else(|| tr("date unknown").to_string(), |d| d.label());
         text(&date, lx + 14.0, ry + 35.0, 14.0, Color::new(0.4, 0.36, 0.3, 1.0));
-        if mouse_in(lx, ry, lw, rh - 2.0) && clicked() && view.selected != k {
+        if mouse_in(lx, ry, lw - bar_w, rh - 2.0) && clicked() && view.selected != k {
             view.selected = k;
             view.text_scroll = 0;
         }
@@ -302,6 +318,8 @@ pub fn journal(game: &Game, assets: &super::assets::Assets, view: &mut JournalVi
                 view.text_scroll = view.text_scroll.saturating_sub(shown.saturating_sub(1).max(1));
             }
             view.text_scroll = view.text_scroll.min(lines.len().saturating_sub(shown));
+            // Razdor's scrollbar right of the text when it does not all fit.
+            scrollbar(Rect::new(tx + tw - 16.0, top - 18.0, 12.0, bottom - top + 18.0), &mut view.text_scroll, shown, lines.len());
             for (i, line) in lines.iter().skip(view.text_scroll).take(shown).enumerate() {
                 text(line, tx + 20.0, top + i as f32 * 22.0, 18.0, box_ink);
             }

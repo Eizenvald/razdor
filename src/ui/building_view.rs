@@ -330,7 +330,12 @@ fn main_hall(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingVie
         }
     }
     view.scroll = view.scroll.min(max_scroll);
+    // Razdor's scrollbar on the right when the entries do not all fit (a touch screen has no
+    // wheel); the rows give it room.
+    scrollbar(Rect::new(x + w - 16.0 * k, list_y + 4.0 * k, 12.0 * k, list_h - 8.0 * k), &mut view.scroll, rows, entries.len());
+    let row_w = if max_scroll > 0 { w - 16.0 * k } else { w };
     for (n, entry) in entries.iter().enumerate().skip(view.scroll).take(rows) {
+        let w = row_w;
         let ry = list_y + 6.0 * k + (n - view.scroll) as f32 * row_h;
         let (id, note, color) = match *entry {
             HallEntry::Rumour(id) => (id, tr("rumour"), Color::new(0.55, 0.1, 0.1, 1.0)),
@@ -870,6 +875,8 @@ fn price_list(assets: Option<&Assets>, rows: &[(Option<ItemId>, String, String, 
         *scroll = scroll.saturating_sub(1);
     }
     *scroll = (*scroll).min(max_scroll);
+    // The scroll bar (Razdor's): arrows, the track pages, the knob drags.
+    scrollbar(Rect::new(x + w - 15.0 * k, y + 26.0 * k, 12.0 * k, visible as f32 * row_h), scroll, visible, rows.len());
     let mut hit = None;
     for (n, (icon, name, price, red)) in rows.iter().enumerate().skip(*scroll).take(visible) {
         let ry = y + 26.0 * k + (n - *scroll) as f32 * row_h;
@@ -887,13 +894,6 @@ fn price_list(assets: Option<&Assets>, rows: &[(Option<ItemId>, String, String, 
         if mouse_in(x, ry, w - 18.0 * k, row_h) && clicked() {
             hit = Some(n);
         }
-    }
-    if rows.len() > visible {
-        let bh = visible as f32 * row_h;
-        draw_rectangle(x + w - 14.0 * k, y + 26.0 * k, 10.0 * k, bh, Color::new(0.05, 0.08, 0.07, 1.0));
-        let th = bh * visible as f32 / rows.len() as f32;
-        let ty = y + 26.0 * k + (bh - th) * *scroll as f32 / max_scroll.max(1) as f32;
-        draw_rectangle(x + w - 13.0 * k, ty, 8.0 * k, th, SILVER);
     }
     hit
 }

@@ -121,7 +121,7 @@ fn buttons(inner: Rect, labels: &[&str]) -> Option<usize> {
     picked
 }
 
-/// The list of changes in `r`, scrolled by the wheel and the arrow keys.
+/// The list of changes in `r`, scrolled by the wheel, the arrow keys and the scrollbar.
 fn notes(r: Rect, notes: &[Note]) {
     let k = chrome::k();
     draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.0, 0.0, 0.0, 0.35));
@@ -129,7 +129,8 @@ fn notes(r: Rect, notes: &[Note]) {
     let size = 13.0 * k;
     let line = 18.0 * k;
     let (pad, bullet) = (12.0 * k, 16.0 * k);
-    let room = r.w - 2.0 * pad;
+    // The text keeps clear of the scrollbar.
+    let room = r.w - 2.0 * pad - 6.0 * k;
     // Each row: its text, where it starts, its colour, its size, the space above it.
     let mut rows: Vec<(String, f32, Color, f32, f32)> = Vec::new();
     for n in notes {
@@ -157,7 +158,9 @@ fn notes(r: Rect, notes: &[Note]) {
     if key(KeyCode::Up) {
         scroll -= 3.0 * line;
     }
-    let scroll = scroll.clamp(0.0, most);
+    let mut scroll = scroll.clamp(0.0, most);
+    // Razdor's scrollbar on the right (a touch screen has no wheel).
+    scrollbar_px(Rect::new(r.x + r.w - 15.0 * k, r.y + 3.0 * k, 12.0 * k, r.h - 6.0 * k), &mut scroll, most, r.h, line);
     SCROLL.with(|s| s.set(scroll));
     let _clip = Clip::new(r);
     let mut y = r.y + pad - scroll;
@@ -166,13 +169,6 @@ fn notes(r: Rect, notes: &[Note]) {
         if y > r.y && y - size < r.y + r.h {
             chrome::shadow_text(&text, r.x + pad + indent, y - 4.0 * k, size, color);
         }
-    }
-    // More below or above: a hint at the edge.
-    if scroll < most {
-        text_centered("▼", r.x + r.w - 14.0 * k, r.y + r.h - 6.0 * k, 12.0 * k, chrome::GOLD);
-    }
-    if scroll > 0.0 {
-        text_centered("▲", r.x + r.w - 14.0 * k, r.y + 16.0 * k, 12.0 * k, chrome::GOLD);
     }
 }
 

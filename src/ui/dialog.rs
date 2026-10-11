@@ -279,8 +279,8 @@ fn visible_lines(total: usize, fixed: f32, max_h: f32) -> usize {
 }
 
 /// The first line shown of a text of `total` lines with `shown` in sight in box `tb`: the
-/// wheel over the box, Up/Down, Page Up/Page Down, Home/End move it; a scroll bar on the
-/// right shows where it is.
+/// wheel over the box, Up/Down, Page Up/Page Down, Home/End move it; the scrollbar on the
+/// right too.
 fn scrolled(d: &Dialog, total: usize, shown: usize, tb: Rect) -> usize {
     let last = total.saturating_sub(shown);
     let mut first = d.scroll.get().min(last);
@@ -301,14 +301,9 @@ fn scrolled(d: &Dialog, total: usize, shown: usize, tb: Rect) -> usize {
             first = last;
         }
     }
+    // Razdor's scrollbar (a touch screen has neither wheel nor keys).
+    scrollbar(Rect::new(tb.x + tb.w - 16.0, tb.y + 6.0, 12.0, tb.h - 12.0), &mut first, shown, total);
     d.scroll.set(first);
-    if last > 0 {
-        let track = Rect::new(tb.x + tb.w - 9.0, tb.y + 8.0, 4.0, tb.h - 16.0);
-        draw_rectangle(track.x, track.y, track.w, track.h, Color::new(0.0, 0.0, 0.0, 0.35));
-        let thumb_h = (track.h * shown as f32 / total as f32).max(16.0);
-        let ty = track.y + (track.h - thumb_h) * first as f32 / last as f32;
-        draw_rectangle(track.x, ty, track.w, thumb_h, chrome::SILVER);
-    }
     first
 }
 
