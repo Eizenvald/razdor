@@ -63,8 +63,8 @@ impl SaveView {
 }
 
 pub struct LoadView {
-    /// The row whose deletion is being asked about.
-    pub confirm_delete: Option<usize>,
+    /// "Clear all" asked about (Razdor's): every save of the tab but the pinned ones.
+    pub confirm_clear: bool,
     pub tab: SaveKind,
     pub entries: Vec<SaveEntry>,
     pub selected: usize,
@@ -83,7 +83,7 @@ impl LoadView {
     pub fn new(back: Back) -> LoadView {
         let first = LAST_TAB.with(|t| t.get());
         let other = if first == SaveKind::Auto { SaveKind::Manual } else { SaveKind::Auto };
-        let mut v = LoadView { confirm_delete: None, tab: first, entries: Vec::new(), selected: 0, scroll: 0, back };
+        let mut v = LoadView { confirm_clear: false, tab: first, entries: Vec::new(), selected: 0, scroll: 0, back };
         v.refresh();
         if v.entries.is_empty() {
             v.tab = other;
@@ -438,7 +438,9 @@ pub fn save_screen(game: &Game, assets: &Assets, view: &mut SaveView, message: &
 }
 
 /// The load window ("Загрузка сохраненной игры"): the book of saves with the "Личные" and
-/// "Авто-сохр." tabs; the selected row can be deleted (after a question). Loading itself is
+/// "Авто-сохр." tabs; a row's delete sign deletes it at once (the original asks first; a
+/// player's wish: the sign is not hit by chance), "Clear all" (Razdor's) deletes the tab's
+/// saves but the pinned ones after a question. Loading itself is
 /// the app's (`pending` receives the file).
 pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pending: &mut Option<PathBuf>, error: &Option<String>) -> Option<Screen> {
     match game {
@@ -452,7 +454,7 @@ pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pe
         let p = book.p(297.0, 230.0);
         super::chrome::shadow_centered(tr("No saves here yet."), p.x, p.y, 16.0 * book.k, super::chrome::CREAM);
     }
-    let asking = view.confirm_delete.is_some();
+    let asking = view.confirm_clear;
     let (picked, delete, pin) = book.rows(&rows, Some(view.selected), &mut view.scroll, true);
     // Razdor's pin: the icon, or P for the selected save.
     let pin = pin.or_else(|| key(KeyCode::P).then_some(view.selected));
@@ -474,8 +476,13 @@ pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pe
         }
         view.selected = k;
     }
-    if let Some(k) = delete.filter(|_| !asking) {
-        view.confirm_delete = Some(k);
+    if let Some(e) = delete.filter(|_| !asking).and_then(|k| view.entries.get(k)) {
+        if let Err(err) = save::delete(&e.path) {
+            razdor::diag!("{}: {err}", e.path.display());
+        }
+        let selected = view.selected;
+        view.refresh();
+        view.selected = selected.min(view.entries.len().saturating_sub(1));
     }
     book.tab_line();
     for (x, tab, label) in [(17.0, SaveKind::Manual, own("LoadGame", "PrivateSave", n_("Private"))), (172.0, SaveKind::Auto, own("LoadGame", "AutoSave", n_("Autosaves")))] {
@@ -485,9 +492,14 @@ pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pe
             view.refresh();
         }
     }
+    let clearable = view.entries.iter().any(|e| !e.pinned);
+    if !asking && book.button(17.0, 140.0, tr("Clear all"), clearable) {
+        view.confirm_clear = true;
+        return None;
+    }
     if let Some(e) = error {
-        let p = book.p(22.0, 462.0);
-        text(&ellipsize(e, 330.0 * book.k, 12.0 * book.k), p.x, p.y, 12.0 * book.k, Color::new(1.0, 0.45, 0.4, 1.0));
+        let p = book.p(165.0, 462.0);
+        text(&ellipsize(e, 195.0 * book.k, 12.0 * book.k), p.x, p.y, 12.0 * book.k, Color::new(1.0, 0.45, 0.4, 1.0));
     }
     let chosen = view.entries.get(view.selected);
     if !asking && (book.button(369.0, 116.0, &own("LoadGame", "Load", n_("Load")), chosen.is_some()) || key(KeyCode::Enter)) && chosen.is_some() {
@@ -496,20 +508,22 @@ pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pe
     if !asking && (book.button(492.0, 95.0, &own("Buttons", "Cancel", n_("Cancel")), true) || closed) {
         return Some(view.back.screen());
     }
-    // The original's question before deleting: "Удаление сохранения". It opens on the next
-    // frame, so the click that asked it cannot also answer it.
-    if let Some(k) = view.confirm_delete.filter(|_| asking) {
-        match delete_question(view.entries.get(k).map(|e| row_of(e).name).unwrap_or_default()) {
+    // "Clear all"'s question. It opens on the next frame, so the click that asked it cannot
+    // also answer it.
+    if asking {
+        let tab = if view.tab == SaveKind::Manual { own("LoadGame", "PrivateSave", n_("Private")) } else { own("LoadGame", "AutoSave", n_("Autosaves")) };
+        let q = format!("^{}", razdor::trf!("Delete every save of the \"{tab}\" tab? The pinned ones stay.", tab));
+        match marked_question(&own("MessageBox", "DeleteSave_Title", n_("Delete the save")), &q) {
             Some(true) => {
-                if let Some(e) = view.entries.get(k) {
+                for e in view.entries.iter().filter(|e| !e.pinned) {
                     if let Err(err) = save::delete(&e.path) {
                         razdor::diag!("{}: {err}", e.path.display());
                     }
                 }
-                view.confirm_delete = None;
+                view.confirm_clear = false;
                 view.refresh();
             }
-            Some(false) => view.confirm_delete = None,
+            Some(false) => view.confirm_clear = false,
             None => {}
         }
         return None;
@@ -518,20 +532,6 @@ pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pe
         return Some(view.back.escape());
     }
     None
-}
-
-/// "Удаление сохранения": Yes / No, `None` until answered.
-fn delete_question(name: String) -> Option<bool> {
-    let title = own("MessageBox", "DeleteSave_Title", n_("Delete the save"));
-    let q = (razdor::i18n::lang() == razdor::i18n::Lang::Ru)
-        .then(|| super::chrome::ui_text("MessageBox", "DeleteSave_Text"))
-        .flatten()
-        // 0x4c05ac: `#SAVENAME` filled in (0x471f0c), then read as markup (0x48e438), so
-        // the marks of a save's name are read too. Razdor's own text is centred as the
-        // install's (`^`).
-        .map(|t| t.replace("#SAVENAME", &name))
-        .unwrap_or_else(|| format!("^{}", razdor::trf!("Do you really want to delete the saved game \"{name}\"?", name)));
-    marked_question(&title, &q)
 }
 
 /// What the "Выход из игры" window chose.

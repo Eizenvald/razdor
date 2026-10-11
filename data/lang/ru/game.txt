@@ -63,6 +63,8 @@ Saved: {name} = Сохранено: {name}
 Cancel = Отмена
 Autosaves = Автосохранения
 No saves here yet. = Сохранений пока нет.
+Clear all = Очистить всё
+Delete every save of the "{tab}" tab? The pinned ones stay. = Удалить все сохранения на вкладке «{tab}»? Закреплённые останутся.
 Load = Загрузить
 
 # Game menu
@@ -268,7 +270,6 @@ no hero = нет героя
 
 Time: {date} = Время: {date}
 {year} y, {month} m, {day} d, {clock} = {year} год, {month} месяц, {day} день, {clock}
-Do you really want to delete the saved game "{name}"? = Удалить сохранение «{name}»?
 (save anew) = (сохранить заново)
 Delete the save = Удаление сохранения
 Delete the saved game = Удалить сохраненную игру
