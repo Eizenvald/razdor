@@ -9,7 +9,8 @@
 //! Saves are the player's data. They live in the platform data folder
 //! (`$XDG_DATA_HOME/razdor/saves`, `~/.local/share/razdor/saves`, `%APPDATA%\razdor\saves`,
 //! …; [`default_dir`]), or where `RAZDOR_SAVE_DIR` points; never in the repo or the game's
-//! folder. Manual saves go to `manual/`, autosaves to `auto/`: one before every battle and
+//! folder; each install's in its own folder there ([`games_dir`]). Manual saves go to
+//! `manual/`, autosaves to `auto/`: one before every battle and
 //! one at every 12:00 report, named by the in-game date as in the original ("1204.06.03,
 //! 12 h"). There are at most [`AUTOSAVES_KEPT`] autosaves, reused as the original reuses
 //! them ([`write_autosave`]).
@@ -191,6 +192,64 @@ pub fn default_dir() -> Option<PathBuf> {
         return Some(PathBuf::from(d));
     }
     dirs::data_dir().map(|d| d.join("razdor").join("saves"))
+}
+
+/// The install the games are played on ([`set_install`]), whose saves [`games_dir`] keeps.
+static INSTALL: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+/// The install played from now on: its saves are kept apart from another install's
+/// ([`games_dir`]).
+pub fn set_install(dir: &Path) {
+    *INSTALL.lock().unwrap_or_else(|e| e.into_inner()) = Some(dir.to_path_buf());
+}
+
+/// The folder of the games' saves *(Razdor's)*: one per install in [`default_dir`], named
+/// by the install's folder and a hash of its path ("Discord Times-1a2b3c4d"), so a mod and
+/// the plain game installed side by side do not mix their saves. Without an install,
+/// [`default_dir`] itself. The settings stay in [`default_dir`], shared.
+pub fn games_dir() -> Option<PathBuf> {
+    let root = default_dir()?;
+    let Some(install) = INSTALL.lock().unwrap_or_else(|e| e.into_inner()).clone() else { return Some(root) };
+    let own = root.join(install_key(&install));
+    if !own.exists() {
+        claim_old_saves(&root, &own, &install);
+    }
+    Some(own)
+}
+
+/// The name of install `dir`'s save folder: its folder name and the FNV-1a hash of its path.
+fn install_key(dir: &Path) -> String {
+    let path = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    let name: String = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default().chars().map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' { c } else { '_' }).collect();
+    format!("{}-{:08x}", name.trim(), fnv1a(path.to_string_lossy().as_bytes()) as u32)
+}
+
+/// Before saves were kept per install they all lay in `root`: the first time install
+/// `install` is played, its folder `own` takes those whose map it has, the same bytes, and
+/// the demo's, with their pins. The others wait for their own install.
+fn claim_old_saves(root: &Path, own: &Path, install: &Path) {
+    let maps: Vec<(String, u64)> = crate::dt::install::list_maps(install)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|m| Some((m.name, fnv1a(&std::fs::read(&m.path).ok()?))))
+        .collect();
+    let ours = |s: &ScenarioRef| match s {
+        ScenarioRef::Demo => true,
+        ScenarioRef::Map { file, hash } => maps.iter().any(|(f, h)| f == file && h == hash),
+    };
+    for kind in [SaveKind::Manual, SaveKind::Auto] {
+        let (from, to) = (kind_dir(root, kind), kind_dir(own, kind));
+        if std::fs::create_dir_all(&to).is_err() {
+            continue;
+        }
+        let pinned = pins(&from);
+        for e in by_time(root, kind).into_iter().filter(|e| ours(&e.meta.scenario)) {
+            let Some(name) = file_name(&e.path) else { continue };
+            if std::fs::rename(&e.path, to.join(&name)).is_ok() && pinned.contains(&name) {
+                let _ = set_pinned(&to.join(&name), true);
+            }
+        }
+    }
 }
 
 fn now_secs() -> u64 {
@@ -787,6 +846,28 @@ pub(crate) mod tests {
         assert_eq!(path, paths[QUICK_SAVES_KEPT + 1]);
         assert_eq!(load(&path, c, None).unwrap().gold, 1000 + QUICK_SAVES_KEPT as i32 + 1, "the newest quick save");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_install_takes_the_old_saves_of_its_maps_with_their_pins() {
+        let (root, install) = (temp_dir("claim-root"), temp_dir("claim-install"));
+        std::fs::create_dir_all(install.join(crate::dt::install::MAPS_DIR)).unwrap();
+        std::fs::write(install.join(crate::dt::install::MAPS_DIR).join("Ours.DTm"), b"our map").unwrap();
+        let mut g = Game::new(demo(), HeroClass::Knight);
+        let demo_save = write(&root, SaveKind::Manual, "demo", &g).unwrap();
+        set_pinned(&demo_save, true).unwrap();
+        g.origin = Some(ScenarioRef::Map { file: "Ours".into(), hash: fnv1a(b"our map") });
+        write(&root, SaveKind::Auto, "ours", &g).unwrap();
+        g.origin = Some(ScenarioRef::Map { file: "Ours".into(), hash: fnv1a(b"the mod's map") });
+        write(&root, SaveKind::Manual, "the mod's", &g).unwrap();
+        let own = root.join(install_key(&install));
+        claim_old_saves(&root, &own, &install);
+        let names = |dir: &Path, kind| list(dir, kind).into_iter().map(|e| (e.meta.name, e.pinned)).collect::<Vec<_>>();
+        assert_eq!(names(&own, SaveKind::Manual), [("demo".to_string(), true)]);
+        assert_eq!(names(&own, SaveKind::Auto), [("ours".to_string(), false)]);
+        assert_eq!(names(&root, SaveKind::Manual), [("the mod's".to_string(), false)], "another map's bytes: left for its install");
+        assert!(install_key(&install).starts_with("razdor-test-"), "{}", install_key(&install));
+        let _ = (std::fs::remove_dir_all(&root), std::fs::remove_dir_all(&install));
     }
 
     #[test]

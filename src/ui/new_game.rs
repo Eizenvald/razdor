@@ -361,7 +361,7 @@ pub fn tutorial_map(scenarios: &[ScenarioEntry]) -> Option<usize> {
     if super::language::Settings::load().tutorial_completed {
         return None;
     }
-    let saved = razdor::rules::save::default_dir().is_some_and(|d| {
+    let saved = razdor::rules::save::games_dir().is_some_and(|d| {
         use razdor::rules::save::{list, SaveKind};
         !list(&d, SaveKind::Manual).is_empty() || !list(&d, SaveKind::Auto).is_empty()
     });

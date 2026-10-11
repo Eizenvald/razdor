@@ -197,6 +197,7 @@ impl Assets {
         let dt = DtArt::from_env();
         if let Some(d) = &dt {
             super::chrome::set_install(d.install.dir.clone());
+            razdor::rules::save::set_install(&d.install.dir);
         }
         Assets { demo: content.clone(), content, sprites, item_sprites, dt }
     }

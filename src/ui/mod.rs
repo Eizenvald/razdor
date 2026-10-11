@@ -593,7 +593,7 @@ impl App {
     /// F5: writes a quick save (one of five, over the oldest; `save::quick_save`).
     fn quick_save(&mut self) {
         let Some(game) = &self.game else { return };
-        self.message = Some(match save::default_dir() {
+        self.message = Some(match save::games_dir() {
             None => tr("No data folder for saves: set RAZDOR_SAVE_DIR.").to_string(),
             Some(dir) => match save::quick_save(&dir, game) {
                 Ok(_) => tr("Quick save written (F9 loads it).").to_string(),
@@ -604,7 +604,7 @@ impl App {
 
     /// F9: loads the newest quick save, if there is one.
     fn quick_load(&mut self) {
-        match save::default_dir().and_then(|d| save::quick_save_path(&d)) {
+        match save::games_dir().and_then(|d| save::quick_save_path(&d)) {
             Some(path) => {
                 self.load(&path);
                 self.message = Some(self.load_error.take().unwrap_or_else(|| tr("Quick save loaded.").to_string()));

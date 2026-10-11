@@ -297,7 +297,7 @@ fn latest_save(game: &Game) -> Option<std::path::PathBuf> {
                 return path.clone();
             }
         }
-        let dir = razdor::rules::save::default_dir()?;
+        let dir = razdor::rules::save::games_dir()?;
         let newest = [razdor::rules::save::SaveKind::Manual, razdor::rules::save::SaveKind::Auto]
             .into_iter()
             .flat_map(|k| razdor::rules::save::list(&dir, k))

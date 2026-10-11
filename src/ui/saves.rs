@@ -1,7 +1,7 @@
 //! Saving and loading (video notes §6): the save window with a name, the load window with
 //! the original's two tabs (manual saves and autosaves, newest first, with the scenario, the
 //! hero and the in-game date), the Esc menu, and the autosaves before every battle and at the
-//! 12:00 report. Files live in the player's data folder ([`save::default_dir`]).
+//! 12:00 report. Files live in the player's data folder ([`save::games_dir`]).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -58,7 +58,7 @@ pub struct SaveView {
 impl SaveView {
     pub fn new(game: &Game, back: Back) -> SaveView {
         let name = format!("{} {}", game.world.title.trim(), save::date_name(&game.clock));
-        SaveView { name, entries: save::default_dir().map_or_else(Vec::new, |d| save::list(&d, SaveKind::Manual)), scroll: 0, error: None, back }
+        SaveView { name, entries: save::games_dir().map_or_else(Vec::new, |d| save::list(&d, SaveKind::Manual)), scroll: 0, error: None, back }
     }
 }
 
@@ -97,7 +97,7 @@ impl LoadView {
     }
 
     pub fn refresh(&mut self) {
-        self.entries = save::default_dir().map_or_else(Vec::new, |d| save::list(&d, self.tab));
+        self.entries = save::games_dir().map_or_else(Vec::new, |d| save::list(&d, self.tab));
         self.selected = 0;
         self.scroll = 0;
     }
@@ -123,7 +123,7 @@ pub fn autosave(game: &Game, name: &str, in_battle: bool) {
     if !autosaves_on(super::chrome::has_texts().then(|| super::chrome::options_value("OptValue8")).flatten().as_deref()) {
         return;
     }
-    let Some(dir) = save::default_dir() else { return };
+    let Some(dir) = save::games_dir() else { return };
     if let Err(e) = save::write_autosave(&dir, name, game, in_battle) {
         razdor::diag!("autosave: {e}");
     }
@@ -410,7 +410,7 @@ pub fn save_screen(game: &Game, assets: &Assets, view: &mut SaveView, message: &
     if let (Some(k), _, _) = book.rows(&rows, Some(same.map_or(0, |i| i + 1)), &mut view.scroll, false) {
         view.name = if k == 0 { String::new() } else { view.entries[k - 1].meta.name.clone() };
     }
-    let dir = save::default_dir();
+    let dir = save::games_dir();
     let warning = if dir.is_none() { Some(tr("No data folder for saves: set RAZDOR_SAVE_DIR.")) } else { view.error.as_deref() };
     if let Some(w) = warning {
         let p = book.p(22.0, 435.0);
