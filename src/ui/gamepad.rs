@@ -207,7 +207,7 @@ pub fn poll() -> Option<PadState> {
             gilrs: Gilrs::new().map_err(|e| razdor::diag!("gamepads: {e}")).ok(),
             active: None,
         });
-        let gilrs = pads.gilrs.as_mut()?;
+        let Some(gilrs) = pads.gilrs.as_mut() else { return xinput::poll() };
         while let Some(ev) = gilrs.next_event() {
             match ev.event {
                 EventType::Disconnected if pads.active == Some(ev.id) => pads.active = None,
@@ -215,8 +215,9 @@ pub fn poll() -> Option<PadState> {
                 _ => pads.active = Some(ev.id),
             }
         }
-        let id = pads.active.or_else(|| gilrs.gamepads().next().map(|(id, _)| id))?;
-        let pad = gilrs.connected_gamepad(id)?;
+        let Some(pad) = pads.active.or_else(|| gilrs.gamepads().next().map(|(id, _)| id)).and_then(|id| gilrs.connected_gamepad(id)) else {
+            return xinput::poll();
+        };
         let mut s = PadState {
             left: (pad.value(Axis::LeftStickX), -pad.value(Axis::LeftStickY)),
             right: (pad.value(Axis::RightStickX), -pad.value(Axis::RightStickY)),
@@ -239,6 +240,120 @@ pub fn poll() -> Option<PadState> {
         }
         Some(s)
     })
+}
+
+/// XInput read directly, for the pads gilrs's Windows.Gaming.Input does not see: Wine's, as
+/// under GameNative or Winlator on Android, offers its pads through XInput (and DirectInput)
+/// only. Asked only while gilrs has no pad; the empty slots once a second, as asking an empty
+/// slot is slow on Windows.
+#[cfg(all(feature = "gamepad", windows))]
+mod xinput {
+    use std::cell::Cell;
+    use std::ffi::c_void;
+
+    use super::{Button, PadState};
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct State {
+        packet: u32,
+        buttons: u16,
+        left_trigger: u8,
+        right_trigger: u8,
+        lx: i16,
+        ly: i16,
+        rx: i16,
+        ry: i16,
+    }
+
+    type GetState = unsafe extern "system" fn(u32, *mut State) -> u32;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn LoadLibraryA(name: *const u8) -> *mut c_void;
+        fn GetProcAddress(module: *mut c_void, name: *const u8) -> *mut c_void;
+    }
+
+    fn get_state() -> Option<GetState> {
+        thread_local! {
+            static GET: Cell<Option<Option<GetState>>> = const { Cell::new(None) };
+        }
+        GET.with(|g| {
+            if g.get().is_none() {
+                let found = [&b"xinput1_4.dll\0"[..], b"xinput1_3.dll\0", b"xinput9_1_0.dll\0"].iter().find_map(|dll| {
+                    // SAFETY: NUL-terminated names; the address found has XInputGetState's type.
+                    unsafe {
+                        let module = LoadLibraryA(dll.as_ptr());
+                        let f = if module.is_null() { std::ptr::null_mut() } else { GetProcAddress(module, b"XInputGetState\0".as_ptr()) };
+                        (!f.is_null()).then(|| std::mem::transmute::<*mut c_void, GetState>(f))
+                    }
+                });
+                if found.is_none() {
+                    razdor::diag!("gamepads: no XInput");
+                }
+                g.set(Some(found));
+            }
+            g.get().flatten()
+        })
+    }
+
+    pub(super) fn poll() -> Option<PadState> {
+        thread_local! {
+            /// The slot last found connected, and when the empty slots were last asked.
+            static SLOT: Cell<(Option<u32>, f64)> = const { Cell::new((None, f64::NEG_INFINITY)) };
+        }
+        let get = get_state()?;
+        let read = |slot: u32| {
+            let mut st = State::default();
+            // SAFETY: XInputGetState writes one XINPUT_STATE.
+            (unsafe { get(slot, &mut st) } == 0).then_some(st)
+        };
+        let (slot, asked) = SLOT.with(|s| s.get());
+        let now = macroquad::time::get_time();
+        let found = match slot.and_then(|n| read(n).map(|st| (n, st))) {
+            Some(hit) => Some(hit),
+            None if now - asked >= 1.0 => {
+                SLOT.with(|s| s.set((None, now)));
+                (0..4).find_map(|n| read(n).map(|st| (n, st)))
+            }
+            None => None,
+        };
+        let Some((n, st)) = found else {
+            SLOT.with(|s| s.set((None, s.get().1)));
+            return None;
+        };
+        SLOT.with(|s| s.set((Some(n), s.get().1)));
+        Some(from_state(&st))
+    }
+
+    fn from_state(st: &State) -> PadState {
+        let axis = |v: i16| (v as f32 / 32767.0).clamp(-1.0, 1.0);
+        let mut s = PadState { left: (axis(st.lx), -axis(st.ly)), right: (axis(st.rx), -axis(st.ry)), buttons: 0 };
+        for (b, mask) in [
+            (Button::South, 0x1000),
+            (Button::East, 0x2000),
+            (Button::West, 0x4000),
+            (Button::North, 0x8000),
+            (Button::LeftBumper, 0x0100),
+            (Button::RightBumper, 0x0200),
+            (Button::Start, 0x0010),
+            (Button::Up, 0x0001),
+            (Button::Down, 0x0002),
+            (Button::Left, 0x0004),
+            (Button::Right, 0x0008),
+        ] {
+            s.set(b, st.buttons & mask != 0);
+        }
+        s
+    }
+}
+
+/// Elsewhere gilrs reads every pad.
+#[cfg(all(feature = "gamepad", not(windows)))]
+mod xinput {
+    pub(super) fn poll() -> Option<super::PadState> {
+        None
+    }
 }
 
 /// Built without gamepads: there is never one.
