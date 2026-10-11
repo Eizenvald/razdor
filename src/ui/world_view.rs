@@ -156,9 +156,9 @@ pub struct MapView {
     was_busy: bool,
     /// What the hover marks on the cell it last worked out ([`MapHoverLook`]).
     hover: Option<MapHoverLook>,
-    /// The building last outlined and when the pointer was last on it: the outline stays
-    /// [`OUTLINE_GRACE`] after the pointer leaves it, so passing over a cell of its picture
-    /// that is not its own does not make it blink.
+    /// The building last outlined and when the pointer was last near it: the outline stays
+    /// while the pointer is within a cell of its footprint, and [`OUTLINE_GRACE`] after
+    /// that, so moving over its picture does not make it blink.
     outlined: Option<(usize, f64)>,
 }
 
@@ -1870,7 +1870,9 @@ fn update_pointer(game: &Game, view: &mut MapView, cam: &Camera, on_minimap: boo
 /// the building over it, if any.
 fn hover_look(game: &Game, t: Tile, h: &MapHover) -> MapHoverLook {
     let ring = cursor::hover_ring(h).map(|c| if c == 3 { MARK_ARMY } else { MARK_ROUTE_END });
-    let building = h.building.as_ref().and_then(|_| game.world.location_covering(t));
+    // A bridge is a piece of the land, nothing to enter: never outlined. Another kind of
+    // building drawn with a bridge's picture is.
+    let building = h.building.as_ref().and_then(|_| game.world.location_at(t));
     MapHoverLook { cell: t, ring, building }
 }
 
@@ -2394,8 +2396,12 @@ pub fn frame(game: &mut Game, assets: &Assets, view: &mut MapView, message: &mut
     let pointed_at = view.hover.and_then(|h| h.building.filter(|_| pointed));
     let taking = !input_blocked() && view.pointer != Shape::Clock;
     let now_s = get_time();
+    let mouse_cell = cam.tile_under_mouse();
+    let near = |b: usize| mouse_cell.is_some_and(|(x, y)| game.world.locations[b].cells().any(|(cx, cy)| (cx - x).abs() <= 1 && (cy - y).abs() <= 1));
     view.outlined = match (pointed_at, view.outlined) {
         (Some(b), _) => Some((b, now_s)),
+        // Off it but still within a cell of it, and not on another building.
+        (None, Some((b, _))) if taking && view.hover.is_none_or(|h| h.building.is_none()) && near(b) => Some((b, now_s)),
         (None, Some((b, at))) if taking && now_s - at < OUTLINE_GRACE => Some((b, at)),
         _ => None,
     };
