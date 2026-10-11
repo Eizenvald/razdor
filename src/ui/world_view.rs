@@ -156,7 +156,14 @@ pub struct MapView {
     was_busy: bool,
     /// What the hover marks on the cell it last worked out ([`MapHoverLook`]).
     hover: Option<MapHoverLook>,
+    /// The building last outlined and when the pointer was last on it: the outline stays
+    /// [`OUTLINE_GRACE`] after the pointer leaves it, so passing over a cell of its picture
+    /// that is not its own does not make it blink.
+    outlined: Option<(usize, f64)>,
 }
+
+/// How long a building stays outlined after the pointer leaves it, in seconds.
+const OUTLINE_GRACE: f64 = 0.3;
 
 /// The hover's marks on the map: the original's ring on the hovered cell
 /// ([`cursor::hover_ring`]) and, Razdor's choice (a player's wish), the outline of the
@@ -171,7 +178,7 @@ struct MapHoverLook {
 
 impl Default for MapView {
     fn default() -> Self {
-        MapView { zoom: 1.0, zoom_steps: 0, minimap: false, debug: false, look: None, shows: VecDeque::new(), returning: None, opening: None, spell_fx: VecDeque::new(), preview: None, last_frame_ms: None, back_to: None, centring: None, grab: None, toasts: VecDeque::new(), pointer: Shape::Arrow, pointer_cell: None, was_busy: false, hover: None }
+        MapView { zoom: 1.0, zoom_steps: 0, minimap: false, debug: false, look: None, shows: VecDeque::new(), returning: None, opening: None, spell_fx: VecDeque::new(), preview: None, last_frame_ms: None, back_to: None, centring: None, grab: None, toasts: VecDeque::new(), pointer: Shape::Arrow, pointer_cell: None, was_busy: false, hover: None, outlined: None }
     }
 }
 
@@ -2384,7 +2391,15 @@ pub fn frame(game: &mut Game, assets: &Assets, view: &mut MapView, message: &mut
     // The hovered building is outlined only while the pointer is on it and the map takes
     // input; the cell's ring stays as the original leaves it.
     let pointed = !input_blocked() && view.pointer != Shape::Clock && view.hover.is_some_and(|h| cam.tile_under_mouse() == Some(h.cell));
-    let hover = view.hover.map(|h| MapHoverLook { building: h.building.filter(|_| pointed), ..h });
+    let pointed_at = view.hover.and_then(|h| h.building.filter(|_| pointed));
+    let taking = !input_blocked() && view.pointer != Shape::Clock;
+    let now_s = get_time();
+    view.outlined = match (pointed_at, view.outlined) {
+        (Some(b), _) => Some((b, now_s)),
+        (None, Some((b, at))) if taking && now_s - at < OUTLINE_GRACE => Some((b, at)),
+        _ => None,
+    };
+    let hover = view.hover.map(|h| MapHoverLook { building: view.outlined.map(|(b, _)| b), ..h });
     draw_world(game, assets, &cam, view.preview.as_ref().map(|p| p.1.as_slice()), show.as_ref(), hover);
     cam.draw_fog(game);
     cam.draw_showing(game, view.opening.iter().chain(&view.shows), now);
