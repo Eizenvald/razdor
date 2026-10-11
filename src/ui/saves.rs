@@ -266,7 +266,7 @@ impl Book {
         let r = self.rect(17.0, 60.0, 560.0, 350.0);
         match super::chrome::win("S_Save") {
             Some(t) => super::chrome::tex(&t, r, WHITE),
-            None => super::chrome::surface(r, super::chrome::Skin::Brown),
+            None => super::chrome::text_box(r),
         }
         super::chrome::silver_frame(r, k);
     }

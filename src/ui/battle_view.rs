@@ -1063,7 +1063,7 @@ impl BattleView {
         } else {
             unit_sheet::StripPanel::Plain
         };
-        unit_sheet::stat_strip(strip, s, base, f.power, caster, place, f.hp, row2, frame.is_some_and(|(c, _)| c == ACTIVE), panel);
+        unit_sheet::battle_stat_strip(strip, s, base, f.power, caster, place, f.hp, row2, frame.is_some_and(|(c, _)| c == ACTIVE), panel);
 
         // The original's signs (493a64): a drunk potion, then the blessing, from the top
         // left; poison (a negative regeneration), then the curse, from the top right; 23 px

@@ -405,6 +405,16 @@ impl StripPanel {
 /// ([`caster`], [`strip_place`]).
 #[allow(clippy::too_many_arguments)]
 pub fn stat_strip(strip: Rect, now: &Stats, base: &Stats, power: i32, caster: bool, place: usize, hp: i32, row2: i32, lit: bool, panel: StripPanel) {
+    stat_strip_impl(strip, now, base, power, caster, place, hp, row2, lit, panel, true);
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn battle_stat_strip(strip: Rect, now: &Stats, base: &Stats, power: i32, caster: bool, place: usize, hp: i32, row2: i32, lit: bool, panel: StripPanel) {
+    stat_strip_impl(strip, now, base, power, caster, place, hp, row2, lit, panel, true);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn stat_strip_impl(strip: Rect, now: &Stats, base: &Stats, power: i32, caster: bool, place: usize, hp: i32, row2: i32, lit: bool, panel: StripPanel, battle: bool) {
     let k = k();
     chrome::surface(strip, chrome::Skin::Strip);
     // The original recolours the strip itself (0x48da5c): red for the hero, blue for a named
@@ -412,8 +422,10 @@ pub fn stat_strip(strip: Rect, now: &Stats, base: &Stats, power: i32, caster: bo
     // (about 160,50,0 on this paper), which glared (a choice over the original).
     match panel {
         StripPanel::Plain => {}
-        StripPanel::Hero => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.5, 0.05, 0.03, 0.55)),
-        StripPanel::Named => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.05, 0.3, 0.95, 0.6)),
+        StripPanel::Hero if battle => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.5, 0.05, 0.03, 0.55)),
+        StripPanel::Named if battle => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.05, 0.3, 0.95, 0.6)),
+        StripPanel::Hero => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.36, 0.07, 0.035, 1.0)),
+        StripPanel::Named => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.035, 0.16, 0.42, 1.0)),
     }
     if lit {
         draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.75, 0.25, 0.0, 0.4));
@@ -470,7 +482,7 @@ fn silhouette(r: Rect) {
 /// the one clicked; the item under the mouse goes to `hover`.
 pub fn draw(assets: &Assets, content: &Content, r: Rect, s: &Sheet, slots: bool, hover: &mut Option<ItemId>) -> Option<usize> {
     let k = k();
-    chrome::parchment(r, true);
+    chrome::unit_parchment(r);
     // The figure, behind the text.
     let fig_h = r.h * if s.battle { 0.66 } else { 0.6 };
     let top = r.y + 10.0 * k;

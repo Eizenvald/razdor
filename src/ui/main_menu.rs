@@ -1,208 +1,733 @@
-Y™Áäx-ÆÈ‹j◊ù¢Îi∫⁄+äßj[hëÈ‹¢ÈÌ◊]|Â:-jZ.∂õ≠ñ)ﬁ≥RÚÚFÜR˜&ñvñÊ¬w2÷ñ‚÷VÁRáFÜRÉ£Çg&÷RˆbFÜRv÷W∆ífñFVÚì¢FÜR'W&ÊñÊr'VñÁ0¢ÚÚÜvñÊF˜w2Ù67F∆RÊ∆óFí˜fW"FÜRvÜˆ∆R67&VV‚¬FÜR6ñ«fW"-	-]Õ]›
-}MÌ"∆ˆv¢ÚÚÜFóF∆Uı%U2ÁVw6ívóFÇf∆÷W2&ó6ñÊrˆfbóG2∆WGFW'2ÜFóF∆Tf∆÷Uı%U2Ê∆óFí¬ÊBfófR˜f¿¢ÚÚ'WGFˆÁ2Ü÷#"ÁVw6¬FÜR∆7BˆÊRˆñÁFVBívÜ˜6R÷&&∆R÷ñFF∆W27vó&¬ñ‚fñˆ∆W@¢ÚÚÜ÷VÁTf∆÷RÊ∆óFíVÊFW"FÜRv˜&G2ˆb4’FWáEı%U2Ê∆óF≤FÜR'WGFˆ‚VÊFW"FÜR÷˜W6RGW&Á0¢ÚÚvˆ∆B‚&¶F˜"w2˜v‚WáG&2¬FÜR÷VFóF˜"¬FÜR7W7Fˆ“&GF∆RÊBFÜRñÁFW&f6R∆ÊwVvR¿¢ÚÚ6óB6÷∆¬ñ‚FÜR&˜GFˆ“6˜&ÊW'2‚∆ñ˜WBÁV÷&W'2&RóÜV«2ˆbFÜRìc9ss#fñFVÚ¬66∆VB'í∂6á&ˆ÷S£¶∂“‡†ßW6R7&FS£ßVì£¶ñÁWC£ß∂ó5ˆ÷˜W6Uˆ'WGFˆÂˆF˜vÁ”∞ßW6R÷7&˜VC£ß&V«VFS£¢£∞†ßW6R&¶F˜#£¶ìÜ„£ß∑6V∆b¬ÂÚ¬G"¬∆Êw”∞†ßW6R7WW#£¶VFñÛ£ß∂7VR¬7VW”∞ßW6R7WW#£¶6á&ˆ÷S£ß∑6V∆b¬gá”∞ßW6R7WW#£ßvñFvWG3£¢£∞†¢ÚÚÚvÜBFÜR∆ñW"ñ6∂VB‡¢5∂FW&ófRÑ6∆ˆÊR¬6˜í¬FV'Vr¬'FñƒW¬Wï–ßV"VÁV“ñ6≤∞¢ÊWtv÷R¿¢∆ˆB¿¢˜FñˆÁ2¿¢WFÜ˜'2¿¢WÜóB¿¢VFóF˜"¿¢ÚÚÚ&¶F˜"w27W7Fˆ“&GF∆RÜVì£¶7W7Fˆ’ˆ&GF∆Ví‡¢7W7Fˆ“¿ß–†¢ÚÚÚFÜRfófR'WGFˆÁ2¬F˜FÚ&˜GFˆ“¬vóFÇFÜR&˜rˆb4’FWáEı%U6Üˆ∆FñÊrFÜVó"v˜&B‡¶6ˆÁ7B%UEDÙÂ3¢≤Öñ6≤¬g7G"ì≤U““∞¢Öñ6≥£§ÊWtv÷R¬ÂÚÇ$ÊWrv÷R"íí¿¢Öñ6≥£§∆ˆB¬ÂÚÇ$∆ˆB"íí¿¢Öñ6≥£§˜FñˆÁ2¬ÂÚÇ$˜FñˆÁ2"íí¿¢Öñ6≥£§WFÜ˜'2¬ÂÚÇ$WFÜ˜'2"íí¿¢Öñ6≥£§WÜóB¬ÂÚÇ$WÜóB"íí¿•”∞†¢ÚÚÚ6VÁG&Rˆb'WGFˆ‚ñáfñFVÚóÜV«2¬Çg&ˆ“FÜR67&VV‚6VÁG&Rí‡¶f‚'WGFˆÂˆ6VÁG&RÜì¢W6ó¶Rí”‚fV3"∞¢fV3"É„¬#3"„≤í2c3"¢ì"„êß–†¢ÚÚÚ6ó¶Rˆb‚˜f¬'WGFˆ‚áfñFVÚóÜV«2ì¢÷#"ÁVw6G&v‚£B#L9sscÇ‡¶6ˆÁ7Bıd√¢fV3"“fV3#£¶ÊWrÉ#B„¬"„ì∞†¶f‚fñFVÚá¢fV3"í”‚fV3"∞¢∆WB≤“6á&ˆ÷S£¶≤Çì∞¢fV3"á67&VVÂ˜vñGFÇÇíÚ"„≤ÁÇ¢≤¬Áí¢≤êß–†¢ÚÚÚFÜR'W&ÊñÊr'VñÁ2˜fW"FÜRvÜˆ∆R67&VV‚¬∆óGF∆Rv&÷W"vÜW&RFÜRfó&Rv∆˜w2‡¶f‚&6∂w&˜VÊBÇí∞¢÷F6Ç6á&ˆ÷S£ßvñ‚Ç$67F∆R"í∞¢6ˆ÷RáBí”‚6á&ˆ÷S£ßFWÇÇgB¬&V7C£¶ÊWrÉ„¬„¬67&VVÂ˜vñGFÇÇí¬67&VVÂˆÜVñváBÇíí¬tÑïDRí¿¢ÊˆÊR”‚6∆V%ˆ&6∂w&˜VÊBÑ6ˆ∆˜#£¶g&ˆ’˜&v&Éc¬3¬"¬#SRíí¿¢–ß–†¢ÚÚÚFÜR7W'&VÁBÊBÊWáBg&÷R¬ÊBFÜR&∆VÊB&WGvVV‚FÜV“¬f˜"∆ˆ˜ñÊrÊñ÷Fñˆ‚‡¶f‚f∆÷U˜Ü6RáC¢ccB¬g3¢ccB¬g&÷W3¢W6ó¶Rí”‚áW6ó¶R¬W6ó¶R¬c3"í∞¢∆WBÜ6R“áB¢g2íÁ&V’ˆWV6∆ñBÜg&÷W22ccBì∞¢∆WB7W'&VÁB“Ü6RÊf∆ˆ˜"Çí2W6ó¶S∞¢Ü7W'&VÁB¬Ü7W'&VÁB≤íRg&÷W2¬Ü6RÊg&7BÇí2c3"êß–†¢ÚÚÚˆÊR6V∆¬ˆbFÜRL9sB6ÜVWBˆb#å9s#Çf∆÷Rg&÷W2‡¶f‚f∆÷Uˆg&÷RÜg&÷S¢W6ó¶Rí”‚&V7B∞¢&V7C£¶ÊWrÇÜg&÷RRBí2c3"¢#Ç„¬Üg&÷RÚBí2c3"¢#Ç„¬#Ç„¬#Ç„êß–†¢ÚÚÚ7&˜72÷fFW26ˆÁ6V7WFófRg&÷W26ÚFÜRFFóFófRf∆÷Rw&˜w2ÊBFñW2ví6÷ˆ˜FÜ«í‡¶f‚G&uˆf∆÷Uˆg&÷W2Ä¢FWáGW&S¢eFWáGW&S$B¿¢C¢ccB¿¢g3¢ccB¿¢g&÷W3¢W6ó¶R¿¢6˜W&6S¢ñ◊¬f‚áW6ó¶Rí”‚&V7B¿¢FW7C¢&V7B¿¢FñÁC¢6ˆ∆˜"¿¢í∞¢∆WBÜ7W'&VÁB¬ÊWáB¬&∆VÊBí“f∆÷U˜Ü6RáB¬g2¬g&÷W2ì∞¢6á&ˆ÷S£¶FFóFófRá«¬∞¢∆WB◊WB7W'&VÁE˜FñÁB“FñÁC∞¢7W'&VÁE˜FñÁBÊ£“„“&∆VÊC∞¢6á&ˆ÷S£ßFWÖ˜7&2áFWáGW&R¬6˜W&6RÜ7W'&VÁBí¬FW7B¬7W'&VÁE˜FñÁBì∞¢ñb&∆VÊB‚„∞¢∆WB◊WBÊWáE˜FñÁB“FñÁC∞¢ÊWáE˜FñÁBÊ£“&∆VÊC∞¢6á&ˆ÷S£ßFWÖ˜7&2áFWáGW&R¬6˜W&6RÜÊWáBí¬FW7B¬ÊWáE˜FñÁBì∞¢–¢“ì∞ß–†¢ÚÚÚFÜR∆ˆvÚ¬vóFÇFÜRf∆÷W2ˆbFóF∆Tf∆÷Uı%U6Éíg&÷W2ˆbFÜRGvÚv˜&G2¬ˆÊR&˜fRFÜP¢ÚÚÚ˜FÜW"í∆ñ6∂ñÊrW&VÜñÊBóG2∆WGFW'2‡¶f‚∆ˆvÚÇí∞¢∆WB≤“6á&ˆ÷S£¶≤Çì∞¢∆WBr“ÉC„¢≥∞¢∆WBÇ“r¢#Ç„ÚÉìb„∞¢ÚÚFÜR∆WGFW'26óB∆VgBñ‚FÜRñ7GW&S¢FÜRfñFVÚ6Ü˜w2FÜV“6VÁG&VB‡¢∆WBÇ“67&VVÂ˜vñGFÇÇíÚ"„“rÚ"„≤#R„¢≥∞¢∆WBí“S„¢≥∞¢ñb∆WB6ˆ÷RÜf¬í“6á&ˆ÷S£ßvñÂˆgÇÇ%FóF∆Tf∆÷Uı%U2"¬gÉ£§v∆˜rí∞¢∆WBfÇ“f¬ÊÜVñváBÇíÚí„∞¢∆WBB“vWE˜Fñ÷RÇì∞¢ÚÚFÜRGvÚv˜&G2¬V6ÇÜ∆bˆbFÜR6ÜVWB¬˜fW"V6ÇÜ∆bˆbFÜR∆ˆvÚ‡¢f˜"Ü∆bñ‚‚„"∞¢∆WBG7B“&V7C£¶ÊWráÇ≤Ü∆b2c3"¢rÚ"„¬í“Ç¢„Ç¬rÚ"„¬Ç¢„íì∞¢G&uˆf∆÷Uˆg&÷W2Ä¢ff¬¿¢B¿¢„¿¢í¿¢∆g&÷W¬∞¢&V7C£¶ÊWrÜÜ∆b2c3"¢f¬ÁvñGFÇÇíÚ"„¬g&÷R2c3"¢fÇ¬f¬ÁvñGFÇÇíÚ"„¬fÇê¢“¿¢G7B¿¢6ˆ∆˜#£¶ÊWrÉ„¬„SR¬„"¬„rí¿¢ì∞¢–¢–¢÷F6Ç6á&ˆ÷S£ßvñÂ˜Vw2Ç%FóF∆Uı%U2"í∞¢6ˆ÷RáBí”‚6á&ˆ÷S£ßFWÇÇgB¬&V7C£¶ÊWráÇ¬í¬r¬Çí¬tÑïDRí¿¢ÊˆÊR”‚FWáEˆ6VÁFW&VBáG"Ç$Fñ÷RˆbFó66˜&B"í¬67&VVÂ˜vñGFÇÇíÚ"„¬í≤Ç¢„r¬cB„¢≤¬6á&ˆ÷S£•4î≈dU"í¿¢–ß–†ßFá&VEˆ∆ˆ6¬∞¢ÚÚÚFÜR÷ñ‚÷VÁRóFV“VÊFW"FÜRˆñÁFW"BFÜR∆7Bg&÷R‡¢7FFñ2ÑıdU$TC¢7FC£¶6V∆√£§6V∆√ƒ˜Fñˆ„«W6ó¶S„‚“6ˆÁ7B≤7FC£¶6V∆√£§6V∆√£¶ÊWrÑÊˆÊRí”∞ß–†¢ÚÚÚ‚˜f¬'WGFˆ„¢FÜRfñˆ∆WB7vó&¬¬FÜRg&÷RÜvˆ∆BVÊFW"FÜR÷˜W6RíÊBóG2v˜&B‚&WGW&Á0¢ÚÚÚG'VRvÜV‚6∆ñ6∂VB‡¶f‚˜f¬Üì¢W6ó¶R¬∆&V√¢g7G"¬Ü˜C¢˜Fñˆ„«W6ó¶S‚í”‚&ˆˆ¬∞¢∆WB≤“6á&ˆ÷S£¶≤Çì∞¢∆WB2“fñFVÚÜ'WGFˆÂˆ6VÁG&RÜííì∞¢∆WB6ó¶R“ıd¬¢≥∞¢∆WB"“˜f≈˜&V7BÜíì∞¢∆WBÜ˜fW"“Ü˜B”“6ˆ÷RÜíì∞¢ÚÚFÜR&V∆¬2FÜRˆñÁFW"6ˆ÷W2ˆÁFÚ‚óFV“ÜñÁFW&f6RÊ÷B*sB¬ÉF#ñ#62ì≤∆VfñÊr6∆V'0¢ÚÚFÜR∆ñváB‡¢ÑıdU$TBÁvóFÇá∆á¬∞¢ñbÜ˜fW"bbÇÊvWBÇí“6ˆ÷RÜíí∞¢ÇÁ6WBÖ6ˆ÷RÜííì∞¢7VRÑ7VS£§÷VÁU6V∆V7Bì∞¢“V«6RñbÜ˜fW"bbÇÊvWBÇí”“6ˆ÷RÜíí∞¢ÇÁ6WBÑÊˆÊRì∞¢–¢“ì∞¢ÚÚfó&R&VÜñÊBFÜR'WGFˆ‚áFÜRv∆˜r&˜VÊBFÜR6ˆ«V÷‚ˆb'WGFˆÁ2ñ‚FÜRfñFVÚí‡¢ñb∆WB6ˆ÷RÜf¬í“6á&ˆ÷S£ßvñÂˆgÇÇ$÷VÁTf∆÷R"¬gÉ£§v∆˜rí∞¢∆WBb“&V7C£¶ÊWrÜ2ÁÇ“ì„¢≤¬2Áí“3„¢≤¬3É„¢≤¬#c„¢≤ì∞¢G&uˆf∆÷Uˆg&÷W2Ä¢ff¬¿¢vWE˜Fñ÷RÇí¢„Ç≤í2ccB¢„c¿¢"„¿¢b¿¢f∆÷Uˆg&÷R¿¢b¿¢6ˆ∆˜#£¶ÊWrÉ„¬„SR¬„"¬„Rí¿¢ì∞¢–¢ÚÚ÷#"ÁVw6¢FÜR&˜VÊB˜f¬ˆ‚F˜¬FÜRˆñÁFVBˆÊRáFÜR∆7B'WGFˆ‚í&V∆˜r‡¢ñb∆WB6ˆ÷RáBí“6á&ˆ÷S£ßvñÂ˜Vw2Ç&÷#""í∞¢∆WBˆñÁFVB“í≤”“%UEDÙÂ2Ê∆V‚Çì∞¢ıÛõhëÈÏ∂ªßq´^v[õô\ãûH
-»Õãå
-à»
-»H\»åÃà
-àNå
-àŒ¬à⁄õ€YNéú⁄Y›◊›^
-	õXô[[õô\ãû
-»çå
-àÀKMå
-àÀ⁄õ€YNéê‘ëPSJN¬à]›Hõ‹õX]JûŒãåIHãò[YH
-àLå
-N¬à⁄õ€YNéú⁄Y›◊›^
-	ú›[õô\ãû
-»[õô\ãù»Hçå
-à»HYX\›\ôJ	ú›Må
-à Kù⁄YKMå
-àÀ⁄õ€YNéë””
-N¬à]òX⁄»HôX›éõô] [õô\ãû
-»çå
-àÀH
-»Lå
-àÀ[õô\ãù»Hå
-àÀNå
-à N¬àYà]€€YJäHH€Y\äòX⁄Àò[YJH¬à]›\»H
+//! The original's main menu (the 18:08 frame of the gameplay video): the burning ruins
+//! (`Windows/Castle.lit`) over the whole screen, the silver "–í—Ä–µ–º–µ–Ω–∞ –†–∞–∑–¥–æ—Ä–∞" logo
+//! (`Title_RUS.ugs`) with flames rising off its letters (`TitleFlame_RUS.lit`), and five oval
+//! buttons (`mb2.ugs`, the last one pointed) whose marble middles swirl in violet
+//! (`MenuFlame.lit`) under the words of `SMText_RUS.lit`; the button under the mouse turns
+//! gold. Razdor's own extras, the map editor, the custom battle and the interface language,
+//! sit small in the bottom corners. Layout numbers are pixels of the 960√ó720 video, scaled by [`chrome::k`].
 
-àHò[YJH»›\\ééò]Y[Œéïì”SQW‘’T
-Kúõ›[ô
+use crate::ui::input::{is_mouse_button_down};
+use macroquad::prelude::*;
 
-H\»LÃé¬àYà]\⁄X»¬à]Y[Àõ]\⁄X◊€]]YHò[ŸN¬à]Y[Àú›\€]\⁄X ›\ N¬àH[ŸH¬à]Y[ÀúŸû€]]YHò[ŸN¬à]Y[Àú›\‹Ÿû
-›\ N¬àBàBàBàÀ»H€€[][ö]I‹»¥(t.¥/¥`4/¥`t`¥c4,4/t.4/4,4a¥.4.H4,à4,t.4`¥,¥-Hà
-[ö[X][€î‹YY
-Nà]ÿ\»H›öZŸI‹¬àÀ»€YH]
-L8¢$à p≠ÕH\»[ô]»YôôX›]
-L8¢$à p≠Ã»\»
-YôKYôMÿ KÇà]HH[õô\ãûH
-»Õãå
-à»
-»ãå
-àNå
-àŒ¬à]Xô[H›€äì‹[€ú»ãì‹[€î€ãó êò]H[ö[X][€à‹YYäJN¬à⁄õ€YNéú⁄Y›◊›^
-	õXô[[õô\ãû
-»çå
-àÀKMå
-àÀ⁄õ€YNéê‘ëPSJN¬à]‹YYH[ö[W‹‹YY
-]Y[ Kù[ù‹ò\€‹äå
-N¬à]›Hõ‹õX]Jû‹‹YYãåIHäN¬à⁄õ€YNéú⁄Y›◊›^
-	ú›[õô\ãû
-»[õô\ãù»Hçå
-à»HYX\›\ôJ	ú›Må
-à Kù⁄YKMå
-àÀ⁄õ€YNéë””
-N¬à]òX⁄»HôX›éõô] [õô\ãû
-»çå
-àÀH
-»Lå
-àÀ[õô\ãù»Hå
-àÀNå
-à N¬àYà]€€YJäHH€Y\äòX⁄À‹YY»NKå
-H¬à]Y[Àò[ö[W‹‹YYH€€YJ
-à
-àNKå
-Kúõ›[ô
+use razdor::i18n::{self, n_, tr, Lang};
 
-JN¬àBà][ô»Hõ‹õX]JûﬂH»ﬂHã[ôŒéë[ãõXô[
+use super::audio::{cue, Cue};
+use super::chrome::{self, Fx};
+use super::widgets::*;
 
-K[ôŒéîùKõXô[
+/// What the player picked.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pick {
+    NewGame,
+    Load,
+    Options,
+    Authors,
+    Exit,
+    Editor,
+    /// Razdor's custom battle (`ui::custom_battle`).
+    Custom,
+}
 
-JN¬à]àHôX›éõô] [õô\ãû
-»çå
-àÀ[õô\ãûH
-»[õô\ãöHå
-àÀMå
-àÀéå
-à N¬à]›ô\àHãò€€ùZ[ú ‹ò]NéùZNéù⁄YŸ]Œéú⁄[ù\ä
-Kö[ù 
-JH	âàZ[ú]ÿõÿ⁄ŸY
+/// The five buttons, top to bottom, with the row of `SMText_RUS` holding their word.
+const BUTTONS: [(Pick, &str); 5] = [
+    (Pick::NewGame, n_("New game")),
+    (Pick::Load, n_("Load")),
+    (Pick::Options, n_("Options")),
+    (Pick::Authors, n_("Authors")),
+    (Pick::Exit, n_("Exit")),
+];
 
-N¬à⁄õ€YNéõX\òõWÿù]€äã	õ[ôÀùYK›ô\äN¬àYà›ô\à	âà€X⁄ŸY
+/// Centre of button `i` (video pixels, x from the screen centre).
+fn button_centre(i: usize) -> Vec2 {
+    vec2(0.0, 232.0 + i as f32 * 92.0)
+}
 
-H¬à›YJ›YNéêù]€äN¬à›\\ééõ[ô›XYŸNéùŸŸ€J
-N¬àBà]úàHôX›éõô] ãû
-»ãù»
-»Mãå
-àÀãûKMLå
-àÀãö
-N¬à]ú◊€Xô[HYà]Y[Àú⁄›◊Ÿú»»äëî»⁄›€àäHH[ŸH»äëî»Y[àäHN¬à]›ô\óŸú»Húãò€€ùZ[ú ‹ò]NéùZNéù⁄YŸ]Œéú⁄[ù\ä
-Kö[ù 
-JH	âàZ[ú]ÿõÿ⁄ŸY
+/// Size of an oval button (video pixels): `mb2.ugs` drawn 1:1 at 1024√ó768.
+const OVAL: Vec2 = Vec2::new(214.0, 112.0);
 
-N¬à⁄õ€YNéõX\òõWÿù]€äúãú◊€Xô[ùYK›ô\óŸú N¬àYà›ô\óŸú»	âà€X⁄ŸY
+// Final title-flame placement from the temporary development tuner.
+const LOGO_FLAME_X: f32 = -16.0;
+const LOGO_FLAME_Y: f32 = 12.0;
+const LOGO_FLAME_WIDTH: f32 = 0.95;
+const LOGO_FLAME_HEIGHT: f32 = 1.52;
+const LOGO_FLAME_GLOW: f32 = 0.85;
 
-H¬à›YJ›YNéêù]€äN¬à]Y[Àú⁄›◊Ÿú»HX]Y[Àú⁄›◊ŸúŒ¬àBàÀ»ò^ô‹â‹»Yò[òŸYŸ][ô‹À[àH⁄[ô›»ŸàZ\à›€ãÇà]àHôX›éõô] úãû
-»úãù»
-»Mãå
-àÀãûK[õô\ãû
-»[õô\ãù»HLÕãå
-à»H
-úãû
-»úãù»
-»Mãå
-à Kãö
-N¬à]›ô\óÿYàHãò€€ùZ[ú ‹ò]NéùZNéù⁄YŸ]Œéú⁄[ù\ä
-Kö[ù 
-JH	âàZ[ú]ÿõÿ⁄ŸY
+fn video(p: Vec2) -> Vec2 {
+    let k = chrome::k();
+    vec2(screen_width() / 2.0 + p.x * k, p.y * k)
+}
 
-N¬à⁄õ€YNéõX\òõWÿù]€äãäêYò[òŸY8†)àäKùYK›ô\óÿYäN¬àYà›ô\óÿYà	âà€X⁄ŸY
+/// The burning ruins over the whole screen, a little warmer where the fire glows.
+fn background() {
+    match chrome::win("Castle") {
+        Some(t) => chrome::tex(&t, Rect::new(0.0, 0.0, screen_width(), screen_height()), WHITE),
+        None => clear_background(Color::from_rgba(60, 30, 12, 255)),
+    }
+}
 
-H¬à›YJ›YNéêù]€äN¬àQêSê—Qù⁄]
-_KúŸ]
-ùYJJN¬àô]\õàò[ŸN¬àBàÀ»Hò]HRK\»H‹öY⁄[ò[	‹»¥(Ù.Ù`ÙaÙb4-t/t/tbÙ.H4.4/t`¥-t.Ù.Ù-t.¥`à4/Ù`4/¥`¥.4,¥/t.4.¥,4,à4,t.4`¥,¥-HéàX\ﬁH‹ÇàÀ»^\ùúõ€HH[ú›[	‹»Ÿ][ô»[ù[⁄‹Ÿ[à\ôKÇà]HH[õô\ãûH
-»Õãå
-à»
-»Àå
-àNå
-àŒ¬à]Xô[H›€äì‹[€ú»ãì‹[€éHãó í[\õ›ôY[ô[^HRH[àò]HäJN¬à⁄õ€YNéú⁄Y›◊›^
-	õXô[[õô\ãû
-»çå
-àÀH
-»Nå
-àÀMå
-àÀ⁄õ€YNéê‘ëPSJN¬à]^\ùH^\ùÿZJ]Y[ N¬à]\àHôX›éõô] [õô\ãû
-»[õô\ãù»Hçå
-à»HMLå
-àÀKMLå
-àÀéå
-à N¬à]ZW€Xô[HYà^\ù»äë^\ùäHH[ŸH»äëX\ﬁHäHN¬à]›ô\óÿZHH\ãò€€ùZ[ú ‹ò]NéùZNéù⁄YŸ]Œéú⁄[ù\ä
-Kö[ù 
-JH	âàZ[ú]ÿõÿ⁄ŸY
+/// The current and next frame, and the blend between them, for a looping animation.
+fn flame_phase(t: f64, fps: f64, frames: usize) -> (usize, usize, f32) {
+    let phase = (t * fps).rem_euclid(frames as f64);
+    let current = phase.floor() as usize;
+    (current, (current + 1) % frames, phase.fract() as f32)
+}
 
-N¬à⁄õ€YNéõX\òõWÿù]€ä\ãZW€Xô[ùYK›ô\óÿZJN¬àYà›ô\óÿZH	âà€X⁄ŸY
+/// One cell of the 4√ó4 sheet of 128√ó128 flame frames.
+fn flame_frame(frame: usize) -> Rect {
+    Rect::new((frame % 4) as f32 * 128.0, (frame / 4) as f32 * 128.0, 128.0, 128.0)
+}
 
-H¬à›YJ›YNéêù]€äN¬à]Y[Àô^\ùÿZHH€€YJY^\ù
-N¬àBàÀ»Húõ€ùõ›…‹»⁄Y
-ò^ô‹â‹»›⁄]⁄õ‹àH‹öY⁄[ò[	‹»ù⁄YHúõ€ùõ›»[àò]HãàÀ»⁄X⁄€õHH[ú›[	‹»[öHŸ]
-Nàõ‹àHÿ[Y\»›\ùYúõ€Hõ›»€ãÇà]HHH
-»Nå
-àŒ¬à⁄õ€YNéú⁄Y›◊›^
-äëúõ€ùõ›»[àò]H
-ô]»ÿ[Y\ HäK[õô\ãû
-»çå
-àÀH
-»Nå
-àÀMå
-àÀ⁄õ€YNéê‘ëPSJN¬à]⁄YHH⁄YW‹õ› ]Y[À[ú›[›⁄YJN¬à]úàHôX›éõô] \ãûK\ãùÀ\ãö
-N¬à]õ›◊€Xô[HYà⁄YH»äçàŸ[»äHH[ŸH»äçŸ[»äHN¬à]›ô\ó‹õ›»Húãò€€ùZ[ú ‹ò]NéùZNéù⁄YŸ]Œéú⁄[ù\ä
-Kö[ù 
-JH	âàZ[ú]ÿõÿ⁄ŸY
+/// Cross-fades consecutive frames so the additive flame grows and dies away smoothly.
+fn draw_flame_frames(
+    texture: &Texture2D,
+    t: f64,
+    fps: f64,
+    frames: usize,
+    source: impl Fn(usize) -> Rect,
+    dest: Rect,
+    tint: Color,
+) {
+    let (current, next, blend) = flame_phase(t, fps, frames);
+    chrome::additive(|| {
+        let mut current_tint = tint;
+        current_tint.a *= 1.0 - blend;
+        chrome::tex_src(texture, source(current), dest, current_tint);
+        if blend > 0.0 {
+            let mut next_tint = tint;
+            next_tint.a *= blend;
+            chrome::tex_src(texture, source(next), dest, next_tint);
+        }
+    });
+}
 
-N¬à⁄õ€YNéõX\òõWÿù]€äúãõ›◊€Xô[ùYK›ô\ó‹õ› N¬àYà›ô\ó‹õ›»	âà€X⁄ŸY
+/// The logo, with the flames of `TitleFlame_RUS` (9 frames of the two words, one above the
+/// other) licking up behind its letters.
+fn logo() {
+    let k = chrome::k();
+    let w = 840.0 * k;
+    let h = w * 128.0 / 896.0;
+    // The letters sit left in the picture: the video shows them centred.
+    let x = screen_width() / 2.0 - w / 2.0 + 25.0 * k;
+    let y = 50.0 * k;
+    if let Some(fl) = chrome::win_fx("TitleFlame_RUS", Fx::Glow) {
+        let fh = fl.height() / 9.0;
+        let fw = fl.width() / 2.0;
+        // Keep the flame frame's aspect ratio and centre it over the visible lettering.
+        // The source frame follows the word's silhouette; centring lets it fill the whole
+        // text shape while the silver logo drawn below stays legible on top.
+        let base_w = w / 2.0;
+        let base_h = base_w * fh / fw;
+        let base_y = y + (h - base_h) / 2.0;
+        // Let the glow extend past the logo's sides and top while keeping the bottom
+        // aligned with the letter flames in the source art.
+        let flame_w = base_w * LOGO_FLAME_WIDTH;
+        let flame_h = base_h * LOGO_FLAME_HEIGHT;
+        let flame_y = base_y + base_h - flame_h + LOGO_FLAME_Y * k;
+        let t = get_time();
+        // The two words, each half of the sheet, over each half of the logo.
+        for half in 0..2 {
+            let dst_x = x + half as f32 * base_w - (flame_w - base_w) / 2.0 + LOGO_FLAME_X * k;
+            let dst = Rect::new(dst_x, flame_y, flame_w, flame_h);
+            draw_flame_frames(
+                &fl,
+                t,
+                10.0,
+                9,
+                |frame| {
+                    Rect::new(half as f32 * fw, frame as f32 * fh, fw, fh)
+                },
+                dst,
+                Color::new(1.0, 0.55, 0.2, LOGO_FLAME_GLOW),
+            );
+        }
+    }
+    match chrome::win_ugs("Title_RUS") {
+        Some(t) => chrome::tex(&t, Rect::new(x, y, w, h), WHITE),
+        None => text_centered(tr("A time of discord"), screen_width() / 2.0, y + h * 0.7, 64.0 * k, chrome::SILVER),
+    }
+}
 
-H¬à›YJ›YNéêù]€äN¬à]Y[Àù⁄YW‹õ›»H€€YJ]⁄YJN¬àBàÀ»⁄[ô›ŸYõ‹ô\õ\‹»‹àù[ÿ‹ôY[ãŸ]]€òŸH
-\‹^Néôõ€›◊‹Ÿ][ô‹ÿ
-KÇà]HHH
-»Nå
-àŒ¬à⁄õ€YNéú⁄Y›◊›^
-äîÿ‹ôY[à
-[
-—[ù\äHäK[õô\ãû
-»çå
-àÀH
-»Nå
-àÀMå
-àÀ⁄õ€YNéê‘ëPSJN¬à]àHôX›éõô] \ãûK\ãùÀ\ãö
-N¬à]›ô\óŸ\‹^HHãò€€ùZ[ú ‹ò]NéùZNéù⁄YŸ]Œéú⁄[ù\ä
-Kö[ù 
-JH	âàZ[ú]ÿõÿ⁄ŸY
+thread_local! {
+    /// The main menu item under the pointer at the last frame.
+    static HOVERED: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
 
-N¬à⁄õ€YNéõX\òõWÿù]€äã]Y[Àô\‹^KõXô[
+/// An oval button: the violet swirl, the frame (gold under the mouse) and its word. Returns
+/// true when clicked.
+fn oval(i: usize, label: &str, hot: Option<usize>) -> bool {
+    let k = chrome::k();
+    let c = video(button_centre(i));
+    let size = OVAL * k;
+    let r = oval_rect(i);
+    let hover = hot == Some(i);
+    // The bell as the pointer comes onto an item (interface.md ¬ß4, 0x4b9b3c); leaving clears
+    // the light.
+    HOVERED.with(|h| {
+        if hover && h.get() != Some(i) {
+            h.set(Some(i));
+            cue(Cue::MenuSelect);
+        } else if !hover && h.get() == Some(i) {
+            h.set(None);
+        }
+    });
+    // Fire behind the button (the glow around the column of buttons in the video).
+    if let Some(fl) = chrome::win_fx("MenuFlame", Fx::Glow) {
+        let f = Rect::new(c.x - 190.0 * k, c.y - 130.0 * k, 380.0 * k, 260.0 * k);
+        draw_flame_frames(
+            &fl,
+            // The previous per-button offset jumped almost four frames at a time;
+            // keep a small ordered phase step down the menu instead.
+            get_time() * 0.8 + i as f64 * 0.10,
+            6.0,
+            16,
+            flame_frame,
+            f,
+            Color::new(1.0, 0.55, 0.2, 0.5),
+        );
+    }
+    // `mb2.ugs`: the round oval on top, the pointed one (the last button) below.
+    if let Some(t) = chrome::win_ugs("mb2") {
+        let pointed = i + 1 == BUTTONS.len();
+        let half = t.height() / 2.0;
+        let src = Rect::new(0.0, if pointed { half } else { 0.0 }, t.width(), half);
+        let frame = if hover { Color::new(1.0, 0.80, 0.42, 1.0) } else { WHITE };
+        let s = k * 0.9375;
+        // Each oval's middle is 46 px below the top of its half; the pointed one is drawn
+        // in the left 196 px of the picture.
+        let dx = if pointed { 16.0 } else { 0.0 };
+        let dst = Rect::new(c.x - (t.width() / 2.0 - dx) * s, c.y - 46.0 * s, t.width() * s, half * s);
+        chrome::tex_src(&t, src, dst, frame);
+    } else {
+        draw_ellipse_lines(c.x, c.y, size.x / 2.0, size.y / 2.0, 0.0, 3.0, if hover { chrome::GOLD } else { chrome::SILVER });
+    }
+    // The marble middle glows violet (warm under the mouse), a flame swirling in it.
+    let pointed = i + 1 == BUTTONS.len();
+    let (iw, ih) = if pointed { (0.54, 0.42) } else { (0.62, 0.46) };
+    let inner = Rect::new(c.x - r.w * iw / 2.0, c.y - r.h * ih / 2.0, r.w * iw, r.h * ih);
+    let wash = if hover { Color::new(0.75, 0.40, 0.45, 0.40) } else { Color::new(0.30, 0.26, 0.90, 0.42) };
+    draw_ellipse(inner.center().x, inner.center().y, inner.w / 2.0, inner.h / 2.0, 0.0, wash);
+    if let Some(fl) = chrome::win_fx("MenuFlame", Fx::Glow) {
+        let tint = if hover { Color::new(1.0, 0.8, 0.7, 0.5) } else { Color::new(0.8, 0.65, 1.0, 0.5) };
+        draw_flame_frames(
+            &fl,
+            get_time() + i as f64 * 0.37,
+            12.0,
+            16,
+            flame_frame,
+            inner,
+            tint,
+        );
+    }
+    word(i, label, c, hover);
+    if hover && clicked() {
+        cue(Cue::MenuPress);
+        return true;
+    }
+    false
+}
 
-KùYK›ô\óŸ\‹^JN¬àYà›ô\óŸ\‹^H	âà€X⁄ŸY
+/// The button's word: its row of `SMText_RUS` in Russian, else the text.
+fn word(i: usize, label: &str, c: Vec2, hover: bool) {
+    let k = chrome::k();
+    let color = if hover { Color::new(1.0, 0.93, 0.80, 1.0) } else { Color::new(0.93, 0.90, 1.0, 1.0) };
+    let sheet = (i18n::lang() == Lang::Ru).then(|| chrome::win_fx("SMText_RUS", Fx::Glow)).flatten();
+    match sheet {
+        Some(t) => {
+            let rh = t.height() / BUTTONS.len() as f32;
+            let src = Rect::new(0.0, i as f32 * rh, t.width(), rh);
+            let (w, h) = (t.width() * 1.05 * k, rh * 1.05 * k);
+            let dst = Rect::new(c.x - w / 2.0, c.y - h / 2.0, w, h);
+            // A dark rim, then the word.
+            for (dx, dy) in [(-1.5, 0.0), (1.5, 0.0), (0.0, -1.5), (0.0, 1.5)] {
+                chrome::tex_src(&t, src, Rect::new(dst.x + dx * k, dst.y + dy * k, dst.w, dst.h), Color::new(0.12, 0.05, 0.25, 0.8));
+            }
+            chrome::tex_src(&t, src, dst, color);
+        }
+        None => chrome::strong_centered(label, c.x, c.y + 8.0 * k, 24.0 * k, color),
+    }
+}
 
-H¬à›YJ›YNéêù]€äN¬à]Y[Àô\‹^HH]Y[Àô\‹^Kõô^
+/// A small text link (the Razdor extras). Returns true when clicked.
+fn link(label: &str, x: f32, y: f32, right: bool) -> bool {
+    let size = 18.0 * chrome::k();
+    let w = measure(label, size).width;
+    let x = if right { x - w } else { x };
+    let hover = !input_blocked() && mouse_in(x, y - size, w, size * 1.3);
+    let color = if hover { chrome::GOLD } else { Color::new(0.95, 0.88, 0.72, 0.85) };
+    chrome::shadow_text(label, x, y, size, color);
+    if hover && clicked() {
+        cue(Cue::Button);
+        return true;
+    }
+    false
+}
 
-N¬àBàÀ»H[ù\ôòXŸHÿÿ[K\»Z[ôX‹òYù	‹Œà]]»
-H\ôŸ\›]ö] H‹àHö^Y€ôHô[›»]Çà]HHH
-»Nå
-àŒ¬à⁄õ€YNéú⁄Y›◊›^
-äí[ù\ôòXŸHÿÿ[HäK[õô\ãû
-»çå
-àÀH
-»Nå
-àÀMå
-àÀ⁄õ€YNéê‘ëPSJN¬à]ö]H⁄õ€YNéôö]⁄ 
-N¬à]‹àHôX›éõô] \ãûK\ãùÀ\ãö
-N¬à]›ô\ó‹ÿÿ[HH‹ãò€€ùZ[ú ‹ò]NéùZNéù⁄YŸ]Œéú⁄[ù\ä
-Kö[ù 
-JH	âàZ[ú]ÿõÿ⁄ŸY
+/// The menu's ruins and logo without the buttons (behind the load and new-game windows).
+pub fn backdrop() {
+    background();
+    logo();
+}
 
-N¬à⁄õ€YNéõX\òõWÿù]€ä‹ã	ú›\\ééô\‹^Néúÿÿ[W€Xô[
-]Y[ÀùZW‹ÿÿ[Kö]
-KùYK›ô\ó‹ÿÿ[JN¬àYà›ô\ó‹ÿÿ[H	âà€X⁄ŸY
+/// The screen rectangle of oval button `i`.
+fn oval_rect(i: usize) -> Rect {
+    let k = chrome::k();
+    let c = video(button_centre(i));
+    let size = OVAL * k;
+    Rect::new(c.x - size.x / 2.0, c.y - size.y / 2.0, size.x, size.y)
+}
 
-H¬à›YJ›YNéêù]€äN¬à]Y[ÀùZW‹ÿÿ[HH›\\ééô\‹^Néõô^‹ÿÿ[J]Y[ÀùZW‹ÿÿ[Kö]
-N¬àBà]⁄»HôX›éõô] [õô\ãû
-»[õô\ãù»HLåå
-àÀ[õô\ãûH
-»[õô\ãöHå
-àÀMãå
-àÀéå
-à N¬à]›ô\ó€⁄»H⁄Àò€€ùZ[ú ‹ò]NéùZNéù⁄YŸ]Œéú⁄[ù\ä
-Kö[ù 
-JH	âàZ[ú]ÿõÿ⁄ŸY
+/// The one button under the pointer: neighbouring ovals overlap by 20 px, and the original's
+/// hit test (0x4743c8) reports a single widget, the first in order. Without this the pointer in
+/// an overlap counted as on two buttons, which took the light from each other every frame and
+/// rang the bell each time.
+fn hot_button(pointer: Vec2, n: usize) -> Option<usize> {
+    (0..n).find(|&i| oval_rect(i).contains(pointer))
+}
 
-N¬à]⁄◊€Xô[H›€äêù]€ú»ãì⁄»ãó ì“»äJN¬à⁄õ€YNéõX\òõWÿù]€ä⁄À	õ⁄◊€Xô[ùYK›ô\ó€⁄ N¬à€‹ŸYŸ^JŸ^P€ŸNéë\ÿÿ\JHŸ^JŸ^P€ŸNéë[ù\äH
-›ô\ó€⁄»	âà€X⁄ŸY
+/// Draws the menu; returns what was picked.
+pub fn frame() -> Option<Pick> {
+    backdrop();
+    let mut pick = None;
+    let hot = if input_blocked() { None } else { hot_button(crate::ui::widgets::pointer().into(), BUTTONS.len()) };
+    for (i, (p, label)) in BUTTONS.iter().enumerate() {
+        if oval(i, tr(label), hot) {
+            pick = Some(*p);
+        }
+    }
+    let k = chrome::k();
+    let y = screen_height() - 16.0 * k;
+    let editor = tr("Map editor");
+    if link(editor, 16.0 * k, y, false) {
+        pick = Some(Pick::Editor);
+    }
+    let x = 16.0 * k + measure(editor, 18.0 * k).width + 28.0 * k;
+    if link(tr("Custom battle"), x, y, false) {
+        pick = Some(Pick::Custom);
+    }
+    let lang = format!("{} / {}", Lang::En.label(), Lang::Ru.label());
+    if link(&lang, screen_width() - 16.0 * k, y, true) {
+        super::language::toggle();
+    }
+    // This program's version, small in the corner above the language switch.
+    let version = concat!("v", env!("CARGO_PKG_VERSION"));
+    let vw = measure(version, 12.0 * k).width;
+    chrome::shadow_text(version, screen_width() - 16.0 * k - vw, y - 26.0 * k, 12.0 * k, Color::new(0.95, 0.88, 0.72, 0.6));
+    // An update put in place says so (an "Always" update has no window of its own).
+    super::update_view::title_line();
+    // Esc quits the game at once, without a question, as in the original (0x4c8059); a
+    // gamepad's Start, which is Esc elsewhere, does not (Razdor's: pressed to open a menu,
+    // it would end the game).
+    if key(KeyCode::Escape) && !crate::ui::input::pad_key_pressed(KeyCode::Escape) {
+        pick = Some(Pick::Exit);
+    }
+    pick
+}
 
-JBüB
+/// The credits picture of the install: its dark outline (`Credits_Alpha` as the alpha of
+/// black), its letters (`Credits_Color`, drawn additively), and the row of its first letters
+/// (it starts with a blank stretch).
+#[derive(Clone)]
+struct Credits {
+    shadow: Texture2D,
+    letters: Texture2D,
+    first_row: f32,
+}
+
+thread_local! {
+    /// The credits, made once.
+    static CREDITS: std::cell::OnceCell<Option<Credits>> = const { std::cell::OnceCell::new() };
+    /// The credits window the player scrolled (when it opened, how far from the timed scroll
+    /// in the picture's pixels).
+    static CREDITS_NUDGE: std::cell::Cell<(f64, f32)> = const { std::cell::Cell::new((f64::NAN, 0.0)) };
+}
+
+/// Razdor's own lines over the original's credits: their height in the picture's pixels.
+const OWN_CREDITS_H: f32 = 96.0;
+
+fn credits() -> Option<Credits> {
+    CREDITS.with(|c| {
+        c.get_or_init(|| {
+            let mut color = chrome::image("Windows/Credits_Color.lit")?;
+            let alpha = chrome::image("Windows/Credits_Alpha.lit")?;
+            if (color.width, color.height) != (alpha.width, alpha.height) {
+                return None;
+            }
+            let (w, h) = (u16::try_from(color.width).ok()?, u16::try_from(color.height).ok()?);
+            let shadow: Vec<u8> = alpha.rgba.chunks_exact(4).flat_map(|a| [0, 0, 0, a[0].max(a[1]).max(a[2])]).collect();
+            color.rgba.chunks_exact_mut(4).for_each(|p| p[3] = 255);
+            let make = |rgba: &[u8]| {
+                let t = Texture2D::from_rgba8(w, h, rgba);
+                t.set_filter(FilterMode::Linear);
+                t
+            };
+            let width = color.width as usize;
+            let first_row = color.rgba.chunks_exact(width * 4).position(|row| row.chunks_exact(4).any(|p| p[0].max(p[1]).max(p[2]) > 60)).unwrap_or(0);
+            // A margin above, for the faint edges of the first letters.
+            let first_row = first_row.saturating_sub(16);
+            Some(Credits { shadow: make(&shadow), letters: make(&color.rgba), first_row: first_row as f32 })
+        })
+        .clone()
+    })
+}
+
+/// A text of the install (`[<section>] <key>`) in Russian, else ours.
+fn own(section: &str, key: &str, ours: &'static str) -> String {
+    let t = (i18n::lang() == Lang::Ru).then(|| chrome::ui_text(section, key)).flatten();
+    t.unwrap_or_else(|| tr(ours).to_string())
+}
+
+/// A window over the ruins, `w`√ó`h` video pixels, under the logo. Returns its inside and
+/// whether its close box was clicked.
+fn window(title: &str, w: f32, h: f32) -> (Rect, bool) {
+    let k = chrome::k();
+    let (w, h) = (w * k, h * k);
+    let r = Rect::new((screen_width() - w) / 2.0, (190.0 * k).min(screen_height() - h), w, h);
+    chrome::window(r, title, chrome::Skin::Marble, true)
+}
+
+/// "–ò–Ω—Ñ–æ—Ä–º–∞—Ü–∏—è –æ–± –∞–≤—Ç–æ—Ä–∞—Ö": the splash of scattered drawings with the credits rolling up
+/// over it (`started` is when the window opened). A click or Esc closes it.
+pub fn authors(started: f64) -> bool {
+    backdrop();
+    let title = own("Authors", "Title", n_("About the authors"));
+    let (inner, closed) = window(&title, 632.0, 460.0);
+    let k = chrome::k();
+    match chrome::win("Authors-Splash") {
+        Some(t) => chrome::tex(&t, inner, WHITE),
+        None => chrome::text_box(inner),
+    }
+    if let Some(c) = credits() {
+        // As the original (0x4c82c4): the picture's top at the page's top to begin with (its
+        // own blank start lets the first lines rise from below), 35 of its pixels a second,
+        // and it stays on its last view once the end is in sight. Razdor's own lines come
+        // first, before the original's; the wheel and the arrow keys scroll by hand, and the
+        // scroll goes on from there.
+        let px = k * 0.9375;
+        let w = c.letters.width() * px;
+        let total = c.letters.height() + OWN_CREDITS_H;
+        let most = (total - inner.h / px).max(0.0);
+        let (opened, mut nudge) = CREDITS_NUDGE.with(|n| n.get());
+        if opened != started {
+            nudge = 0.0;
+        }
+        let over = inner.contains(crate::ui::widgets::pointer().into());
+        let step = 48.0;
+        nudge -= if over { wheel() * step } else { 0.0 };
+        if key(KeyCode::Down) {
+            nudge += step;
+        }
+        if key(KeyCode::Up) {
+            nudge -= step;
+        }
+        if key(KeyCode::PageDown) {
+            nudge += inner.h / px * 0.8;
+        }
+        if key(KeyCode::PageUp) {
+            nudge -= inner.h / px * 0.8;
+        }
+        let timed = (get_time() - started) as f32 * 35.0;
+        // The clock while the credits roll on their own (Credits_OnOpen 0x4cfc6c calls
+        // 0x48ecf0); the arrow once their time is up (0x4c84e7), whatever the hand scroll.
+        if timed < most {
+            super::cursor::set(super::cursor::Shape::Clock);
+        }
+        let scrolled = (timed + nudge).clamp(0.0, most);
+        // Held at an end, the scroll owes nothing: turning back moves at once.
+        CREDITS_NUDGE.with(|n| n.set((started, scrolled - timed)));
+        let _clip = Clip::new(inner);
+        // The picture's part from row `from` (its pixels), drawn from page row `at`.
+        let picture = |from: f32, to: f32, at: f32| {
+            let top = (inner.y + (at - scrolled) * px).max(inner.y);
+            let bottom = (inner.y + (at + to - from - scrolled) * px).min(inner.y + inner.h);
+            if bottom > top {
+                let skip = (top - (inner.y + (at - scrolled) * px)) / px;
+                let src = Rect::new(0.0, from + skip, c.letters.width(), (bottom - top) / px);
+                let dst = Rect::new(inner.center().x - w / 2.0, top, w, bottom - top);
+                chrome::tex_src(&c.shadow, src, dst, WHITE);
+                chrome::additive(|| chrome::tex_src(&c.letters, src, dst, WHITE));
+            }
+        };
+        picture(0.0, c.first_row, 0.0);
+        // Razdor's modder, in the credits' colours: the role in gold, the name in white.
+        let y = inner.y + (c.first_row + 24.0 - scrolled) * px;
+        for (line, dy, size, color) in [(tr("RAZDOR modder"), 0.0, 20.0, chrome::GOLD), ("indicozy", 26.0, 22.0, WHITE)] {
+            let lw = measure(line, size * px).width;
+            chrome::shadow_text(line, inner.center().x - lw / 2.0, y + dy * px, size * px, color);
+        }
+        picture(c.first_row, c.letters.height(), c.first_row + OWN_CREDITS_H);
+    }
+    closed || key(KeyCode::Escape) || (clicked() && inner.contains(crate::ui::widgets::pointer().into()))
+}
+
+/// A horizontal slider of the original (`HSTexture` track, `HSlider` knob): returns the
+/// new value (0..1) while dragged or clicked.
+fn slider(r: Rect, value: f32) -> Option<f32> {
+    let k = chrome::k();
+    match chrome::win("HSTexture") {
+        Some(t) => chrome::three_slice(&t, r, 12.0, WHITE),
+        None => draw_rectangle(r.x, r.y + r.h / 3.0, r.w, r.h / 3.0, chrome::SILVER_DARK),
+    }
+    let knob_w = 32.0 * k * r.h / (18.0 * k);
+    let x = r.x + (r.w - knob_w) * value.clamp(0.0, 1.0);
+    match chrome::win("HSlider") {
+        Some(t) => chrome::tex(&t, Rect::new(x, r.y, knob_w, r.h), WHITE),
+        None => draw_rectangle(x, r.y, knob_w, r.h, chrome::SILVER),
+    }
+    let (mx, my) = crate::ui::widgets::pointer();
+    let over = !input_blocked() && Rect::new(r.x, r.y - 4.0 * k, r.w, r.h + 8.0 * k).contains(vec2(mx, my));
+    (over && is_mouse_button_down(MouseButton::Left)).then(|| ((mx - r.x - knob_w / 2.0) / (r.w - knob_w)).clamp(0.0, 1.0))
+}
+
+/// The battle AI's level: the player's choice, else the install's "improved enemy AI in
+/// battle" (`[Options] OptValue9`), else easy.
+pub fn expert_ai(audio: &super::audio::Settings) -> bool {
+    audio.expert_ai.unwrap_or_else(|| chrome::ui_text("Options", "OptValue9").is_some_and(|v| razdor::dt::ini::loose_int(&v) == 1))
+}
+
+/// The battle animation speed (percent): the player's choice, else the install's
+/// `[Options] AnimationSpeed` (the Community's); `None` without either (the vanilla game).
+pub fn anim_speed(audio: &super::audio::Settings) -> Option<f32> {
+    audio.anim_speed.or_else(|| chrome::options_value("AnimationSpeed").and_then(|v| v.trim().parse::<f32>().ok()).map(|s| s.clamp(0.0, 99.0)))
+}
+
+/// The front row's width for new games: the player's choice, else the install's "wide
+/// front row in battle" (`[Options] OptValue11`).
+pub fn wide_row(audio: &super::audio::Settings, install: bool) -> bool {
+    audio.wide_row.unwrap_or(install)
+}
+
+/// "–ù–∞—Å—Ç—Ä–æ–π–∫–∏ –∑–≤—É–∫–∞, –≥—Ä–∞—Ñ–∏–∫–∏ –∏ –≥–µ–π–º–ø–ª–µ—è", with what Razdor lets the player change: the
+/// music and sound volumes (saved at once) and the interface language. Returns true when
+/// closed.
+pub fn options(audio: &mut super::audio::Settings, install_wide: bool) -> bool {
+    backdrop();
+    options_window(audio, install_wide)
+}
+
+thread_local! {
+    /// The advanced settings window is open over the settings.
+    static ADVANCED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Opens the advanced settings over the settings window (a snapshot scene).
+pub fn open_advanced() {
+    ADVANCED.with(|a| a.set(true));
+}
+
+/// Razdor's advanced settings (the settings window's "Advanced‚Ä¶"): rules where Razdor can
+/// differ from the original. Returns true when closed.
+fn advanced_window(audio: &mut super::audio::Settings) -> bool {
+    let (inner, closed) = window(tr("Advanced settings"), 594.0, 570.0);
+    let k = chrome::k();
+    let y = inner.y + 30.0 * k;
+    chrome::shadow_text(tr("Stepping onto a friendly army"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
+    let br = Rect::new(inner.x + inner.w - 24.0 * k - 170.0 * k, y, 170.0 * k, 28.0 * k);
+    let label = if audio.friends_let_pass { tr("Let pass") } else { tr("Battle (original)") };
+    let over = br.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    chrome::marble_button(br, label, true, over);
+    if over && clicked() {
+        cue(Cue::Button);
+        audio.friends_let_pass = !audio.friends_let_pass;
+    }
+    let hint = tr("With no event of the map for the meeting, the original opens a battle against a friendly army the hero steps onto; Razdor can let him pass instead.");
+    for (i, line) in wrap(hint, inner.w - 48.0 * k, 12.0 * k).iter().enumerate() {
+        chrome::shadow_text(line, inner.x + 24.0 * k, y + 56.0 * k + i as f32 * 17.0 * k, 12.0 * k, WHITE);
+    }
+    // Armies only passing by on a bridge (Razdor's): the original meets each one.
+    let y = y + 100.0 * k;
+    chrome::shadow_text(tr("Armies on bridges"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
+    let pr = Rect::new(br.x, y, br.w, br.h);
+    let label = if audio.pass_on_bridges { tr("Let pass") } else { tr("Stop (original)") };
+    let over_pass = pr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    chrome::marble_button(pr, label, true, over_pass);
+    if over_pass && clicked() {
+        cue(Cue::Button);
+        audio.pass_on_bridges = !audio.pass_on_bridges;
+    }
+    let hint = tr("The original stops the hero at any army on a bridge. Razdor can let him through those only passing by; guards, enemies and the army clicked still meet him.");
+    for (i, line) in wrap(hint, inner.w - 48.0 * k, 12.0 * k).iter().enumerate() {
+        chrome::shadow_text(line, inner.x + 24.0 * k, y + 56.0 * k + i as f32 * 17.0 * k, 12.0 * k, WHITE);
+    }
+    // Updates from the GitHub releases (`razdor::update`): offered, put in place quietly, or
+    // not looked for; "Check now" asks at once and shows the answer.
+    let y = y + 100.0 * k;
+    chrome::shadow_text(tr("Updates"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
+    let ur = Rect::new(br.x, y, br.w, br.h);
+    let mode = match audio.updates {
+        razdor::update::Mode::Ask => tr("Ask"),
+        razdor::update::Mode::Always => tr("Always"),
+        razdor::update::Mode::Off => tr("Off"),
+    };
+    let over_mode = ur.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    chrome::marble_button(ur, mode, true, over_mode);
+    if over_mode && clicked() {
+        cue(Cue::Button);
+        audio.updates = audio.updates.next();
+    }
+    let cr = Rect::new(ur.x, y + 40.0 * k, ur.w, ur.h);
+    let over_check = cr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    chrome::marble_button(cr, tr("Check now"), true, over_check);
+    if over_check && clicked() {
+        cue(Cue::Button);
+        super::update_view::check_by_hand();
+    }
+    let state = super::update_view::status_label();
+    let sw = measure(&state, 13.0 * k).width;
+    chrome::shadow_text(&state, cr.x - 16.0 * k - sw, cr.y + 19.0 * k, 13.0 * k, chrome::GOLD);
+    let hint = tr("Ask: a newer release is offered in a window. Always: it is downloaded and starts the next time. The check never holds up the game.");
+    for (i, line) in wrap(hint, inner.w - 48.0 * k, 12.0 * k).iter().enumerate() {
+        chrome::shadow_text(line, inner.x + 24.0 * k, y + 92.0 * k + i as f32 * 17.0 * k, 12.0 * k, WHITE);
+    }
+    // The map's own zoom (Razdor's): the wheel steps from it, 0 comes back to it; locked, the
+    // wheel and +/- leave it alone.
+    let y = y + 140.0 * k;
+    chrome::shadow_text(tr("Map zoom"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
+    let zr = Rect::new(br.x, y, br.w, br.h);
+    let lock_label = if audio.zoom_locked { tr("Locked") } else { tr("Wheel and +/-") };
+    let over_lock = zr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    chrome::marble_button(zr, lock_label, true, over_lock);
+    if over_lock && clicked() {
+        cue(Cue::Button);
+        audio.zoom_locked = !audio.zoom_locked;
+    }
+    let (lo, hi) = super::world_view::ZOOM_RANGE;
+    let value = format!("√ó{:.2}", audio.map_zoom);
+    let track = Rect::new(inner.x + 24.0 * k, y + 44.0 * k, inner.w - 48.0 * k - 70.0 * k, 18.0 * k);
+    chrome::shadow_text(&value, track.x + track.w + 16.0 * k, track.y + 14.0 * k, 14.0 * k, chrome::GOLD);
+    if let Some(v) = slider(track, (audio.map_zoom - lo) / (hi - lo)) {
+        audio.map_zoom = ((lo + v * (hi - lo)) / 0.05).round() * 0.05;
+    }
+    let hint = tr("The zoom the map plays at. The wheel steps away from it and the 0 key comes back to it; locked, the map always shows it.");
+    for (i, line) in wrap(hint, inner.w - 48.0 * k, 12.0 * k).iter().enumerate() {
+        chrome::shadow_text(line, inner.x + 24.0 * k, y + 80.0 * k + i as f32 * 17.0 * k, 12.0 * k, WHITE);
+    }
+    let ok = Rect::new(inner.x + inner.w - 120.0 * k, inner.y + inner.h - 44.0 * k, 96.0 * k, 28.0 * k);
+    let over_ok = ok.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    let ok_label = own("Buttons", "Ok", n_("OK"));
+    chrome::marble_button(ok, &ok_label, true, over_ok);
+    closed || key(KeyCode::Escape) || key(KeyCode::Enter) || (over_ok && clicked())
+}
+
+/// The settings window alone (over the main menu, or over the map from the bar's gears).
+pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool) -> bool {
+    if ADVANCED.with(|a| a.get()) {
+        if advanced_window(audio) {
+            ADVANCED.with(|a| a.set(false));
+        }
+        return false;
+    }
+    let title = own("Options", "Title", n_("Sound, graphics and gameplay settings"));
+    let (inner, closed) = window(&title, 594.0, 542.0);
+    let k = chrome::k();
+    let rows = [
+        (own("Options", "OptionSld0", n_("Background music volume")), audio.music_volume, true),
+        (own("Options", "OptionSld1", n_("Sound effects volume")), audio.sfx_volume, false),
+    ];
+    for (i, (label, value, music)) in rows.into_iter().enumerate() {
+        let y = inner.y + 36.0 * k + i as f32 * 58.0 * k;
+        chrome::shadow_text(&label, inner.x + 24.0 * k, y, 14.0 * k, chrome::CREAM);
+        let pct = format!("{:.0}%", value * 100.0);
+        chrome::shadow_text(&pct, inner.x + inner.w - 24.0 * k - measure(&pct, 14.0 * k).width, y, 14.0 * k, chrome::GOLD);
+        let track = Rect::new(inner.x + 24.0 * k, y + 10.0 * k, inner.w - 48.0 * k, 18.0 * k);
+        if let Some(v) = slider(track, value) {
+            let steps = ((v - value) / super::audio::VOLUME_STEP).round() as i32;
+            if music {
+                audio.music_muted = false;
+                audio.step_music(steps);
+            } else {
+                audio.sfx_muted = false;
+                audio.step_sfx(steps);
+            }
+        }
+    }
+    // The Community's "–°–∫–æ—Ä–æ—Å—Ç—å –∞–Ω–∏–º–∞—Ü–∏–π –≤ –±–∏—Ç–≤–µ" (`AnimationSpeed`): it caps a strike's
+    // slide at (100 ‚àí S)¬∑5 ms and its effect at (100 ‚àí S)¬∑3 ms (0x4afd45, 0x4afe7c).
+    let y = inner.y + 36.0 * k + 2.0 * 58.0 * k;
+    let label = own("Options", "OptionSld4", n_("Battle animation speed"));
+    chrome::shadow_text(&label, inner.x + 24.0 * k, y, 14.0 * k, chrome::CREAM);
+    let speed = anim_speed(audio).unwrap_or(0.0);
+    let pct = format!("{speed:.0}%");
+    chrome::shadow_text(&pct, inner.x + inner.w - 24.0 * k - measure(&pct, 14.0 * k).width, y, 14.0 * k, chrome::GOLD);
+    let track = Rect::new(inner.x + 24.0 * k, y + 10.0 * k, inner.w - 48.0 * k, 18.0 * k);
+    if let Some(v) = slider(track, speed / 99.0) {
+        audio.anim_speed = Some((v * 99.0).round());
+    }
+    let lang = format!("{} / {}", Lang::En.label(), Lang::Ru.label());
+    let lr = Rect::new(inner.x + 24.0 * k, inner.y + inner.h - 44.0 * k, 140.0 * k, 28.0 * k);
+    let over = lr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    chrome::marble_button(lr, &lang, true, over);
+    if over && clicked() {
+        cue(Cue::Button);
+        super::language::toggle();
+    }
+    let fr = Rect::new(lr.x + lr.w + 16.0 * k, lr.y, 150.0 * k, lr.h);
+    let fps_label = if audio.show_fps { tr("FPS shown") } else { tr("FPS hidden") };
+    let over_fps = fr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    chrome::marble_button(fr, fps_label, true, over_fps);
+    if over_fps && clicked() {
+        cue(Cue::Button);
+        audio.show_fps = !audio.show_fps;
+    }
+    // Razdor's advanced settings, in a window of their own.
+    let xr = Rect::new(fr.x + fr.w + 16.0 * k, lr.y, inner.x + inner.w - 136.0 * k - (fr.x + fr.w + 16.0 * k), lr.h);
+    let over_adv = xr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    chrome::marble_button(xr, tr("Advanced‚Ä¶"), true, over_adv);
+    if over_adv && clicked() {
+        cue(Cue::Button);
+        ADVANCED.with(|a| a.set(true));
+        return false;
+    }
+    // The battle AI, as the original's "–£–ª—É—á—à–µ–Ω–Ω—ã–π –∏–Ω—Ç–µ–ª–ª–µ–∫—Ç –ø—Ä–æ—Ç–∏–≤–Ω–∏–∫–∞ –≤ –±–∏—Ç–≤–µ": easy or
+    // expert, from the install's setting until chosen here.
+    let y = inner.y + 36.0 * k + 3.0 * 58.0 * k;
+    let label = own("Options", "Option9", n_("Improved enemy AI in battle"));
+    chrome::shadow_text(&label, inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
+    let expert = expert_ai(audio);
+    let ar = Rect::new(inner.x + inner.w - 24.0 * k - 150.0 * k, y, 150.0 * k, 28.0 * k);
+    let ai_label = if expert { tr("Expert") } else { tr("Easy") };
+    let over_ai = ar.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    chrome::marble_button(ar, ai_label, true, over_ai);
+    if over_ai && clicked() {
+        cue(Cue::Button);
+        audio.expert_ai = Some(!expert);
+    }
+    // The front row's width (Razdor's switch for the original's "wide front row in battle",
+    // which only the install's ini set): for the games started from now on.
+    let y = y + 58.0 * k;
+    chrome::shadow_text(tr("Front row in battle (new games)"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
+    let wide = wide_row(audio, install_wide);
+    let rr = Rect::new(ar.x, y, ar.w, ar.h);
+    let row_label = if wide { tr("6 cells") } else { tr("4 cells") };
+    let over_row = rr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    chrome::marble_button(rr, row_label, true, over_row);
+    if over_row && clicked() {
+        cue(Cue::Button);
+        audio.wide_row = Some(!wide);
+    }
+    // Windowed, borderless or full screen, set at once (`display::follow_settings`).
+    let y = y + 58.0 * k;
+    chrome::shadow_text(tr("Screen (Alt+Enter)"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
+    let dr = Rect::new(ar.x, y, ar.w, ar.h);
+    let over_display = dr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    chrome::marble_button(dr, audio.display.label(), true, over_display);
+    if over_display && clicked() {
+        cue(Cue::Button);
+        audio.display = audio.display.next();
+    }
+    // The interface scale, as Minecraft's: Auto (the largest that fits) or a fixed one below it.
+    let y = y + 58.0 * k;
+    chrome::shadow_text(tr("Interface scale"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
+    let fit = chrome::fit_k();
+    let sr = Rect::new(ar.x, y, ar.w, ar.h);
+    let over_scale = sr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    chrome::marble_button(sr, &super::display::scale_label(audio.ui_scale, fit), true, over_scale);
+    if over_scale && clicked() {
+        cue(Cue::Button);
+        audio.ui_scale = super::display::next_scale(audio.ui_scale, fit);
+    }
+    let ok = Rect::new(inner.x + inner.w - 120.0 * k, inner.y + inner.h - 44.0 * k, 96.0 * k, 28.0 * k);
+    let over_ok = ok.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    let ok_label = own("Buttons", "Ok", n_("OK"));
+    chrome::marble_button(ok, &ok_label, true, over_ok);
+    closed || key(KeyCode::Escape) || key(KeyCode::Enter) || (over_ok && clicked())
+}

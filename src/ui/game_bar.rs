@@ -260,17 +260,28 @@ fn resources(game: &Game, y: f32, h: f32) {
         let base = y + h * 0.5 + value_size * 0.36;
         shadow_text(label, cx - lw - 16.0 * k, base, label_size, Color::new(0.75, 0.75, 0.75, 1.0));
         let icon = 24.0 * k;
-        match chrome::win(art) {
-            Some(t) => {
-                let iw = t.width() * icon / t.height();
-                tex(&t, Rect::new(cx - iw / 2.0, y + (h - icon) / 2.0, iw, icon), WHITE);
+        if i == 0 {
+            // The lower bar uses the standalone hand-with-wings emblem. The book in
+            // `res1` belongs to reward panels, while `Res-Magic` is a mirrored glyph.
+            let r = Rect::new(cx - icon / 2.0, y + (h - icon) / 2.0, icon, icon);
+            if let Some(t) = chrome::art("Spells/Hands-3.lit", Fx::Glow) {
+                tex(&t, r, Color::new(0.45, 0.85, 1.0, 1.0));
+            } else {
+                super::dialog::resource_icon(super::dialog::Resource::Mana, cx, y + h / 2.0, icon);
             }
-            None => super::dialog::resource_icon(
-                [super::dialog::Resource::Mana, super::dialog::Resource::Gold, super::dialog::Resource::Income, super::dialog::Resource::Wages][i],
-                cx,
-                y + h / 2.0,
-                icon,
-            ),
+        } else {
+            match chrome::win_fx(art, Fx::KeyBlack) {
+                Some(t) => {
+                    let iw = t.width() * icon / t.height();
+                    tex(&t, Rect::new(cx - iw / 2.0, y + (h - icon) / 2.0, iw, icon), WHITE);
+                }
+                None => super::dialog::resource_icon(
+                    [super::dialog::Resource::Mana, super::dialog::Resource::Gold, super::dialog::Resource::Income, super::dialog::Resource::Wages][i],
+                    cx,
+                    y + h / 2.0,
+                    icon,
+                ),
+            }
         }
         super::dt_font::with_face(super::dt_font::Face::Subtitle, || shadow_text(value, cx + 16.0 * k, base, value_size, *color));
     }

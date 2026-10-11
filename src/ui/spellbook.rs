@@ -133,14 +133,15 @@ pub fn frame(
         let cr = Rect::new(inner.x + gap + c as f32 * (cw + gap), inner.y + gap + row as f32 * ch, cw, ch - gap);
         let spell = book.get(cell);
         // The cell: brown parchment, dark when empty.
-        chrome::surface(cr, chrome::Skin::Brown);
+        chrome::text_box(cr);
         if spell.is_none() {
             // Olive and darker than a learnt spell's cell, as in the video.
             chrome::multiply(|| draw_rectangle(cr.x, cr.y, cr.w, cr.h, Color::new(0.62, 0.78, 0.5, 1.0)));
         }
         let hover = !input_blocked() && cr.contains(crate::ui::widgets::pointer().into());
-        let edge = if spell.is_some() && (*selected == cell || hover) { Color::new(1.0, 0.85, 0.5, 1.0) } else { Color::new(0.55, 0.5, 0.4, 1.0) };
-        draw_rectangle_lines(cr.x, cr.y, cr.w, cr.h, 1.0, edge);
+        if spell.is_some() && (*selected == cell || hover) {
+            draw_rectangle_lines(cr.x, cr.y, cr.w, cr.h, k.max(1.0), Color::new(1.0, 0.85, 0.5, 1.0));
+        }
         let icon = Rect::new(cr.x + 4.0 * k, cr.y + 4.0 * k, cr.h - 8.0 * k, cr.h - 8.0 * k);
         let tx = icon.x + icon.w + (cr.x + cr.w - icon.x - icon.w) / 2.0;
         let room = cr.x + cr.w - icon.x - icon.w - 8.0 * k;
@@ -162,10 +163,7 @@ pub fn frame(
             });
             continue;
         };
-        chrome::spell_icon(&s.icons, icon);
-        if let Some(t) = chrome::win_fx("Spell-Frame", chrome::Fx::KeyBlack) {
-            chrome::tex(&t, icon, WHITE);
-        }
+        chrome::spell_icon(s, icon);
         let cost = game.cast_cost(s);
         let size = 12.0 * k;
         super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
@@ -275,10 +273,7 @@ pub fn spell_card(game: &Game, s: &SpellDef, r: Rect) {
     chrome::text_box(r);
     let side = (r.h - 12.0 * k).min(100.0 * k);
     let icon = Rect::new(r.x + 6.0 * k, r.y + (r.h - side) / 2.0, side, side);
-    chrome::spell_icon(&s.icons, icon);
-    if let Some(t) = chrome::win_fx("Spell-Frame", chrome::Fx::KeyBlack) {
-        chrome::tex(&t, icon, WHITE);
-    }
+    chrome::spell_icon(s, icon);
     let left = icon.x + icon.w + 2.0 * k;
     let room = r.x + r.w - left - 8.0 * k;
     let tx = left + (r.x + r.w - left) / 2.0;

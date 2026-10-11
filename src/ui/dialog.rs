@@ -73,6 +73,8 @@ pub struct Dialog {
     /// The question is a village's offer (0x4aca80): its answer goes to the village
     /// (`building_view::answer_offer`), not to the event engine.
     pub offer: bool,
+    /// Both the village's offer and its result use the same scaled picture/text layout.
+    pub village_event: bool,
     pub picture: Option<Picture>,
     /// Units that joined / left the army.
     pub joined: Vec<UnitId>,
@@ -107,6 +109,7 @@ impl Dialog {
             event: None,
             question: false,
             offer: false,
+            village_event: false,
             picture: None,
             joined: Vec::new(),
             left: Vec::new(),
@@ -310,6 +313,9 @@ fn scrolled(d: &Dialog, total: usize, shown: usize, tb: Rect) -> usize {
 /// Draws `d` centred on the screen; returns how it was closed: OK (or Enter, Escape), or for
 /// a question Yes or No (Esc or N No, any other key Yes: `answer_key`).
 pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
+    if d.village_event {
+        return draw_village_event(d, assets, game);
+    }
     let (sw, sh) = (screen_width(), screen_height());
     chrome::under_message();
     // A picture at the side takes its width and 14 more from the text box.
@@ -339,7 +345,8 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
     let notice_h = if d.notice.is_some() { 26.0 } else { 0.0 };
     let pic_h = if d.picture.is_some() && side.is_none() { 140.0 } else { 0.0 };
     let units_h = [&d.joined, &d.left].iter().filter(|u| !u.is_empty()).count() as f32 * 60.0;
-    let fixed = 34.0 + 16.0 + pic_h + res_h + items_h + spells_h + units_h + notice_h + 64.0;
+    let title_h = (26.0 * chrome::k()).round();
+    let fixed = title_h + 16.0 + pic_h + res_h + items_h + spells_h + units_h + notice_h + 64.0;
     // Too tall for the screen: the text scrolls inside a shorter box, so the buttons stay
     // in sight.
     let shown = visible_lines(total, fixed, sh - 20.0);
@@ -353,7 +360,9 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
     let h = fixed + text_h;
     let (x, y) = ((sw - w) / 2.0, ((sh - h) / 2.0).max(10.0));
     chrome::window(Rect::new(x, y, w, h), &d.title, chrome::Skin::Marble, false);
-    let mut cy = y + 44.0;
+    chrome::silver_frame(Rect::new(x + 3.0, y + title_h + 3.0, w - 6.0, h - title_h - 66.0), 1.0);
+    chrome::silver_frame(Rect::new(x + 2.0, y + h - 60.0, w - 4.0, 58.0), 1.0);
+    let mut cy = y + title_h + 16.0;
     match &d.picture {
         Some(Picture::Unit(u)) => {
             let r = Rect::new(x + w / 2.0 - 64.0, cy, 128.0, 128.0);
@@ -411,7 +420,7 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
         for (i, &s) in d.spells.iter().enumerate().take(4) {
             let r = Rect::new(spread(n, i) - 25.0, cy + 26.0, 50.0, 50.0);
             if let Some(def) = game.and_then(|g| g.content.spells.iter().find(|x| x.id == s)) {
-                chrome::spell_icon(&def.icons, r);
+                chrome::spell_icon(def, r);
                 chrome::silver_frame(r, 1.0);
             }
             icons.push((true, s, r));
@@ -434,8 +443,6 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
         chrome::shadow_centered(n, x + w / 2.0, cy + 18.0, 18.0, Color::new(0.3, 0.72, 1.0, 1.0));
     }
     let by = y + h - 52.0;
-    // The silver line over the buttons.
-    draw_line(x + 2.0, by - 10.0, x + w - 2.0, by - 10.0, 1.5, chrome::SILVER);
     // A left or right press on an icon shows its item or spell centred on the press, kept
     // inside the window, until the button is let go (0x4c1fec / 0x4c2048, the frame handler
     // 0x4cd558); the window's buttons wait meanwhile.
@@ -481,6 +488,83 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
     if super::widgets::ok_key_pressed() {
         d.key_down.set(true);
     }
+    (ok || (d.key_down.get() && super::widgets::ok_key_released())).then_some(Close::Ok)
+}
+
+/// Village offers and results share the original's 634 px wide event window.
+/// The illustration stays beside the text, with rewards below and a framed footer.
+fn draw_village_event(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
+    chrome::under_message();
+    let o = (chrome::k() * 0.9375).min((screen_width() - 12.0) / 634.0);
+    let w = 634.0 * o;
+    let size = 17.0 * o;
+    let line_h = 18.0 * o;
+    let picture = match &d.picture { Some(Picture::Side(t)) => Some(t), _ => None };
+    let pw = picture.map_or(106.0, |t| t.width()) * o;
+    let ph = picture.map_or(210.0, |t| t.height()) * o;
+    let text_w = w - pw - 50.0 * o;
+    let rows = markup_rows(d.marked.as_deref().unwrap_or(""), text_w - 40.0 * o, size);
+    let rewards = !d.items.is_empty() || !d.resources.is_empty();
+    let reward_h = if rewards { 110.0 * o } else { 0.0 };
+    let fixed = 114.0 * o + reward_h;
+    let available = (screen_height() - chrome::bar_height() - fixed - 8.0).max(60.0 * o);
+    let panel_h = ph.max(rows.len() as f32 * line_h + 36.0 * o).min(available);
+    let shown = ((panel_h - 36.0 * o) / line_h).floor().max(1.0) as usize;
+    let h = fixed + panel_h;
+    let x = ((screen_width() - w) / 2.0).round();
+    let y = ((screen_height() - chrome::bar_height() - h) / 2.0).max(2.0).round();
+    chrome::window(Rect::new(x, y, w, h), &d.title, chrome::Skin::Marble, false);
+    let body = Rect::new(x + 4.0 * o, y + 31.0 * o, w - 8.0 * o, h - 89.0 * o);
+    let footer = Rect::new(x + 2.0 * o, y + h - 55.0 * o, w - 4.0 * o, 53.0 * o);
+    chrome::silver_frame(body, o.max(1.0));
+    chrome::silver_frame(footer, o.max(1.0));
+    let top = y + 45.0 * o;
+    if let Some(t) = picture {
+        let r = Rect::new(x + 18.0 * o, top, pw, ph.min(panel_h));
+        chrome::tex(t, r, WHITE);
+        chrome::silver_frame(r, o.max(1.0));
+    }
+    let tb = Rect::new(x + 32.0 * o + pw, top, text_w, panel_h);
+    chrome::text_box(tb);
+    let first = scrolled(d, rows.len(), shown, tb);
+    let count = rows.len().saturating_sub(first).min(shown);
+    let text_top = tb.y + (tb.h - count as f32 * line_h) / 2.0;
+    let room = tb.w - 40.0 * o - if rows.len() > shown { 16.0 * o } else { 0.0 };
+    for (i, row) in rows.iter().skip(first).take(shown).enumerate() {
+        draw_markup_row(row, tb.x + 20.0 * o, text_top + i as f32 * line_h + size, room, size);
+    }
+    let reward_y = top + panel_h + 14.0 * o;
+    if !d.items.is_empty() {
+        let caption = chrome::ui_text("Event", "AddItem").filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru)
+            .unwrap_or_else(|| tr("Items received:").to_string());
+        chrome::shadow_centered(&caption, x + w / 2.0, reward_y + 15.0 * o, size, CAPTION);
+        for (i, &item) in d.items.iter().enumerate() {
+            let cx = x + w * (i + 1) as f32 / (d.items.len() + 1) as f32;
+            let r = Rect::new(cx - 25.0 * o, reward_y + 28.0 * o, 50.0 * o, 50.0 * o);
+            assets.draw_item(item, r.x, r.y, r.w);
+            if r.contains(pointer().into()) && (is_mouse_button_down(MouseButton::Left) || is_mouse_button_down(MouseButton::Right)) {
+                if let Some(game) = game {
+                    super::building_view::item_description(game, assets, item, x + (w - 272.0 * o) / 2.0, y, 272.0 * o, 230.0 * o);
+                    return None;
+                }
+            }
+        }
+    }
+    for (i, (resource, label)) in d.resources.iter().enumerate() {
+        let cx = x + w * (i + 1) as f32 / (d.resources.len() + 1) as f32;
+        chrome::shadow_centered(label, cx, reward_y + 15.0 * o, size, MANA);
+        resource_icon(*resource, cx, reward_y + 56.0 * o, 65.0 * o);
+    }
+    let by = footer.y + 9.0 * o;
+    let (bw, bh) = (96.0 * o, 35.0 * o);
+    if d.question {
+        let answer = answer_key();
+        let yes = button(x + w * 0.24 - bw / 2.0, by, bw, bh, tr("Yes"), true);
+        let no = button(x + w * 0.76 - bw / 2.0, by, bw, bh, tr("No"), true);
+        return if yes || answer == Some(true) { Some(Close::Yes) } else if no || answer == Some(false) { Some(Close::No) } else { None };
+    }
+    let ok = button(x + (w - bw) / 2.0, by, bw, bh, tr("OK"), true);
+    if super::widgets::ok_key_pressed() { d.key_down.set(true); }
     (ok || (d.key_down.get() && super::widgets::ok_key_released())).then_some(Close::Ok)
 }
 

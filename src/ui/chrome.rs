@@ -35,12 +35,14 @@ pub enum Fx {
     Shade,
     /// Green and blue swapped (0x48dd40 with 1, 3, 2): the blue pill made the green one.
     SwapGreenBlue,
+    /// Higher-contrast brown ornaments for the shop's dark parchment panels.
+    ShadeStrong,
 }
 
 struct Chrome {
     dir: PathBuf,
     /// By path, then by [`Fx`] (its index).
-    textures: HashMap<String, [Option<Option<Texture2D>>; 6]>,
+    textures: HashMap<String, [Option<Option<Texture2D>>; 7]>,
     animations: HashMap<String, Option<Vec<Texture2D>>>,
     texts: Option<Option<Ini>>,
 }
@@ -138,6 +140,11 @@ pub fn transform(img: &mut Image, fx: Fx) {
                 p[3] = a.min(p[3]);
             }
             Fx::SwapGreenBlue => p.swap(1, 2),
+            Fx::ShadeStrong => {
+                let a = (lum(p) * 5 / 2).min(255) as u8;
+                p[..3].copy_from_slice(&[60, 20, 0]);
+                p[3] = a.min(p[3]);
+            }
         }
     }
 }
@@ -186,38 +193,10 @@ pub fn art(rel: &str, fx: Fx) -> Option<Texture2D> {
 /// `Graphics/Spells`, each with its `ColorC` taken away (the ini's "colour correction
 /// (-RGB)": 160,40,100 leaves «Исцеление»'s rays green), the backgrounds (`_` names) first,
 /// all glowing (black adds nothing). Draws nothing without an install.
-pub fn spell_icon(icons: &[razdor::dt::data::SpellIcon], r: Rect) {
-    let mut layers: Vec<(&str, Option<[i32; 3]>)> = icons.iter().filter_map(|i| Some((i.image.as_deref()?, i.tint))).collect();
-    layers.sort_by_key(|(name, _)| !name.starts_with('_'));
-    for (name, tint) in layers {
-        let Some(t) = spell_layer(name, tint.unwrap_or([0; 3])) else { continue };
-        draw_texture_ex(&t, r.x, r.y, WHITE, DrawTextureParams { dest_size: Some(vec2(r.w, r.h)), ..Default::default() });
-    }
-}
-
-/// One layer of a spell's picture with `minus` taken off every pixel, made to glow.
-fn spell_layer(name: &str, minus: [i32; 3]) -> Option<Texture2D> {
-    let rel = format!("Spells/{name}.lit");
-    let key = format!("{rel}#{},{},{}", minus[0], minus[1], minus[2]);
-    CHROME.with(|c| {
-        let mut c = c.borrow_mut();
-        let c = c.as_mut()?;
-        if let Some(t) = c.textures.get(&key).and_then(|v| v[Fx::Glow as usize].as_ref()) {
-            return t.clone();
-        }
-        let t = find_path(&c.dir, &format!("Graphics/{rel}"))
-            .and_then(|p| gfx::decode_file(&p))
-            .map_err(|e| razdor::diag!("Discord Times art: {rel}: {e}"))
-            .ok()
-            .and_then(|mut frames| {
-                let img = frames.get_mut(0)?;
-                subtract(img, minus);
-                transform(img, Fx::Glow);
-                to_texture(img)
-            });
-        c.textures.entry(key).or_default()[Fx::Glow as usize] = Some(t.clone());
-        t
-    })
+pub fn spell_icon(spell: &razdor::rules::content::SpellDef, r: Rect) {
+    // Compose the original's 100×100 spell illustration: colour corrections, icon mask,
+    // then silver frame. Treating the raw RGB as additive light gave it a purple halo.
+    super::spell_badges::draw_picture(spell, r);
 }
 
 /// Windows art `name` with its channels scaled and shifted as loaded ([`scale_channels`]),
@@ -452,10 +431,78 @@ void main() {
     gl_FragColor = color * texture2D(Texture, uv);
 }"#;
 
+// Rotate the circular source art before the quad is vertically compressed into a
+// ground-plane ellipse. Rotating the finished quad instead makes the oval itself spin.
+const GROUND_RING_FRAGMENT: &str = r#"#version 100
+precision mediump float;
+varying lowp vec4 color;
+varying lowp vec2 uv;
+uniform sampler2D Texture;
+uniform float Rotation;
+void main() {
+    vec2 p = uv - vec2(0.5);
+    float c = cos(Rotation);
+    float s = sin(Rotation);
+    vec2 source_uv = mat2(c, -s, s, c) * p + vec2(0.5);
+    if (source_uv.x < 0.0 || source_uv.x > 1.0 || source_uv.y < 0.0 || source_uv.y > 1.0) {
+        discard;
+    }
+    gl_FragColor = color * texture2D(Texture, source_uv);
+}"#;
+
 thread_local! {
     static ADDITIVE: std::cell::OnceCell<Option<Material>> = const { std::cell::OnceCell::new() };
     static MULTIPLY: std::cell::OnceCell<Option<Material>> = const { std::cell::OnceCell::new() };
     static PREMULTIPLIED: std::cell::OnceCell<Option<Material>> = const { std::cell::OnceCell::new() };
+    static GROUND_RING: std::cell::OnceCell<Option<Material>> = const { std::cell::OnceCell::new() };
+}
+
+/// Draw a circular marker texture projected onto the ground. The source pattern rotates
+/// in its own plane while the output remains a stable foreshortened ellipse.
+pub fn ground_ring(texture: &Texture2D, rect: Rect, color: Color, angle: f32) {
+    use macroquad::miniquad::{BlendFactor, BlendState, BlendValue, Equation, PipelineParams};
+    let material = GROUND_RING.with(|cell| {
+        cell.get_or_init(|| {
+            load_material(
+                ShaderSource::Glsl { vertex: ADD_VERTEX, fragment: GROUND_RING_FRAGMENT },
+                MaterialParams {
+                    uniforms: vec![UniformDesc::new("Rotation", UniformType::Float1)],
+                    pipeline_params: PipelineParams {
+                        color_blend: Some(BlendState::new(
+                            Equation::Add,
+                            BlendFactor::Value(BlendValue::SourceAlpha),
+                            BlendFactor::OneMinusValue(BlendValue::SourceAlpha),
+                        )),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            )
+            .map_err(|e| razdor::diag!("ground ring material: {e}"))
+            .ok()
+        })
+        .clone()
+    });
+    if let Some(material) = material {
+        material.set_uniform("Rotation", angle);
+        with_material(Some(material), || {
+            draw_texture_ex(
+                texture,
+                rect.x,
+                rect.y,
+                color,
+                DrawTextureParams { dest_size: Some(vec2(rect.w, rect.h)), ..Default::default() },
+            );
+        });
+    } else {
+        draw_texture_ex(
+            texture,
+            rect.x,
+            rect.y,
+            color,
+            DrawTextureParams { dest_size: Some(vec2(rect.w, rect.h)), ..Default::default() },
+        );
+    }
 }
 
 /// Runs `draw` blending as the original's 5-bit alpha masks (engine.md §6): what is below
@@ -487,37 +534,6 @@ pub fn additive(draw: impl FnOnce()) {
             .clone()
     });
     with_material(material, draw);
-}
-
-const SILHOUETTE_FRAGMENT: &str = r#"#version 100
-varying lowp vec4 color;
-varying lowp vec2 uv;
-uniform sampler2D Texture;
-void main() {
-    gl_FragColor = vec4(color.rgb, color.a * step(0.7, texture2D(Texture, uv).a));
-}"#;
-
-thread_local! {
-    static SILHOUETTE: std::cell::OnceCell<Option<Material>> = const { std::cell::OnceCell::new() };
-}
-
-/// Runs `draw` with every picture drawn as its solid shape in the tint colour (the faint
-/// alpha of a shadow left out), for outlines. Without the material, nothing is drawn.
-pub fn silhouette(draw: impl FnOnce()) {
-    use macroquad::miniquad::{BlendFactor, BlendState, BlendValue, Equation, PipelineParams};
-    let material = SILHOUETTE.with(|m| {
-        m.get_or_init(|| {
-            let blend = BlendState::new(Equation::Add, BlendFactor::Value(BlendValue::SourceAlpha), BlendFactor::OneMinusValue(BlendValue::SourceAlpha));
-            let pipeline_params = PipelineParams { color_blend: Some(blend), ..Default::default() };
-            load_material(ShaderSource::Glsl { vertex: ADD_VERTEX, fragment: SILHOUETTE_FRAGMENT }, MaterialParams { pipeline_params, ..Default::default() })
-                .map_err(|e| razdor::diag!("silhouette material: {e}"))
-                .ok()
-        })
-        .clone()
-    });
-    if let Some(m) = material {
-        with_material(Some(m), draw);
-    }
 }
 
 /// Runs `draw` with multiplying blending: what is below is multiplied by the colour drawn
@@ -756,7 +772,9 @@ impl Skin {
             Skin::Marble => win("Win-marble").map(|t| (t, WHITE)),
             Skin::Red => win("Win-red").map(|t| (t, WHITE)),
             Skin::Paper => paper(WHITE),
-            Skin::Brown => paper(Color::new(0.33, 0.21, 0.02, 1.0)),
+            // The original brown paper is the light Win-paper texture multiplied into
+            // a dark sepia: its blue channel is removed, as in the reference art.
+            Skin::Brown => paper(Color::new(0.35, 0.22, 0.0, 1.0)),
             Skin::Strip => paper(Color::new(0.37, 0.265, 0.02, 1.0)),
         }
     }
@@ -767,7 +785,7 @@ impl Skin {
             Skin::Marble => Color::new(0.10, 0.22, 0.18, 1.0),
             Skin::Red => Color::new(0.30, 0.06, 0.04, 1.0),
             Skin::Paper => Color::new(0.86, 0.68, 0.45, 1.0),
-            Skin::Brown => Color::new(0.38, 0.18, 0.10, 1.0),
+            Skin::Brown => Color::new(0.46, 0.25, 0.10, 1.0),
             Skin::Strip => Color::new(0.45, 0.30, 0.12, 1.0),
         }
     }
@@ -898,9 +916,9 @@ fn title_bar_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bo
         let tint = if skin == Skin::Red { Color::new(1.0, 0.45, 0.1, 0.9) } else { Color::new(0.55, 0.8, 0.7, 0.8) };
         let h = r.h * 0.8;
         let w = t.width() * h / t.height();
-        tex(&t, Rect::new(r.x + 4.0 * k, r.y + (r.h - h) / 2.0, w, h), tint);
+        tex(&t, Rect::new(r.x + k, r.y + (r.h - h) / 2.0, w, h), tint);
         if let Some(t2) = win_fx("Corner-Right", Fx::KeyBlack) {
-            let right = r.x + r.w - w - 4.0 * k - if closable { r.h + 4.0 * k } else { 0.0 };
+            let right = r.x + r.w - w - k;
             tex(&t2, Rect::new(right, r.y + (r.h - h) / 2.0, w, h), tint);
         }
     }
@@ -927,11 +945,6 @@ pub fn window(r: Rect, title: &str, skin: Skin, closable: bool) -> (Rect, bool) 
     window_styled(r, title, skin, closable, true)
 }
 
-/// A window with a plain title: no ornaments, the body font (the town window).
-pub fn window_plain(r: Rect, title: &str, skin: Skin, closable: bool) -> (Rect, bool) {
-    window_styled(r, title, skin, closable, false)
-}
-
 fn window_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bool) -> (Rect, bool) {
     let k = k();
     BIGGEST.with(|b| {
@@ -944,6 +957,12 @@ fn window_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bool)
     let tb = (26.0 * k).round();
     let closed = title_bar_styled(Rect::new(r.x, r.y, r.w, tb), title, skin, closable, ornate);
     silver_frame(r, (1.5 * k).max(1.0));
+    // A narrow marble gutter separates the content frame from the outer window edge.
+    // Individual panels keep their own inset and footer, as in the original dialogs.
+    let body = Rect::new(r.x + 3.0 * k, r.y + tb + 3.0 * k, r.w - 6.0 * k, r.h - tb - 6.0 * k);
+    if body.w > 0.0 && body.h > 0.0 {
+        silver_frame(body, k.max(1.0));
+    }
     (Rect::new(r.x + 2.0 * k, r.y + tb + 1.0, r.w - 4.0 * k, r.h - tb - 3.0 * k), closed)
 }
 
@@ -995,16 +1014,74 @@ fn corners(r: Rect) {
 /// The red-brown parchment box of story and description texts, with silver corners.
 pub fn text_box(r: Rect) {
     surface(r, Skin::Brown);
-    draw_rectangle_lines(r.x, r.y, r.w, r.h, 1.5, Color::new(0.72, 0.62, 0.5, 1.0));
+    if let Some(t) = win_fx("Big_Frame_1", Fx::ShadeStrong) {
+        t.set_filter(FilterMode::Nearest);
+        // Big_Frame_1 is the brown-paper ornament. Preserve its source scale and tile
+        // vertically; stretching the full 397 px flourish to every panel made it broad
+        // and blurry. UnitFrame remains reserved for unit UI.
+        let scale = k();
+        let strip = (t.width() * scale).min(r.w * 0.14);
+        let mut y = r.y;
+        while y < r.y + r.h {
+            let h = (t.height() * scale).min(r.y + r.h - y);
+            if h <= 0.0 { break; }
+            let src = Rect::new(0.0, 0.0, t.width(), h / scale);
+            tex_src(&t, src, Rect::new(r.x, y, strip, h), WHITE);
+            tex_src(&t, src, Rect::new(r.x + r.w - strip, y, strip, h), WHITE);
+            y += h;
+        }
+    }
+    silver_frame(r, k().max(1.0));
     corners(r);
+}
+
+/// A translucent dark backing over art, for the village's text panel.
+pub fn shaded_text_box(r: Rect, alpha: f32) {
+    draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.02, 0.015, 0.01, alpha.clamp(0.0, 1.0)));
+    silver_frame(r, (k() * 0.9375).max(1.0));
+    corners(r);
+}
+
+/// Light parchment board with the original's silver corner ornaments.
+pub fn parchment_box(r: Rect) {
+    parchment(r, true);
+    silver_frame(r, k().max(1.0));
+    corners(r);
+}
+
+/// The original parchment treatment used behind a battle unit's hover details.
+pub fn unit_parchment(r: Rect) {
+    surface(r, Skin::Paper);
+    if let Some(t) = win_fx("UnitFrame", Fx::Shade) {
+        tex(&t, r, Color::new(1.0, 1.0, 1.0, 0.8));
+    }
+    let e = 14.0 * k();
+    let dark = Color::new(0.25, 0.12, 0.02, 0.18);
+    draw_rectangle(r.x, r.y, r.w, e, dark);
+    draw_rectangle(r.x, r.y + r.h - e, r.w, e, dark);
+    draw_rectangle(r.x, r.y + e, e, r.h - 2.0 * e, dark);
+    draw_rectangle(r.x + r.w - e, r.y + e, e, r.h - 2.0 * e, dark);
+    draw_rectangle_lines(r.x, r.y, r.w, r.h, 1.5, Color::new(0.75, 0.6, 0.3, 1.0));
 }
 
 /// Light parchment, e.g. the unit panel; ornaments darken the corners when the art is there.
 pub fn parchment(r: Rect, ornaments: bool) {
     surface(r, Skin::Paper);
     if ornaments {
-        if let Some(t) = win_fx("UnitFrame", Fx::Shade) {
-            tex(&t, r, Color::new(1.0, 1.0, 1.0, 0.8));
+        // These panels use the repeatable gold side flourish, rather than the
+        // silver portrait frame. Keep its original scale and crop the final tile.
+        if let Some(t) = win_fx("Big_Frame_2", Fx::KeyBlack) {
+            t.set_filter(FilterMode::Nearest);
+            let scale = k();
+            let strip_w = (t.width() * scale).min(r.w * 0.22);
+            let mut y = r.y;
+            while y < r.y + r.h {
+                let h = (t.height() * scale).min(r.y + r.h - y);
+                if h <= 0.0 { break; }
+                tex_src(&t, Rect::new(0.0, 0.0, t.width(), h / scale), Rect::new(r.x, y, strip_w, h), Color::new(1.0, 0.78, 0.05, 0.62));
+                tex_src(&t, Rect::new(0.0, 0.0, t.width(), h / scale), Rect::new(r.x + r.w - strip_w, y, strip_w, h), Color::new(1.0, 0.78, 0.05, 0.62));
+                y += h;
+            }
         }
     }
     // The original darkens the parchment towards the edges.

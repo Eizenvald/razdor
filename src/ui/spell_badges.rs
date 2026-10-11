@@ -115,7 +115,7 @@ pub fn flush() {
     let pr = Rect::new(r.x + pad, r.y + (r.h - pic) / 2.0, pic, pic);
     match pictures(&h.spell) {
         Some((_, picture)) => chrome::tex(&picture, pr, WHITE),
-        None => chrome::spell_icon(&h.spell.icons, pr),
+        None => chrome::spell_icon(&h.spell, pr),
     }
     let mut ty = r.y + (r.h - text_h) / 2.0 + title * 0.85;
     chrome::shadow_text(&h.spell.name, r.x + tx, ty, title, chrome::CREAM);
@@ -178,6 +178,13 @@ fn pictures(spell: &SpellDef) -> Option<(Texture2D, Texture2D)> {
     let made = compose_from_install(spell).and_then(|(badge, picture)| Some((texture(&badge)?, texture(&picture)?)));
     PICTURES.with(|m| m.borrow_mut().insert(spell.id, made.clone()));
     made
+}
+
+/// Draw the original framed 100×100 spell picture in a menu or event window.
+pub fn draw_picture(spell: &SpellDef, r: Rect) -> bool {
+    let Some((_, picture)) = pictures(spell) else { return false };
+    chrome::tex(&picture, r, WHITE);
+    true
 }
 
 fn texture(img: &Image) -> Option<Texture2D> {

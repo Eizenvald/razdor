@@ -269,17 +269,17 @@ fn hall_picture(kind: LocationKind, (picture_type, variant): (u8, u8)) -> Option
 fn main_hall(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, message: &mut Option<String>, dialogs: &mut VecDeque<Dialog>) -> Option<Screen> {
     let k = chrome::k();
     let l = game.location?;
-    let (x, y, w) = (f.cx, f.cy, f.cw);
-    let pic_h = 250.0 * k;
+    let (x, w) = (f.cx, f.cw);
+    let pic_h = 270.0 * k;
     {
+        let (x, y, w) = (f.x + 249.0 * k, f.y + 28.0 * k, f.w - 251.0 * k);
         let loc = &game.world.locations[l];
         draw_rectangle(x, y, w, pic_h, Color::new(0.35, 0.5, 0.65, 1.0));
         draw_rectangle(x, y + pic_h * 0.62, w, pic_h * 0.38, Color::new(0.35, 0.5, 0.3, 1.0));
         // The original's picture of this kind of building, else (Razdor's) its map sprite.
         let scene = hall_picture(loc.kind, loc.picture);
         if let Some(t) = scene.and_then(chrome::win) {
-            let src_h = (t.width() * pic_h / w).min(t.height());
-            chrome::tex_src(&t, Rect::new(0.0, (t.height() - src_h) / 2.0, t.width(), src_h), Rect::new(x, y, w, pic_h), WHITE);
+            chrome::tex(&t, Rect::new(x, y, w, pic_h), WHITE);
         } else if let Some(tex) = assets.dt.as_ref().and_then(|a| a.building(loc.picture.0, loc.picture.1)) {
             let sc = ((pic_h - 20.0 * k) / tex.height()).min((w - 20.0 * k) / tex.width()).min(2.5 * k);
             let (tw, th) = (tex.width() * sc, tex.height() * sc);
@@ -287,20 +287,39 @@ fn main_hall(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingVie
         } else {
             text_centered(loc.kind.label(), x + w / 2.0, y + pic_h / 2.0, 40.0 * k, INK);
         }
-        chrome::silver_frame(Rect::new(x, y, w, pic_h), 1.0);
+        chrome::silver_frame(Rect::new(x, y, w, pic_h), k.max(1.0));
     }
     let entries = game.hall_entries();
     if view.pick.is_some_and(|k| k >= entries.len()) {
         view.pick = None;
     }
     let picked = view.pick.and_then(|k| entries.get(k).copied());
-    let ly = y + pic_h + 12.0 * k;
-    draw_rectangle(x, ly, w, 36.0 * k, Color::new(0.0, 0.0, 0.0, 0.3));
-    chrome::silver_frame(Rect::new(x, ly, w, 36.0 * k), 1.0);
-    chrome::shadow_text(tr("Quests and rumours:"), x + 14.0 * k, ly + 25.0 * k, 20.0 * k, chrome::GOLD);
+    chrome::divider(at(f, 248.0, 300.0, 586.0, 26.0));
+    let ly = f.y + 334.0 * k;
+    let header = Rect::new(x, ly, w, 50.0 * k);
+    if entries.is_empty() {
+        // The original hides the whole quest area when there is nothing to offer. Keep
+        // its chain divider and let the brown parchment description panel fill the space.
+        let desc = game.world.locations[l].description.clone();
+        let box_y = ly;
+        description_box(&desc, x, box_y, w, f.y + f.h - box_y - 10.0 * k);
+        return None;
+    }
+    if let Some(t) = chrome::win_fx("QuestBorder", chrome::Fx::KeyBlack) {
+        t.set_filter(FilterMode::Nearest);
+        chrome::three_slice(&t, Rect::new(x, ly + 5.0 * k, w - 166.0 * k, 40.0 * k), 82.0, WHITE);
+    } else {
+        draw_rectangle(x, ly, w, 36.0 * k, Color::new(0.0, 0.0, 0.0, 0.3));
+        chrome::silver_frame(header, 1.0);
+    }
     let mut next = None;
-    let label = if matches!(picked, Some(HallEntry::Quest(_))) { tr("Take quest") } else { tr("Hear rumour") };
-    if button(x + w - 250.0 * k, ly + 3.0 * k, 240.0 * k, 30.0 * k, label, picked.is_some()) {
+    let label = tr("Take quest");
+    let take_x = x + w - 158.0 * k;
+    let title_area = Rect::new(x + 62.0 * k, ly, take_x - x - 70.0 * k, 50.0 * k);
+    let section_title = tr("Quests and rumours:");
+    let title_size = fit_size(&section_title, title_area.w, 20.0 * k);
+    chrome::shadow_centered(&section_title, title_area.x + title_area.w / 2.0, ly + (header.h + title_size * 0.36) / 2.0, title_size, chrome::GOLD);
+    if button(take_x, ly + 8.0 * k, 150.0 * k, 34.0 * k, label, picked.is_some()) {
         if let Some(HallEntry::Rumour(id) | HallEntry::Quest(id)) = picked {
             match game.take_hall_entry(id) {
                 Ok(events) => {
@@ -312,14 +331,10 @@ fn main_hall(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingVie
             }
         }
     }
-    let list_y = ly + 42.0 * k;
-    let (row_h, rows) = (24.0 * k, 5);
+    let list_y = ly + 50.0 * k;
+    let (row_h, rows) = (24.0 * k, 3);
     let list_h = rows as f32 * row_h + 12.0 * k;
-    chrome::parchment(Rect::new(x, list_y, w, list_h), false);
-    if entries.is_empty() {
-        let none = if game.script().is_some() { tr("Nothing is on offer here.") } else { tr("No quests in the demo.") };
-        text_centered(none, x + w / 2.0, list_y + list_h / 2.0 + 6.0 * k, 19.0 * k, PARCHMENT_INK);
-    }
+    chrome::parchment_box(Rect::new(x, list_y, w, list_h));
     let max_scroll = entries.len().saturating_sub(rows);
     if mouse_in(x, list_y, w, list_h) {
         let wh = wheel();
@@ -334,9 +349,11 @@ fn main_hall(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingVie
     // wheel); the rows give it room.
     scrollbar(Rect::new(x + w - 16.0 * k, list_y + 4.0 * k, 12.0 * k, list_h - 8.0 * k), &mut view.scroll, rows, entries.len());
     let row_w = if max_scroll > 0 { w - 16.0 * k } else { w };
+    let visible_rows = entries.len().saturating_sub(view.scroll).min(rows);
+    let first_row_y = list_y + (list_h - visible_rows as f32 * row_h) / 2.0;
     for (n, entry) in entries.iter().enumerate().skip(view.scroll).take(rows) {
         let w = row_w;
-        let ry = list_y + 6.0 * k + (n - view.scroll) as f32 * row_h;
+        let ry = first_row_y + (n - view.scroll) as f32 * row_h;
         let (id, note, color) = match *entry {
             HallEntry::Rumour(id) => (id, tr("rumour"), Color::new(0.55, 0.1, 0.1, 1.0)),
             HallEntry::Quest(id) => (id, tr("quest"), Color::new(0.1, 0.3, 0.55, 1.0)),
@@ -345,8 +362,14 @@ fn main_hall(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingVie
             draw_rectangle(x + 4.0 * k, ry, w - 8.0 * k, row_h - 2.0 * k, Color::new(0.72, 0.6, 0.4, 1.0));
         }
         let title: String = story::event_title(game, id).chars().take(60).collect();
-        text_fit(&title, x + 16.0 * k, ry + 18.0 * k, w - 48.0 * k - measure(note, 16.0 * k).width, 19.0 * k, color);
-        text(note, x + w - 16.0 * k - measure(note, 16.0 * k).width, ry + 17.0 * k, 16.0 * k, PARCHMENT_INK);
+        let note_size = 16.0 * k;
+        let title_size = fit_size(&title, w - 44.0 * k - measure(note, note_size).width, 19.0 * k);
+        let title_w = measure(&title, title_size).width;
+        let note_w = measure(note, note_size).width;
+        let left = x + (w - title_w - 8.0 * k - note_w) / 2.0;
+        let baseline = ry + row_h / 2.0 + title_size * 0.36;
+        text(&title, left, baseline, title_size, color);
+        text(note, left + title_w + 8.0 * k, ry + row_h / 2.0 + note_size * 0.36, note_size, PARCHMENT_INK);
         if mouse_in(x, ry, w, row_h) && clicked() {
             view.pick = Some(n);
         }
@@ -861,13 +884,13 @@ fn garrison(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
 #[allow(clippy::too_many_arguments)]
 fn price_list(assets: Option<&Assets>, rows: &[(Option<ItemId>, String, String, bool)], marks: &[Option<std::ops::Range<usize>>], pick: Option<usize>, scroll: &mut usize, x: f32, y: f32, w: f32, visible: usize) -> Option<usize> {
     let k = chrome::k();
-    let row_h = 30.0 * k;
-    draw_rectangle(x, y, w, 26.0 * k + visible as f32 * row_h, Color::new(0.0, 0.04, 0.02, 0.45));
-    chrome::silver_frame(Rect::new(x, y, w, 26.0 * k + visible as f32 * row_h), 1.0);
-    text(tr("Name"), x + 50.0 * k, y + 19.0 * k, 17.0 * k, ACCENT);
-    text(tr("Price"), x + w - 80.0 * k, y + 19.0 * k, 17.0 * k, ACCENT);
+    let row_h = 186.0 * k / visible.max(1) as f32;
+    let frame = Rect::new(x, y, w, visible as f32 * row_h);
+    chrome::surface(frame, chrome::Skin::Marble);
+    chrome::surface(Rect::new(x, y, row_h, frame.h), chrome::Skin::Paper);
+    chrome::silver_frame(frame, k.max(1.0));
     let max_scroll = rows.len().saturating_sub(visible);
-    let over = mouse_in(x, y, w, 26.0 * k + visible as f32 * row_h);
+    let over = mouse_in(x, y, w, visible as f32 * row_h);
     let wheel = if over { wheel() } else { 0.0 };
     if wheel < 0.0 {
         *scroll = (*scroll + 1).min(max_scroll);
@@ -876,20 +899,20 @@ fn price_list(assets: Option<&Assets>, rows: &[(Option<ItemId>, String, String, 
     }
     *scroll = (*scroll).min(max_scroll);
     // The scroll bar (Razdor's): arrows, the track pages, the knob drags.
-    scrollbar(Rect::new(x + w - 15.0 * k, y + 26.0 * k, 12.0 * k, visible as f32 * row_h), scroll, visible, rows.len());
+    scrollbar(Rect::new(x + w - 15.0 * k, y, 12.0 * k, visible as f32 * row_h), scroll, visible, rows.len());
     let mut hit = None;
     for (n, (icon, name, price, red)) in rows.iter().enumerate().skip(*scroll).take(visible) {
-        let ry = y + 26.0 * k + (n - *scroll) as f32 * row_h;
+        let ry = y + (n - *scroll) as f32 * row_h;
         let sel = pick == Some(n);
         if sel {
             draw_rectangle(x + 2.0 * k, ry, w - 20.0 * k, row_h - 2.0 * k, Color::new(0.3, 0.38, 0.3, 1.0));
         }
         if let (Some(item), Some(assets)) = (icon, assets) {
-            assets.draw_item(*item, x + 8.0 * k, ry + 1.0, row_h - 4.0 * k);
+            assets.draw_item(*item, x + 2.0 * k, ry + 1.0, row_h - 4.0 * k);
         }
-        let shown: String = name.chars().take(26).collect();
-        let mark = marks.get(n).cloned().flatten();
-        text_marked(&shown, mark, x + 50.0 * k, ry + 21.0 * k, 18.0 * k, if sel { WHITE } else { ACCENT }, chrome::GOLD);
+        let shown = ellipsize(name, w - 110.0 * k, 17.0 * k);
+        let mark = marks.get(n).cloned().flatten().filter(|r| r.end <= shown.len() && shown.is_char_boundary(r.start) && shown.is_char_boundary(r.end));
+        text_marked(&shown, mark, x + 32.0 * k, ry + 20.0 * k, 17.0 * k, if sel { WHITE } else { ACCENT }, chrome::GOLD);
         text(price, x + w - 80.0 * k, ry + 21.0 * k, 18.0 * k, if *red { RED } else { ACCENT });
         if mouse_in(x, ry, w - 18.0 * k, row_h) && clicked() {
             hit = Some(n);
@@ -903,7 +926,6 @@ pub(super) fn item_description(game: &Game, assets: &Assets, item: ItemId, x: f3
     let c = &game.content;
     let d = c.item(item);
     chrome::text_box(Rect::new(x, y, w, h));
-    draw_rectangle_lines(x, y, w, h, 2.0 * k, Color::new(0.6, 0.42, 0.25, 1.0));
     let limit = match d.kind {
         ArtefactType::BlowWeapon => Some(tr("warriors only")),
         ArtefactType::ShotWeapon => Some(tr("shooters only")),
@@ -972,8 +994,9 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
     let k = chrome::k();
     let (x, y, w) = (f.cx, f.cy, f.cw);
     let c = game.content.clone();
-    let dw = w * 0.42;
-    let (lx, lw) = (x + dw + 10.0 * k, w - dw - 10.0 * k);
+    let dw = w * 0.492;
+    let (lx, lw) = (x + dw + 8.0 * k, w - dw - 8.0 * k);
+    chrome::shadow_centered(&own_text("Building", "ItemInfo", n_("Item description")), x + dw / 2.0, y + 13.0 * k, 17.0 * k, ACCENT);
     // The sell list holds only the pack items worth more than 1 (personal items and the
     // cheapest are not bought); a buy price above the gold is red (0x4bca8c).
     let sellable: Vec<usize> = (0..game.pack.len()).filter(|&k| game.can_sell(game.pack[k])).collect();
@@ -989,13 +1012,13 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
     text_fit(head, lx, y + 18.0 * k, lw * 0.5 - 6.0 * k, 18.0 * k, ACCENT);
     let all: Vec<(usize, ItemId)> = rows.iter().enumerate().filter_map(|(n, r)| r.0.map(|i| (n, i))).collect();
     let before = item_filter::keep(&c, all.iter().copied(), &view.filter).len();
-    let filter_rect = Rect::new(lx + lw * 0.5, y + 2.0 * k, lw * 0.5, 21.0 * k);
+    let filter_rect = Rect::new(lx + lw * 0.5, y, lw * 0.5, 18.0 * k);
     let reply = item_filter::field(FILTER_KEY, &mut view.filter, filter_rect, &[KeyCode::N], before, rows.len());
     let kept = item_filter::keep(&c, all, &view.filter);
     let shown: Vec<(Option<ItemId>, String, String, bool)> = kept.iter().map(|(n, _)| rows[*n].clone()).collect();
     let marks: Vec<Option<std::ops::Range<usize>>> = kept.iter().map(|(_, m)| m.name_range.clone()).collect();
     let at_pick = view.pick.and_then(|p| kept.iter().position(|(n, _)| *n == p));
-    if let Some(k) = price_list(Some(assets), &shown, &marks, at_pick, &mut view.scroll, lx, y + 26.0 * k, lw, 8) {
+    if let Some(k) = price_list(Some(assets), &shown, &marks, at_pick, &mut view.scroll, lx, y + 21.0 * k, lw, 7) {
         view.pick = Some(kept[k].0);
     }
     if reply.pick {
@@ -1008,21 +1031,25 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
     if view.pick.is_some_and(|k| k >= rows.len()) {
         view.pick = None;
     }
-    let dh = 26.0 * k + 8.0 * 30.0 * k + 26.0 * k;
+    let dh = 186.0 * k;
+    let card_y = y + 21.0 * k;
     match view.pick.and_then(|k| rows.get(k)).and_then(|r| r.0) {
-        Some(item) => item_description(game, assets, item, x, y, dw, dh),
+        Some(item) => item_description(game, assets, item, x, card_y, dw, dh),
         None => {
-            chrome::text_box(Rect::new(x, y, dw, dh));
-            text_centered(tr("Pick an item from the list."), x + dw / 2.0, y + dh / 2.0, 18.0 * k, BOX_INK);
+            chrome::text_box(Rect::new(x, card_y, dw, dh));
+            text_centered(tr("Pick an item from the list."), x + dw / 2.0, card_y + dh / 2.0, 18.0 * k, BOX_INK);
         }
     }
-    let by = y + dh + 10.0 * k;
+    let by = f.y + 249.0 * k;
+    for (offset, width) in [(0.0, 166.0), (166.0, 134.0), (300.0, 108.0), (408.0, 164.0)] {
+        chrome::silver_frame(Rect::new(x + offset * k, f.y + 241.0 * k, width * k, 50.0 * k), k.max(1.0));
+    }
     let mut next = None;
-    if button(x, by, 150.0 * k, 40.0 * k, tr("Inventory"), true) {
+    if button(x + 8.0 * k, by, 150.0 * k, 34.0 * k, tr("Inventory"), true) {
         next = Some(Screen::Squad { selected: Default::default(), scroll: 0, back: Some(view.clone()) });
     }
     // The money between "Снаряжение" and the trade button, its label over the amount.
-    gold_group(game, Rect::new(x + 154.0 * k, by - 2.0 * k, lx - x - 158.0 * k, 44.0 * k));
+    gold_group(game, Rect::new(x + 174.0 * k, by - 2.0 * k, 118.0 * k, 40.0 * k));
     let label = if view.selling { tr("Sell") } else { tr("Buy") };
     // Sell is always on; Buy only when the price is at most the gold, the purchase's test.
     let can = match (view.selling, view.pick) {
@@ -1031,7 +1058,7 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
         _ => false,
     };
     // The trade button plays the gold sound (interface.md §14).
-    if button_sounding(lx, by, 130.0 * k, 40.0 * k, label, can, Cue::Gold) {
+    if button_sounding(x + 308.0 * k, by, 90.0 * k, 34.0 * k, label, can, Cue::Gold) {
         let k = view.pick.unwrap_or(0);
         let mut done = false;
         *message = Some(if view.selling {
@@ -1063,14 +1090,15 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
     }
     // The way back to the goods is offered only while the shop has some.
     let toggle = if view.selling { tr("Back to the goods") } else { tr("Sell shop") };
-    if button(lx + lw - 190.0 * k, by, 190.0 * k, 40.0 * k, toggle, !view.selling || !goods.is_empty()) {
+    if button(x + 416.0 * k, by, 148.0 * k, 34.0 * k, toggle, !view.selling || !goods.is_empty()) {
         view.selling = !view.selling;
         view.pick = None;
         view.scroll = 0;
     }
     FILTER_KEYS.with(|f| f.set(reply.keys_taken));
+    chrome::divider(at(f, 248.0, 300.0, 586.0, 26.0));
     if let Some(l) = game.location {
-        let dy = by + 52.0 * k;
+        let dy = f.y + 334.0 * k;
         description_box(&game.world.locations[l].description, x, dy, w, f.y + f.h - dy - 10.0 * k);
     }
     next
@@ -1116,7 +1144,9 @@ fn sanctuary(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut 
             chrome::shadow_centered(l, note.center().x, top + i as f32 * 19.0 * k, size, color);
         }
     }
-    gold_group(game, at(f, 255.0, 239.0, 160.0, 50.0));
+    chrome::silver_frame(at(f, 255.0, 241.0, 266.0, 50.0), k.max(1.0));
+    chrome::silver_frame(at(f, 255.0, 241.0, 160.0, 50.0), k.max(1.0));
+    gold_group(game, at(f, 255.0, 241.0, 160.0, 50.0));
     let buy = at(f, 424.0, 247.0, 92.0, 36.0);
     if button_sounding(buy.x, buy.y, buy.w, buy.h, tr("Buy"), can, Cue::Gold) {
         if let Some(s) = chosen {
@@ -1126,8 +1156,9 @@ fn sanctuary(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut 
             });
         }
     }
+    chrome::divider(at(f, 248.0, 300.0, 586.0, 26.0));
     if let Some(l) = game.location {
-        let dy = f.y + 300.0 * k;
+        let dy = f.y + 334.0 * k;
         description_box(&game.world.locations[l].description, f.cx, dy, f.cw, f.y + f.h - dy - 10.0 * k);
     }
 }
@@ -1155,7 +1186,7 @@ fn spell_list(game: &Game, spells: &[SpellDef], pick: Option<usize>, r: Rect) ->
             draw_rectangle(row.x, row.y, row.w, row.h, Color::new(0.3, 0.38, 0.3, 1.0));
         }
         let side = row_h - 6.0 * k;
-        chrome::spell_icon(&s.icons, Rect::new(r.x + 5.0 * k, ry + 2.0 * k, side, side));
+        chrome::spell_icon(s, Rect::new(r.x + 5.0 * k, ry + 2.0 * k, side, side));
         let ink = if game.knows_spell(s.id) { MANA } else if pick == Some(n) { WHITE } else { ACCENT };
         let size = fit_size(&s.name, price_x - name_x - 8.0 * k, 18.0 * k);
         text(&s.name, name_x, ry + row_h / 2.0 + size * 0.35, size, ink);
@@ -1210,7 +1241,7 @@ fn stock_caption(label: &str, stock: i32) -> String {
 
 /// The village window (built by 0x4d3a38, drawn by 0x4d0e28, filled by 0x4bbc84), in the
 /// original's pixels: the 634×516 frame centred over the map, the village's name as its
-/// title, `S_Village` at (5, 32); a text box at (18, 45), 598 wide and as tall as its text
+/// title, `S_Village` inside an inset frame; a text box at (18, 45), 598 wide and as tall as its text
 /// plus 14 above and below, at most 193: `AboutVillage` (`#NAME1` = the owner's name,
 /// white, centred), an empty line, then `VillageEmpty` (orange-red) when both stocks are 0,
 /// else `VillageFullGold` (yellow) when there is gold and `VillageFullMana` (cyan) when there
@@ -1228,10 +1259,15 @@ fn village_window(game: &mut Game, view: &BuildingView, message: &mut Option<Str
     let (x, y) = (((screen_width() - w) / 2.0).round(), ((screen_height() - chrome::bar_height() - h) / 2.0).max(2.0).round());
     let loc = &game.world.locations[l];
     let (_, closed) = chrome::window(Rect::new(x, y, w, h), &loc.name, chrome::Skin::Marble, true);
+    // The reference has a narrow marble gap around the picture and a separate framed
+    // footer. Stretch the complete village artwork to these bounds, without cropping it.
+    let picture = Rect::new(x + 4.0 * o, y + 31.0 * o, w - 8.0 * o, 428.0 * o);
     if let Some(t) = chrome::win("S_Village") {
-        let (pw, ph) = ((t.width() * o).min(w - 10.0 * o), (t.height() * o).min(h - 34.0 * o));
-        chrome::tex_src(&t, Rect::new(0.0, 0.0, pw / o, ph / o), Rect::new(x + 5.0 * o, y + 32.0 * o, pw, ph), WHITE);
+        chrome::tex(&t, picture, WHITE);
     }
+    chrome::silver_frame(picture, o.max(1.0));
+    let footer = Rect::new(x + 2.0 * o, y + 461.0 * o, w - 4.0 * o, h - 463.0 * o);
+    chrome::silver_frame(footer, o.max(1.0));
     let (gold, mana) = view.tribute;
     let size = (15.0 * o).round();
     let line_h = (17.0 * o).round();
@@ -1258,7 +1294,7 @@ fn village_window(game: &mut Game, view: &BuildingView, message: &mut Option<Str
     let text_h = lines.len() as f32 * line_h;
     let bh = (text_h + 28.0 * o).min(193.0 * o);
     let top = if text_h + 28.0 * o <= 193.0 * o { 14.0 * o } else { (bh - text_h) / 2.0 };
-    chrome::text_box(Rect::new(bx, by, bw, bh));
+    chrome::shaded_text_box(Rect::new(bx, by, bw, bh), 0.30);
     for (i, (t, c)) in lines.iter().enumerate() {
         let ly = by + top + i as f32 * line_h;
         if ly >= by && ly + line_h <= by + bh {
@@ -1276,7 +1312,9 @@ fn village_window(game: &mut Game, view: &BuildingView, message: &mut Option<Str
     }
     let (btn_w, btn_h) = chrome::win("Btn1Up").map_or((180.0, 40.0), |t| (t.width(), t.height()));
     let (btn_w, btn_h) = (btn_w * o, btn_h * o);
-    let ok = button(x + (w - btn_w) / 2.0, y + h - 10.0 * o - btn_h, btn_w, btn_h, &own_text("Buttons", "Ok", n_("OK")), true);
+    let btn_x = x + (w - btn_w) / 2.0;
+    let btn_y = y + h - 10.0 * o - btn_h;
+    let ok = button(btn_x, btn_y, btn_w, btn_h, &own_text("Buttons", "Ok", n_("OK")), true);
     // The close box and Esc sound as the button does (tools/difftest/AV.md §5).
     let esc = key(KeyCode::Escape);
     if closed || esc {
@@ -1351,6 +1389,7 @@ pub fn offer_dialog(game: &Game, o: VillageOffer, result: bool) -> Dialog {
     d.chord = true;
     d.question = !result;
     d.offer = !result;
+    d.village_event = true;
     d.marked = Some(offer_text(o, result));
     d.picture = chrome::win(offer_picture(o)).map(Picture::Side);
     d
@@ -1379,7 +1418,13 @@ pub fn answer_offer(game: &mut Game, yes: bool, dialogs: &mut VecDeque<Dialog>) 
     }
     let result = game.accept_offer();
     if o.result_window() {
-        dialogs.push_back(offer_dialog(game, o, true));
+        let mut dialog = offer_dialog(game, o, true);
+        match result {
+            Some(OfferResult::Furs(item)) => dialog.items.push(item),
+            Some(OfferResult::Mana(amount)) => dialog.resources.push((Resource::Mana, format!("{} + {amount}", tr("Magic")))),
+            _ => {}
+        }
+        dialogs.push_back(dialog);
     }
     // The blessing's and the priest's spell is cast as an event's: its effect over the hero,
     // its sound by its target.
@@ -1498,17 +1543,17 @@ pub fn frame(game: &mut Game, assets: &Assets, view: &mut BuildingView, message:
     }
     let f = window();
     let k = chrome::k();
-    let (_, close) = chrome::window_plain(Rect::new(f.x, f.y, f.w, f.h), &title(game), chrome::Skin::Marble, true);
+    let (_, close) = chrome::window(Rect::new(f.x, f.y, f.w, f.h), &title(game), chrome::Skin::Marble, true);
 
     // Tabs, on light parchment.
     let col = Rect::new(f.x + 2.0 * k, f.y + 27.0 * k, 244.0 * k, f.h - 29.0 * k);
     chrome::surface(col, chrome::Skin::Paper);
-    draw_line(col.x + col.w + 1.0, col.y, col.x + col.w + 1.0, col.y + col.h, 1.5 * k, SILVER);
-    let (tw, th) = (228.0 * k, 88.0 * k);
+    chrome::silver_frame(col, k.max(1.0));
+    let (tw, th) = (232.0 * k, 88.0 * k);
     let tx = col.x + (col.w - tw) / 2.0;
     let pitch = (th + 6.0 * k).min((col.h - th - 20.0 * k) / tabs.len().max(1) as f32);
     for (i, &t) in tabs.iter().enumerate() {
-        let r = Rect::new(tx, col.y + 12.0 * k + i as f32 * pitch, tw, th);
+        let r = Rect::new(tx, col.y + 5.0 * k + i as f32 * pitch, tw, th);
         if tab_button(tab_label(t), Some(t), r, view.tab == t) && view.tab != t {
             // The tab is highlighted with the cast sound (interface.md §9.8, §14).
             cue(Cue::CastSpell);
@@ -1523,7 +1568,7 @@ pub fn frame(game: &mut Game, assets: &Assets, view: &mut BuildingView, message:
             }
         }
     }
-    let exit = tab_button(tr("Exit"), None, Rect::new(tx, col.y + col.h - th - 10.0 * k, tw, th), false);
+    let exit = tab_button(tr("Exit"), None, Rect::new(tx, col.y + col.h - th - 5.0 * k, tw, th), false);
 
     let mut next = early;
     match view.tab {
