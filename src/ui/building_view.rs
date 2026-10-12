@@ -9,7 +9,7 @@ use macroquad::prelude::*;
 use razdor::i18n::{n_, tr};
 use razdor::rules::battle::Team;
 use razdor::trf;
-use razdor::rules::content::{ArtefactType, ItemId, SpellDef};
+use razdor::rules::content::{ArtefactType, HeroClass, ItemId, SpellDef, Stat};
 use razdor::rules::formation::{Formation, Slot};
 use razdor::rules::economy::VillageOffer;
 use razdor::rules::game::{Currency, Game, HireError, TradeError, Tribute, SPELL_BOOK_SIZE};
@@ -27,7 +27,9 @@ use super::item_filter;
 use super::items_view::{level_gains, unit_stat_lines};
 use super::screens::stat_lines;
 use super::story;
+use super::unit_sheet;
 use super::widgets::*;
+use super::window_layout;
 use super::world_view;
 use super::Screen;
 
@@ -35,6 +37,23 @@ const PARCHMENT_INK: Color = Color::new(0.45, 0.28, 0.14, 1.0);
 const BOX_INK: Color = Color::new(1.0, 0.86, 0.58, 1.0);
 const SILVER: Color = Color::new(0.78, 0.78, 0.82, 1.0);
 const TAB_RED: Color = Color::new(0.75, 0.18, 0.12, 1.0);
+
+fn quest_text_color() -> Color {
+    let saturation = window_layout::visual().quest_text_saturation;
+    Color::new((97.0 / 255.0 * saturation).clamp(0.0, 1.0), 0.0, 0.0, 1.0)
+}
+
+fn quest_selection_row(r: Rect) {
+    draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.72, 0.07, 0.04, 0.34));
+}
+
+fn take_quest_button(r: Rect, enabled: bool) -> bool {
+    let hover = enabled && mouse_in(r.x, r.y, r.w, r.h);
+    chrome::quest_button(r, tr("Take quest"), enabled, hover);
+    let pressed = hover && clicked();
+    if pressed { cue(Cue::Button); }
+    pressed
+}
 
 /// The market's filter field.
 const FILTER_KEY: &str = "market:filter";
@@ -51,6 +70,9 @@ pub struct BuildingView {
     /// Selected row of the market or sanctuary list.
     pub pick: Option<usize>,
     pub scroll: usize,
+    /// Shared quest and rumour selection across non-army building tabs.
+    hall_pick: Option<usize>,
+    hall_scroll: usize,
     /// The market shows the "sell" shop (the pack) instead of the goods.
     pub selling: bool,
     /// The garrison tab's selected unit: (in the garrison, index).
@@ -96,14 +118,14 @@ fn now_ms() -> i64 {
 
 impl BuildingView {
     pub fn new(tab: Tab) -> BuildingView {
-        BuildingView { tab, pick: None, scroll: 0, selling: false, garrison_sel: None, garrison_buy: None, filter: String::new(), tribute_paid: false, tribute: (0, 0), anim: None }
+        BuildingView { tab, pick: None, scroll: 0, hall_pick: None, hall_scroll: 0, selling: false, garrison_sel: None, garrison_buy: None, filter: String::new(), tribute_paid: false, tribute: (0, 0), anim: None }
     }
 
     fn switch(&mut self, tab: Tab) {
         if has_focus(FILTER_KEY) {
             clear_focus();
         }
-        *self = BuildingView { tribute_paid: self.tribute_paid, tribute: self.tribute, ..BuildingView::new(tab) };
+        *self = BuildingView { tribute_paid: self.tribute_paid, tribute: self.tribute, hall_pick: self.hall_pick, hall_scroll: self.hall_scroll, ..BuildingView::new(tab) };
     }
 
     /// The animation under way and how far it is (0..1), if any.
@@ -180,12 +202,11 @@ struct Frame {
 /// The window, as the original's building window (836×600 in the reference video): the tab
 /// column on the left, the content pane on the right.
 fn window() -> Frame {
-    let k = chrome::k();
-    let (sw, sh) = (screen_width(), screen_height());
-    let w = (836.0 * k).min(sw - 8.0).round();
-    let h = (600.0 * k).min(sh - chrome::bar_height() - 4.0).round();
-    let (x, y) = (((sw - w) / 2.0).round(), ((sh - chrome::bar_height() - h) / 2.0).max(2.0).round());
-    Frame { x, y, w, h, cx: x + 256.0 * k, cy: y + 34.0 * k, cw: w - 264.0 * k }
+    let Rect { x, y, w, h } = window_layout::window();
+    let win = Rect::new(x, y, w, h);
+    let content = window_layout::lower_content(win);
+    let top = window_layout::at(win, 256.0, 34.0, 0.0, 0.0);
+    Frame { x, y, w, h, cx: content.x, cy: top.y, cw: content.w }
 }
 
 /// The original's picture of a tab (`TB-<n>_RUS`, hovered `TBo`, open `TBd`), if it has one.
@@ -270,9 +291,10 @@ fn main_hall(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingVie
     let k = chrome::k();
     let l = game.location?;
     let (x, w) = (f.cx, f.cw);
-    let pic_h = 270.0 * k;
+    let pic_h = window_layout::upper(Rect::new(f.x, f.y, f.w, f.h)).h;
     {
-        let (x, y, w) = (f.x + 249.0 * k, f.y + 28.0 * k, f.w - 251.0 * k);
+        let upper = window_layout::upper(Rect::new(f.x, f.y, f.w, f.h));
+        let (x, y, w) = (upper.x, upper.y, upper.w);
         let loc = &game.world.locations[l];
         draw_rectangle(x, y, w, pic_h, Color::new(0.35, 0.5, 0.65, 1.0));
         draw_rectangle(x, y + pic_h * 0.62, w, pic_h * 0.38, Color::new(0.35, 0.5, 0.3, 1.0));
@@ -290,13 +312,13 @@ fn main_hall(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingVie
         chrome::silver_frame(Rect::new(x, y, w, pic_h), k.max(1.0));
     }
     let entries = game.hall_entries();
-    if view.pick.is_some_and(|k| k >= entries.len()) {
-        view.pick = None;
+    if view.hall_pick.is_some_and(|k| k >= entries.len()) {
+        view.hall_pick = None;
     }
-    let picked = view.pick.and_then(|k| entries.get(k).copied());
-    chrome::divider(at(f, 248.0, 300.0, 586.0, 26.0));
-    let ly = f.y + 334.0 * k;
-    let header = Rect::new(x, ly, w, 50.0 * k);
+    let picked = view.hall_pick.and_then(|k| entries.get(k).copied());
+    chrome::divider(window_layout::divider(Rect::new(f.x, f.y, f.w, f.h)));
+    let panel = window_layout::lower_content(Rect::new(f.x, f.y, f.w, f.h));
+    let ly = panel.y;
     if entries.is_empty() {
         // The original hides the whole quest area when there is nothing to offer. Keep
         // its chain divider and let the brown parchment description panel fill the space.
@@ -305,78 +327,161 @@ fn main_hall(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingVie
         description_box(&desc, x, box_y, w, f.y + f.h - box_y - 10.0 * k);
         return None;
     }
-    if let Some(t) = chrome::win_fx("QuestBorder", chrome::Fx::KeyBlack) {
-        t.set_filter(FilterMode::Nearest);
-        chrome::three_slice(&t, Rect::new(x, ly + 5.0 * k, w - 166.0 * k, 40.0 * k), 82.0, WHITE);
+    let (quest_border, take) = window_layout::quest_rects(panel);
+    if let Some(t) = chrome::quest_border_texture() {
+        chrome::tex(&t, quest_border, WHITE);
     } else {
-        draw_rectangle(x, ly, w, 36.0 * k, Color::new(0.0, 0.0, 0.0, 0.3));
-        chrome::silver_frame(header, 1.0);
+        draw_rectangle(quest_border.x, quest_border.y, quest_border.w, quest_border.h, Color::new(0.0, 0.0, 0.0, 0.3));
+        chrome::silver_frame(quest_border, 1.0);
     }
     let mut next = None;
-    let label = tr("Take quest");
-    let take_x = x + w - 158.0 * k;
-    let title_area = Rect::new(x + 62.0 * k, ly, take_x - x - 70.0 * k, 50.0 * k);
+    let title_area = Rect::new(quest_border.x + 62.0 * k, quest_border.y, quest_border.w - 70.0*k, quest_border.h);
     let section_title = tr("Quests and rumours:");
     let title_size = fit_size(&section_title, title_area.w, 20.0 * k);
-    chrome::shadow_centered(&section_title, title_area.x + title_area.w / 2.0, ly + (header.h + title_size * 0.36) / 2.0, title_size, chrome::GOLD);
-    if button(take_x, ly + 8.0 * k, 150.0 * k, 34.0 * k, label, picked.is_some()) {
+    chrome::shadow_centered(&section_title, title_area.x + title_area.w / 2.0, title_area.y + (title_area.h + title_size * 0.36) / 2.0, title_size, chrome::GOLD);
+    if take_quest_button(take, picked.is_some()) {
         if let Some(HallEntry::Rumour(id) | HallEntry::Quest(id)) = picked {
             match game.take_hall_entry(id) {
                 Ok(events) => {
                     *message = None;
-                    view.pick = None;
+                    view.hall_pick = None;
                     next = world_view::handle_events(game, events, message, dialogs);
                 }
                 Err(e) => *message = Some(service_error(e)),
             }
         }
     }
-    let list_y = ly + 50.0 * k;
+    let list_y = (quest_border.y + quest_border.h).max(take.y + take.h) + 5.0*k;
     let (row_h, rows) = (24.0 * k, 3);
     let list_h = rows as f32 * row_h + 12.0 * k;
-    chrome::parchment_box(Rect::new(x, list_y, w, list_h));
+    let list = Rect::new(x, list_y, w, list_h);
+    chrome::parchment_fill(list, true);
     let max_scroll = entries.len().saturating_sub(rows);
     if mouse_in(x, list_y, w, list_h) {
         let wh = wheel();
         if wh < 0.0 {
-            view.scroll = (view.scroll + 1).min(max_scroll);
+            view.hall_scroll = (view.hall_scroll + 1).min(max_scroll);
         } else if wh > 0.0 {
-            view.scroll = view.scroll.saturating_sub(1);
+            view.hall_scroll = view.hall_scroll.saturating_sub(1);
         }
     }
-    view.scroll = view.scroll.min(max_scroll);
+    view.hall_scroll = view.hall_scroll.min(max_scroll);
     // Razdor's scrollbar on the right when the entries do not all fit (a touch screen has no
     // wheel); the rows give it room.
-    scrollbar(Rect::new(x + w - 16.0 * k, list_y + 4.0 * k, 12.0 * k, list_h - 8.0 * k), &mut view.scroll, rows, entries.len());
+    scrollbar(Rect::new(x + w - 16.0 * k, list_y + 4.0 * k, 12.0 * k, list_h - 8.0 * k), &mut view.hall_scroll, rows, entries.len());
     let row_w = if max_scroll > 0 { w - 16.0 * k } else { w };
-    let visible_rows = entries.len().saturating_sub(view.scroll).min(rows);
+    let visible_rows = entries.len().saturating_sub(view.hall_scroll).min(rows);
     let first_row_y = list_y + (list_h - visible_rows as f32 * row_h) / 2.0;
-    for (n, entry) in entries.iter().enumerate().skip(view.scroll).take(rows) {
+    for (n, entry) in entries.iter().enumerate().skip(view.hall_scroll).take(rows) {
         let w = row_w;
-        let ry = first_row_y + (n - view.scroll) as f32 * row_h;
-        let (id, note, color) = match *entry {
-            HallEntry::Rumour(id) => (id, tr("rumour"), Color::new(0.55, 0.1, 0.1, 1.0)),
-            HallEntry::Quest(id) => (id, tr("quest"), Color::new(0.1, 0.3, 0.55, 1.0)),
-        };
-        if view.pick == Some(n) {
-            draw_rectangle(x + 4.0 * k, ry, w - 8.0 * k, row_h - 2.0 * k, Color::new(0.72, 0.6, 0.4, 1.0));
+        let ry = first_row_y + (n - view.hall_scroll) as f32 * row_h;
+        let id = match *entry { HallEntry::Rumour(id) | HallEntry::Quest(id) => id };
+        if view.hall_pick == Some(n) {
+            quest_selection_row(Rect::new(x, ry, row_w, row_h));
         }
         let title: String = story::event_title(game, id).chars().take(60).collect();
-        let note_size = 16.0 * k;
-        let title_size = fit_size(&title, w - 44.0 * k - measure(note, note_size).width, 19.0 * k);
-        let title_w = measure(&title, title_size).width;
-        let note_w = measure(note, note_size).width;
-        let left = x + (w - title_w - 8.0 * k - note_w) / 2.0;
-        let baseline = ry + row_h / 2.0 + title_size * 0.36;
-        text(&title, left, baseline, title_size, color);
-        text(note, left + title_w + 8.0 * k, ry + row_h / 2.0 + note_size * 0.36, note_size, PARCHMENT_INK);
+        let size = 16.0 * k;
+        let shown = ellipsize(&title, w - 20.0 * k, size);
+        text_centered(&shown, x + w / 2.0, ry + row_h / 2.0 + size * 0.36, size, quest_text_color());
         if mouse_in(x, ry, w, row_h) && clicked() {
-            view.pick = Some(n);
+            view.hall_pick = Some(n);
         }
     }
     let dy = list_y + list_h + 10.0 * k;
     let desc = game.world.locations[l].description.clone();
     description_box(&desc, x, dy, w, f.y + f.h - dy - 10.0 * k);
+    quest_section_frame(panel, list);
+    next
+}
+
+/// One silver frame encloses the quest header and paper list; a matching line divides them.
+fn quest_section_frame(panel: Rect, list: Rect) {
+    let bottom = list.y + list.h;
+    chrome::silver_frame(Rect::new(panel.x, panel.y, panel.w, bottom - panel.y), chrome::k().max(1.0));
+    draw_line(panel.x + 1.0, list.y, panel.x + panel.w - 1.0, list.y, chrome::k().max(1.0), chrome::SILVER);
+}
+
+/// Rumours and quests remain available from every building tab that does not manage armies.
+fn other_hall_offers(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut Option<String>, dialogs: &mut VecDeque<Dialog>) -> Option<Screen> {
+    let k = chrome::k();
+    let entries = game.hall_entries();
+    let strip = card_panel_divider(f);
+    let panel = window_layout::lower_content(Rect::new(f.x, f.y, f.w, f.h));
+    if entries.is_empty() {
+        chrome::divider(strip);
+        if let Some(l) = game.location {
+            let desc = &game.world.locations[l].description;
+            description_box(desc, panel.x, panel.y, panel.w, panel.h);
+        }
+        return None;
+    }
+
+    view.hall_pick = view.hall_pick.filter(|&n| n < entries.len());
+    chrome::divider(strip);
+    let (quest_border, take) = window_layout::quest_rects(panel);
+    let title = tr("Quests and rumours:");
+    if let Some(t) = chrome::quest_border_texture() {
+        chrome::tex(&t, quest_border, WHITE);
+    } else {
+        draw_rectangle(quest_border.x, quest_border.y, quest_border.w, quest_border.h, Color::new(0.0, 0.0, 0.0, 0.3));
+        chrome::silver_frame(quest_border, 1.0);
+    }
+    let title_area = Rect::new(quest_border.x + 62.0*k, quest_border.y, quest_border.w - 70.0*k, quest_border.h);
+    let title_size = fit_size(&title, title_area.w, 20.0 * k);
+    chrome::shadow_centered(&title, title_area.center().x, title_area.y + (title_area.h + title_size * 0.36) / 2.0, title_size, chrome::GOLD);
+
+    let rows = 3usize;
+    let row_h = 24.0 * k;
+    let list_h = rows as f32 * row_h + 12.0 * k;
+    let list_y = (quest_border.y + quest_border.h).max(take.y + take.h) + 5.0*k;
+    let list = Rect::new(panel.x, list_y, panel.w, list_h);
+    chrome::parchment_fill(list, true);
+    let max_scroll = entries.len().saturating_sub(rows);
+    if mouse_in(list.x, list.y, list.w, list.h) {
+        let wh = wheel();
+        if wh < 0.0 { view.hall_scroll = (view.hall_scroll + 1).min(max_scroll); }
+        if wh > 0.0 { view.hall_scroll = view.hall_scroll.saturating_sub(1); }
+    }
+    view.hall_scroll = view.hall_scroll.min(max_scroll);
+    if max_scroll > 0 {
+        scrollbar(Rect::new(list.x + list.w - 14.0 * k, list.y + 2.0 * k, 12.0 * k, list.h - 4.0 * k), &mut view.hall_scroll, rows, entries.len());
+    }
+    let row_w = list.w - if max_scroll > 0 { 16.0 * k } else { 0.0 };
+    let visible_rows = entries.len().saturating_sub(view.hall_scroll).min(rows);
+    let first_y = list.y + (list.h - visible_rows as f32 * row_h) / 2.0;
+    for (n, entry) in entries.iter().enumerate().skip(view.hall_scroll).take(rows) {
+        let y = first_y + (n - view.hall_scroll) as f32 * row_h;
+        let id = match *entry { HallEntry::Rumour(id) | HallEntry::Quest(id) => id };
+        if view.hall_pick == Some(n) {
+            quest_selection_row(Rect::new(list.x, y, row_w, row_h));
+        }
+        let name = story::event_title(game, id);
+        let size = 16.0 * k;
+        let shown = ellipsize(&name, row_w - 20.0 * k, size);
+        text_centered(&shown, list.x + row_w / 2.0, y + row_h / 2.0 + size * 0.36, size, quest_text_color());
+        if mouse_in(list.x, y, row_w, row_h) && clicked() { view.hall_pick = Some(n); }
+    }
+
+    let desc_y = list.y + list.h + 10.0 * k;
+    if let Some(l) = game.location {
+        let desc = &game.world.locations[l].description;
+        description_box(desc, panel.x, desc_y, panel.w, panel.y + panel.h - desc_y);
+    }
+
+    let mut next = None;
+    if take_quest_button(take, view.hall_pick.is_some()) {
+        if let Some(HallEntry::Rumour(id) | HallEntry::Quest(id)) = view.hall_pick.and_then(|n| entries.get(n).copied()) {
+            match game.take_hall_entry(id) {
+                Ok(events) => {
+                    view.hall_pick = None;
+                    *message = None;
+                    next = world_view::handle_events(game, events, message, dialogs);
+                }
+                Err(e) => *message = Some(service_error(e)),
+            }
+        }
+    }
+    quest_section_frame(panel, list);
     next
 }
 
@@ -384,15 +489,68 @@ fn main_hall(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingVie
 /// resurrect buttons below.
 /// A point of the building window in pixels of the 960×720 video (the window at 60, 20).
 fn at(f: &Frame, x: f32, y: f32, w: f32, h: f32) -> Rect {
-    let k = chrome::k();
-    Rect::new(f.x + x * k, f.y + y * k, w * k, h * k)
+    window_layout::at(Rect::new(f.x, f.y, f.w, f.h), x, y, w, h)
+}
+
+// Both tabs place the hero's formation inside the same framed lower panel.
+const CARD_PANEL_X: f32 = 248.0;
+const CARD_PANEL_W: f32 = 586.0;
+const CARD_BOTTOM_Y: f32 = 334.0;
+
+fn card_grid_left(f: &Frame, form: Formation, cs: f32, pitch_x: f32) -> f32 {
+    let grid = at(f, CARD_PANEL_X, 0.0, CARD_PANEL_W, 0.0);
+    window_layout::army_grid_left(grid, form.display_cols(), pitch_x, 8.0 * cs * chrome::k())
+}
+
+fn card_panel_divider(f: &Frame) -> Rect {
+    window_layout::divider(Rect::new(f.x, f.y, f.w, f.h))
+}
+
+fn card_panel_lower(f: &Frame) -> Rect {
+    window_layout::lower(Rect::new(f.x, f.y, f.w, f.h))
+}
+
+fn selected_unit_panel(game: &Game, assets: &Assets, f: &Frame, view: &BuildingView) {
+    let Some((guard, i)) = view.garrison_sel else { return };
+    let unit = if guard {
+        game.garrison_here().get(i).map(|s| &s.unit)
+    } else {
+        game.squad.get(i)
+    };
+    let Some(unit) = unit else { return };
+    let c = &game.content;
+    let stats = unit.stats(c);
+    let name = if guard { unit.name(c).to_string() } else { game.squad_label(i) };
+    let hero = (!guard && i == 0).then(|| HeroClass::ALL.into_iter().find(|h| h.unit() == unit.def)).flatten();
+    let sheet = unit_sheet::Sheet {
+        kind: unit.def,
+        name: &name,
+        named: unit.named > 0,
+        level: unit.level,
+        xp: unit.xp,
+        need: unit.xp_to_next(c),
+        hp: unit.hp,
+        now: &stats,
+        start: &stats,
+        power: stats[Stat::MagicPower],
+        wage: if guard { 0 } else { game.wage(i) },
+        items: unit.items,
+        back_row: unit.slot.row == razdor::rules::formation::Row::Back,
+        unpaid: unit.unpaid,
+        building: 0,
+        hero,
+        status: Vec::new(),
+        battle: false,
+    };
+    let mut hover = None;
+    unit_sheet::draw(assets, c, window_layout::left(Rect::new(f.x, f.y, f.w, f.h)), &sheet, false, &mut hover);
 }
 
 /// The left edge of recruit card `i` of `n` (window pixels): the cards and the `n + 1` gaps
 /// share the picture area evenly, as the original's hire tab (0x4bd3a4: gap = (area − card·n)
 /// div (n + 1)).
 fn recruit_x(i: usize, n: usize) -> f32 {
-    let (area_x, area_w, card) = (250.0, 584.0, 88.0);
+    let (area_x, area_w, card) = (CARD_PANEL_X, CARD_PANEL_W, 88.0);
     let gap = ((area_w - card * n as f32) / (n as f32 + 1.0)).trunc();
     area_x + gap + i as f32 * (card + gap)
 }
@@ -444,7 +602,7 @@ fn barracks(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
     let recruits = game.world.locations[l].recruits.clone();
     let hires = game.world.locations[l].hires(&c);
     // The interior behind the recruits and the counters.
-    let back = at(f, 250.0, 28.0, 584.0, 270.0);
+    let back = window_layout::upper(Rect::new(f.x, f.y, f.w, f.h));
     let interior = match game.world.locations[l].kind {
         LocationKind::Town | LocationKind::Palace => Some("BI_Town"),
         LocationKind::Castle | LocationKind::Fort => Some("BI_Castle"),
@@ -510,18 +668,22 @@ fn barracks(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
         let color = if price.currency == Currency::Mana { MANA } else { chrome::GOLD };
         chrome::shadow_centered(&cost, face.center().x, pill.y + pill.h + 13.0 * k, 12.0 * k, color);
     }
-    barracks_counters(game, at(f, 258.0, 242.0, 572.0, 48.0));
-    chrome::divider(at(f, 250.0, 302.0, 588.0, 16.0));
+    barracks_counters(game, at(f, 256.0, 242.0, 572.0, 48.0));
+    chrome::text_box(card_panel_divider(f));
 
     // The army: the army screen's cards, a heal or raise button with its price on the strip.
     let heals = game.heals_here();
     let raises = game.resurrects_here();
     let form = c.formation;
     let lines = form.display_lines() as f32;
-    let cs = 1.0f32.min(2.0 / lines).min(6.0 / form.display_cols() as f32);
+    let pane = card_panel_lower(f);
+    let cols = form.display_cols() as f32;
+    let cs = 1.0f32.min(2.0 / lines).min(6.0 / cols)
+        .min((pane.w - 16.0*k) / ((cols*96.0-8.0)*k))
+        .min((pane.h - 16.0*k) / (((lines-1.0)*133.0+128.0)*k));
     let (card, pitch) = (vec2(88.0 * cs * k, 128.0 * cs * k).round(), vec2(96.0 * cs * k, 133.0 * cs * k));
-    let grid = at(f, 250.0, 330.0, 588.0, 0.0);
-    let gx = (grid.x + (grid.w - (form.display_cols() as f32 * pitch.x - 8.0 * cs * k)) / 2.0).round();
+    let grid = at(f, CARD_PANEL_X, CARD_BOTTOM_Y, CARD_PANEL_W, 0.0);
+    let gx = card_grid_left(f, form, cs, pitch.x);
     let cell_at = |slot: Slot| {
         let (line, col) = form.display(slot);
         vec2(gx + col as f32 * pitch.x, grid.y + line as f32 * pitch.y).round()
@@ -703,10 +865,15 @@ fn card_grid(game: &Game, assets: &Assets, f: &Frame, rel_y: f32, units: &[&Unit
     let c = &game.content;
     let form = c.formation;
     let lines = form.display_lines() as f32;
-    let cs = 1.0f32.min(2.0 / lines).min(6.0 / form.display_cols() as f32);
+    let win = Rect::new(f.x, f.y, f.w, f.h);
+    let pane = if rel_y < 300.0 { window_layout::upper(win) } else { window_layout::lower(win) };
+    let cols = form.display_cols() as f32;
+    let cs = 1.0f32.min(2.0 / lines).min(6.0 / cols)
+        .min((pane.w - 16.0*k) / ((cols*96.0-8.0)*k))
+        .min((pane.h - 16.0*k) / (((lines-1.0)*133.0+128.0)*k));
     let (card, pitch) = (vec2(88.0 * cs * k, 128.0 * cs * k).round(), vec2(96.0 * cs * k, 133.0 * cs * k));
-    let grid = at(f, 250.0, rel_y, 584.0, 0.0);
-    let gx = (grid.x + (grid.w - (form.display_cols() as f32 * pitch.x - 8.0 * cs * k)) / 2.0).round();
+    let grid = at(f, CARD_PANEL_X, rel_y, CARD_PANEL_W, 0.0);
+    let gx = card_grid_left(f, form, cs, pitch.x);
     let cell_at = |slot: Slot| {
         let (line, col) = form.display(slot);
         vec2(gx + col as f32 * pitch.x, grid.y + screen_line(form, line, own) as f32 * pitch.y).round()
@@ -761,7 +928,8 @@ fn garrison(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
     let sel = view.garrison_sel.filter(|&(g, n)| if g { n < guards.len() } else { n < game.squad.len() });
     let mut hover = Vec::new();
     let guard_units: Vec<&Unit> = guards.iter().map(|s| &s.unit).collect();
-    let top = card_grid(game, assets, f, 32.0, &guard_units, false, sel.filter(|s| s.0).map(|s| s.1));
+    chrome::silver_frame(window_layout::upper(Rect::new(f.x, f.y, f.w, f.h)), k.max(1.0));
+    let top = card_grid(game, assets, f, 35.0, &guard_units, false, sel.filter(|s| s.0).map(|s| s.1));
     if let Some(Hit::Unit(j)) = top {
         let u = &guards[j].unit;
         let lv = level_label(u.level, u.xp, u.xp_to_next(&c));
@@ -769,10 +937,9 @@ fn garrison(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
         hover = vec![(u.name(&c).to_string(), ACCENT), (lv, XP_COLOR), (trf!("{hp}/{max} HP, {paid}", hp = u.hp.max(0), max = u.max_hp(&c), paid), INK)];
         hover.push((trf!("Units on guard draw no wage and heal {pct}% a day.", pct = c.options.garrison_auto_heal), DIM));
     }
-    chrome::divider(at(f, 250.0, 302.0, 584.0, 16.0));
     let squad = game.squad.clone();
     let army: Vec<&Unit> = squad.iter().collect();
-    let bottom = card_grid(game, assets, f, 330.0, &army, true, sel.filter(|s| !s.0).map(|s| s.1));
+    let bottom = card_grid(game, assets, f, CARD_BOTTOM_Y, &army, true, sel.filter(|s| !s.0).map(|s| s.1));
     if let Some(Hit::Unit(i)) = bottom {
         let u = &squad[i];
         let lv = level_label(u.level, u.xp, u.xp_to_next(&c));
@@ -791,6 +958,49 @@ fn garrison(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
     if let Some((line, ours)) = refusal {
         let t = chrome::ui_line("Army", line).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru).unwrap_or_else(|| tr(ours).to_string());
         hover.insert(0, (t, chrome::RED_TEXT));
+    }
+    let pointed = match (top, bottom) {
+        (Some(Hit::Unit(j)), _) => Some((true, j)),
+        (_, Some(Hit::Unit(i))) => Some((false, i)),
+        _ => None,
+    };
+    let unit_name = |(guard, i): (bool, usize)| {
+        if guard { guards[i].unit.name(&c).to_string() } else { game.squad_label(i) }
+    };
+    let hint = if let Some((line, ours)) = refusal {
+        chrome::ui_line("Army", line).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru).unwrap_or_else(|| tr(ours).to_string())
+    } else if let Some(pointed) = pointed {
+        let (line, who) = match sel {
+            Some(selected) if selected == pointed => (0, selected),
+            Some(selected) => (2, selected),
+            None => (1, pointed),
+        };
+        let name = unit_name(who);
+        chrome::ui_line("Army", line)
+            .filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru)
+            .map(|t| t.replace("#NAME1", &format!("\"{name}\"")))
+            .unwrap_or_else(|| match line {
+                0 => format!("Click to deselect \"{name}\""),
+                2 => format!("Click to move \"{name}\""),
+                _ => format!("Click to select \"{name}\""),
+            })
+    } else {
+        let cell = top.or(bottom).and_then(|hit| match hit { Hit::Cell(slot) => Some(slot), _ => None });
+        cell.and_then(|slot| {
+            let key = match super::unit_sheet::strip_place(c.formation, slot) {
+                1..=4 => "Line1",
+                7..=10 => "Line2",
+                _ => "Line3",
+            };
+            chrome::ui_text("Army", key).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru)
+        }).unwrap_or_default()
+    };
+    if hint.is_empty() {
+        chrome::text_box(card_panel_divider(f));
+    } else {
+        let strip = card_panel_divider(f);
+        chrome::text_box(strip);
+        chrome::hint_text(strip, &hint, if refusal.is_some() { chrome::RED_TEXT } else { Color::new(0.4, 1.0, 0.8, 1.0) });
     }
     if let Some((j, cell, price)) = view.garrison_buy {
         // The purchase question (the garrison move event, 0x4acff4).
@@ -911,7 +1121,8 @@ fn price_list(assets: Option<&Assets>, rows: &[(Option<ItemId>, String, String, 
             assets.draw_item(*item, x + 2.0 * k, ry + 1.0, row_h - 4.0 * k);
         }
         let shown = ellipsize(name, w - 110.0 * k, 17.0 * k);
-        let mark = marks.get(n).cloned().flatten().filter(|r| r.end <= shown.len() && shown.is_char_boundary(r.start) && shown.is_char_boundary(r.end));
+        let visible_end = shown.strip_suffix('…').unwrap_or(&shown).len();
+        let mark = marks.get(n).cloned().flatten().filter(|r| r.end <= visible_end && shown.is_char_boundary(r.start) && shown.is_char_boundary(r.end));
         text_marked(&shown, mark, x + 32.0 * k, ry + 20.0 * k, 17.0 * k, if sel { WHITE } else { ACCENT }, chrome::GOLD);
         text(price, x + w - 80.0 * k, ry + 21.0 * k, 18.0 * k, if *red { RED } else { ACCENT });
         if mouse_in(x, ry, w - 18.0 * k, row_h) && clicked() {
@@ -990,7 +1201,7 @@ fn next_pick(k: usize, left: usize) -> Option<usize> {
 
 /// Market: the goods (or, in the sell shop, the pack) with prices, the selected item's
 /// description, and the buy / sell buttons.
-fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, message: &mut Option<String>) -> Option<Screen> {
+fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, message: &mut Option<String>, dialogs: &mut VecDeque<Dialog>) -> Option<Screen> {
     let k = chrome::k();
     let (x, y, w) = (f.cx, f.cy, f.cw);
     let c = game.content.clone();
@@ -1096,16 +1307,11 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
         view.scroll = 0;
     }
     FILTER_KEYS.with(|f| f.set(reply.keys_taken));
-    chrome::divider(at(f, 248.0, 300.0, 586.0, 26.0));
-    if let Some(l) = game.location {
-        let dy = f.y + 334.0 * k;
-        description_box(&game.world.locations[l].description, x, dy, w, f.y + f.h - dy - 10.0 * k);
-    }
-    next
+    next.or_else(|| other_hall_offers(game, f, view, message, dialogs))
 }
 
 /// Sanctuary: spells for sale; a spell bought goes into the hero's book.
-fn sanctuary(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut Option<String>) {
+fn sanctuary(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut Option<String>, dialogs: &mut VecDeque<Dialog>) -> Option<Screen> {
     let k = chrome::k();
     let spells: Vec<SpellDef> = game.spells_here().into_iter().cloned().collect();
     // Laid out as the original's (0x4ba854, tab 4; measured on its screen): the list on the
@@ -1156,11 +1362,7 @@ fn sanctuary(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut 
             });
         }
     }
-    chrome::divider(at(f, 248.0, 300.0, 586.0, 26.0));
-    if let Some(l) = game.location {
-        let dy = f.y + 334.0 * k;
-        description_box(&game.world.locations[l].description, f.cx, dy, f.cw, f.y + f.h - dy - 10.0 * k);
-    }
+    other_hall_offers(game, f, view, message, dialogs)
 }
 
 /// The sanctuary's spell list (0x4ba854): each row the spell's small picture, its name and
@@ -1421,7 +1623,7 @@ pub fn answer_offer(game: &mut Game, yes: bool, dialogs: &mut VecDeque<Dialog>) 
         let mut dialog = offer_dialog(game, o, true);
         match result {
             Some(OfferResult::Furs(item)) => dialog.items.push(item),
-            Some(OfferResult::Mana(amount)) => dialog.resources.push((Resource::Mana, format!("{} + {amount}", tr("Magic")))),
+            Some(OfferResult::Mana(amount)) => dialog.resources.push((Resource::Mana, trf!("Magic + {magic}", magic = amount))),
             _ => {}
         }
         dialogs.push_back(dialog);
@@ -1544,17 +1746,18 @@ pub fn frame(game: &mut Game, assets: &Assets, view: &mut BuildingView, message:
     let f = window();
     let k = chrome::k();
     let (_, close) = chrome::window(Rect::new(f.x, f.y, f.w, f.h), &title(game), chrome::Skin::Marble, true);
+    chrome::silver_frame(card_panel_lower(&f), k.max(1.0));
 
     // Tabs, on light parchment.
-    let col = Rect::new(f.x + 2.0 * k, f.y + 27.0 * k, 244.0 * k, f.h - 29.0 * k);
+    let col = window_layout::left(Rect::new(f.x, f.y, f.w, f.h));
     chrome::surface(col, chrome::Skin::Paper);
     chrome::silver_frame(col, k.max(1.0));
-    let (tw, th) = (232.0 * k, 88.0 * k);
+    let (tw, th) = ((col.w - 12.0 * k).min(232.0 * k), 88.0 * k);
     let tx = col.x + (col.w - tw) / 2.0;
     let pitch = (th + 6.0 * k).min((col.h - th - 20.0 * k) / tabs.len().max(1) as f32);
     for (i, &t) in tabs.iter().enumerate() {
         let r = Rect::new(tx, col.y + 5.0 * k + i as f32 * pitch, tw, th);
-        if tab_button(tab_label(t), Some(t), r, view.tab == t) && view.tab != t {
+        if tab_button(tab_label(t), Some(t), r, view.tab == t) && view.tab != t && view.garrison_sel.is_none() {
             // The tab is highlighted with the cast sound (interface.md §9.8, §14).
             cue(Cue::CastSpell);
             view.switch(t);
@@ -1568,17 +1771,19 @@ pub fn frame(game: &mut Game, assets: &Assets, view: &mut BuildingView, message:
             }
         }
     }
-    let exit = tab_button(tr("Exit"), None, Rect::new(tx, col.y + col.h - th - 5.0 * k, tw, th), false);
+    let exit = tab_button(tr("Exit"), None, Rect::new(tx, col.y + col.h - th - 5.0 * k, tw, th), false) && view.garrison_sel.is_none();
 
     let mut next = early;
     match view.tab {
         Tab::MainHall => next = next.or(main_hall(game, assets, &f, view, message, dialogs)),
         Tab::Barracks => next = next.or(barracks(game, assets, &f, view, message, dialogs)),
         Tab::Garrison => garrison(game, assets, &f, view, message),
-        Tab::Market => next = market(game, assets, &f, view, message),
-        Tab::Sanctuary => sanctuary(game, &f, view, message),
+        Tab::Market => next = next.or_else(|| market(game, assets, &f, view, message, dialogs)),
+        Tab::Sanctuary => next = next.or_else(|| sanctuary(game, &f, view, message, dialogs)),
         Tab::Tribute | Tab::Shipyard => {}
     }
+    chrome::silver_frame(window_layout::upper(Rect::new(f.x, f.y, f.w, f.h)), k.max(1.0));
+    selected_unit_panel(game, assets, &f, view);
     if let Some(m) = message {
         let w = measure(m, 20.0).width + 40.0;
         let (cx, y) = (f.cx + f.cw / 2.0, f.y + f.h + 6.0);
@@ -1586,7 +1791,12 @@ pub fn frame(game: &mut Game, assets: &Assets, view: &mut BuildingView, message:
         text_centered(m, cx, y + 21.0, 20.0, ACCENT);
     }
     let filter_keys = FILTER_KEYS.with(|f| f.replace(false));
-    if close || exit || (!filter_keys && key(KeyCode::Escape)) {
+    let escape = !filter_keys && key(KeyCode::Escape);
+    if escape && view.garrison_sel.is_some() {
+        view.garrison_sel = None;
+        return next.or(with_back(bar, view));
+    }
+    if close || exit || escape {
         // The building window's close is silent.
         *message = None;
         return Some(Screen::WorldMap);

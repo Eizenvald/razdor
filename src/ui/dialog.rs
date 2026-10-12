@@ -342,7 +342,9 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
     // for spells).
     let items_h = if d.items.is_empty() { 0.0 } else { 87.0 };
     let spells_h = if d.spells.is_empty() { 0.0 } else { 82.0 };
-    let notice_h = if d.notice.is_some() { 26.0 } else { 0.0 };
+    // Reserve a little extra vertical space so the blue journal notice has breathing room
+    // between the event text and the lower frame instead of touching its outline.
+    let notice_h = if d.notice.is_some() { 36.0 } else { 0.0 };
     let pic_h = if d.picture.is_some() && side.is_none() { 140.0 } else { 0.0 };
     let units_h = [&d.joined, &d.left].iter().filter(|u| !u.is_empty()).count() as f32 * 60.0;
     let title_h = (26.0 * chrome::k()).round();

@@ -405,7 +405,7 @@ impl StripPanel {
 /// ([`caster`], [`strip_place`]).
 #[allow(clippy::too_many_arguments)]
 pub fn stat_strip(strip: Rect, now: &Stats, base: &Stats, power: i32, caster: bool, place: usize, hp: i32, row2: i32, lit: bool, panel: StripPanel) {
-    stat_strip_impl(strip, now, base, power, caster, place, hp, row2, lit, panel, true);
+    stat_strip_impl(strip, now, base, power, caster, place, hp, row2, lit, panel, false);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -520,16 +520,10 @@ pub fn draw(assets: &Assets, content: &Content, r: Rect, s: &Sheet, slots: bool,
     // From 50 px above the name the parchment turns dark brown (both screens of the video:
     // light gold, then (115, 62, 0)); the figure shows through.
     let (fade0, fade1) = (name_y - 50.0 * k, name_y - 15.0 * k);
-    // Multiplying (230, 178, 115) parchment by this gives the video's (115, 62, 0).
-    let dark = |t: f32| Color::new(1.0 - 0.5 * t, 1.0 - 0.65 * t, 1.0 - t, 1.0);
+    chrome::unit_panel_fade(Rect::new(r.x, fade0, r.w, fade1 - fade0));
     chrome::multiply(|| {
-        let steps = 12;
-        for i in 0..steps {
-            let t = (i as f32 + 0.5) / steps as f32;
-            let y0 = fade0 + (fade1 - fade0) * i as f32 / steps as f32;
-            draw_rectangle(r.x, y0, r.w, (fade1 - fade0) / steps as f32 + 0.5, dark(t));
-        }
-        draw_rectangle(r.x, fade1, r.w, r.y + r.h - fade1, dark(1.0));
+        // Multiplying (230, 178, 115) parchment by this gives the video's (115, 62, 0).
+        draw_rectangle(r.x, fade1, r.w, r.y + r.h - fade1, Color::new(0.5, 0.35, 0.0, 1.0));
     });
     // Items worn.
     let mut clicked = None;

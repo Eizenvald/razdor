@@ -261,11 +261,11 @@ fn resources(game: &Game, y: f32, h: f32) {
         shadow_text(label, cx - lw - 16.0 * k, base, label_size, Color::new(0.75, 0.75, 0.75, 1.0));
         let icon = 24.0 * k;
         if i == 0 {
-            // The lower bar uses the standalone hand-with-wings emblem. The book in
-            // `res1` belongs to reward panels, while `Res-Magic` is a mirrored glyph.
-            let r = Rect::new(cx - icon / 2.0, y + (h - icon) / 2.0, icon, icon);
-            if let Some(t) = chrome::art("Spells/Hands-3.lit", Fx::Glow) {
-                tex(&t, r, Color::new(0.45, 0.85, 1.0, 1.0));
+            // Use the original resource glyph as-is: converting it to additive glow
+            // changes its blue-and-cyan colors and makes the hand look damaged.
+            if let Some(t) = chrome::win("Res-Magic") {
+                let iw = t.width() * icon / t.height();
+                tex(&t, Rect::new(cx - iw / 2.0, y + (h - icon) / 2.0, iw, icon), WHITE);
             } else {
                 super::dialog::resource_icon(super::dialog::Resource::Mana, cx, y + h / 2.0, icon);
             }
@@ -285,6 +285,28 @@ fn resources(game: &Game, y: f32, h: f32) {
         }
         super::dt_font::with_face(super::dt_font::Face::Subtitle, || shadow_text(value, cx + 16.0 * k, base, value_size, *color));
     }
+}
+
+fn lower_strip_gradient(bottom_tone: f32) -> Texture2D {
+    thread_local! {
+        static TEXTURE: std::cell::RefCell<Option<(u8, Texture2D)>> = const { std::cell::RefCell::new(None) };
+    }
+    let bottom = (bottom_tone.clamp(0.0, 1.0) * 255.0).round() as u8;
+    TEXTURE.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.as_ref().is_none_or(|(saved, _)| *saved != bottom) {
+            let height = 128usize;
+            let mut rgba = Vec::with_capacity(height * 4);
+            for y in 0..height {
+                let value = (y as f32 / (height - 1) as f32 * bottom as f32).round() as u8;
+                rgba.extend_from_slice(&[value, value, value, 255]);
+            }
+            let texture = Texture2D::from_rgba8(1, height as u16, &rgba);
+            texture.set_filter(FilterMode::Linear);
+            *slot = Some((bottom, texture));
+        }
+        slot.as_ref().unwrap().1.clone()
+    })
 }
 
 /// One oval button; true when clicked (never while greyed).
@@ -391,12 +413,13 @@ pub fn draw_with_time(game: &Game, look: impl Fn(BarButton) -> Look, time_button
     // The lower strip.
     let sy = y + row;
     let sh = bar - row;
-    draw_rectangle(0.0, sy, w, sh, Color::new(0.13, 0.13, 0.14, 1.0));
-    if let Some(t) = chrome::win_fx("DownCorner", Fx::KeyBlack) {
+    let visual = super::window_layout::visual();
+    chrome::tex(&lower_strip_gradient(visual.bar_gradient_bottom), Rect::new(0.0, sy, w, sh), WHITE);
+    if let Some(t) = chrome::bottom_bar_ornament() {
         let ow = t.width() * sh / t.height();
         let mut x = w * 0.25 - ow / 2.0;
         while x < w {
-            tex(&t, Rect::new(x, sy, ow, sh), Color::new(1.0, 1.0, 1.0, 0.85));
+            tex(&t, Rect::new(x, sy, ow, sh), Color::new(1.0, 1.0, 1.0, visual.bar_ornament_opacity));
             x += w * 0.25;
         }
     }

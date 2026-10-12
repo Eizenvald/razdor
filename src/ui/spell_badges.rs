@@ -205,6 +205,7 @@ fn compose_from_install(spell: &SpellDef) -> Option<(Image, Image)> {
     let w = |n: &str| chrome::image(&format!("Windows/{n}.lit"));
     let art = BadgeArt {
         icon_mask: w("Spell-IconMask")?,
+        icon_alpha: w("Spell-IconAlpha")?,
         frame: w("Spell-Frame")?,
         frame_alpha: w("Spell-FrameAlpha")?,
         si_mask: w("si-mask")?,
@@ -217,6 +218,7 @@ fn compose_from_install(spell: &SpellDef) -> Option<(Image, Image)> {
 /// The windows art a spell picture and its badge are made with (0x4e36cc's loads).
 pub struct BadgeArt {
     pub icon_mask: Image,
+    pub icon_alpha: Image,
     pub frame: Image,
     pub frame_alpha: Image,
     pub si_mask: Image,
@@ -253,8 +255,13 @@ pub fn compose(layers: &[Image], art: &BadgeArt) -> (Image, Image) {
         for c in 0..3 {
             p[c] = (p[c] as u32 * (31 - a) / 31 + f[c] as u32).min(255) as u8;
         }
+        // Type-8 spell layers can have an opaque purple matte in their decoded RGB.
+        // Spell-IconAlpha is the separate cutout; combine it with frame coverage so the
+        // silver frame remains visible around the icon.
+        let icon_a = px(&art.icon_alpha, x, y)[0] as u32;
+        let frame_a = a * 255 / 31;
+        p[3] = (frame_a + icon_a * (255 - frame_a) / 255) as u8;
     });
-    each(&mut pic, |_, _, p| p[3] = 255);
     let mut badge = Image { width: 22, height: 22, rgba: vec![0; 22 * 22 * 4] };
     each(&mut badge, |x, y, p| {
         if (1..21).contains(&x) && (1..21).contains(&y) {
@@ -318,6 +325,7 @@ mod tests {
         si_alpha.rgba[..4].copy_from_slice(&[0, 0, 0, 255]);
         BadgeArt {
             icon_mask: solid(100, 100, [0, 0, 0, 255]),
+            icon_alpha: solid(100, 100, [255, 255, 255, 255]),
             frame: solid(100, 100, [0, 0, 0, 255]),
             frame_alpha: solid(100, 100, [0, 0, 0, 255]),
             si_mask,

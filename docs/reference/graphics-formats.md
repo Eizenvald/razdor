@@ -101,7 +101,7 @@ rank-1 bytes, and so on. Blocks run in raster order over the padded plane.
   `16 + Σ(128 + plane_bytes)` (checked on every file).
 - Colour: JFIF YCbCr→RGB with Cb, Cr centred on 128 (H: textures, portraits and UI match the video).
 - The alpha plane is decoded the same way (clamp 0..255). Some type-8 spell icons have constant alpha 255.
-  Those are masked by a separate `Spell-IconMask/Alpha.lit`.
+  Those are masked by a separate `Windows/Spell-IconAlpha.lit`.
 
 The raw type is used for fonts (`SanSerif*.lit`, `Benguiat*.lit`: glyph sheets with blue bounding boxes,
 which hold the glyph metrics), small frames, check boxes and "…Alpha" masks. Alpha variants of an image

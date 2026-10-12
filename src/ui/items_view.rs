@@ -19,6 +19,7 @@ use super::chrome;
 use super::item_filter;
 use super::unit_sheet;
 use super::widgets::*;
+use super::window_layout;
 use super::Screen;
 
 
@@ -644,11 +645,12 @@ pub fn squad(
     let c = game.content.clone();
     let k = chrome::k();
     let (sw, sh) = (screen_width(), screen_height());
-    let (ww, wh) = ((836.0 * k).round(), (600.0 * k).round());
-    let win = Rect::new(((sw - ww) / 2.0).round(), ((sh - chrome::bar_height() - wh) / 2.0).max(2.0).round(), ww, wh);
+    let win = window_layout::window();
     let title = chrome::ui_text("Army", "Title").filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru).unwrap_or_else(|| tr("The hero's characteristics and army").to_string());
     let (_, close) = chrome::window(win, &title, chrome::Skin::Marble, true);
-    let at = |x: f32, y: f32, w: f32, h: f32| Rect::new(win.x + x * k, win.y + y * k, w * k, h * k);
+    chrome::silver_frame(window_layout::upper(win), k.max(1.0));
+    chrome::silver_frame(window_layout::lower(win), k.max(1.0));
+    let at = |x: f32, y: f32, w: f32, h: f32| window_layout::at(win, x, y, w, h);
     let mut hover = None;
     // The left panel: the selected unit, else the hero (or the unit just promoted); items go
     // to it (0x4c280c).
@@ -700,7 +702,7 @@ pub fn squad(
         status,
         battle: false,
     };
-    let sheet_rect = at(2.0, 27.0, 244.0, 570.0);
+    let sheet_rect = window_layout::left(win);
     // A living unit's first `personal` worn slots are his own: not taken up (0x4c24f4), and
     // hovering one says so (0x4c280c, `[Army] ItemI`).
     let locked = |slot: usize| showing_type || (u.alive() && slot < u.personal as usize);
@@ -713,7 +715,7 @@ pub fn squad(
             held = Some(Held { from: From::Worn(sel, slot), item, at: pointer().into(), moved: false });
         }
     }
-    draw_line(win.x + 247.0 * k, win.y + 27.0 * k, win.x + 247.0 * k, win.y + wh - 2.0, 1.5 * k, chrome::SILVER);
+    draw_line(win.x + 247.0 * k, win.y + 27.0 * k, win.x + 247.0 * k, win.y + win.h - 2.0, 1.5 * k, chrome::SILVER);
 
     // Top middle, as the original switches it: the hero's backpack, or the selected unit's
     // upgrade tree under its title.
@@ -812,18 +814,21 @@ pub fn squad(
 
     // The strip under the top half: the last message, or what to do (drawn after the grid,
     // which says what the pointer is over).
-    let strip = at(248.0, 302.0, 586.0, 20.0);
+    let strip = window_layout::divider(win);
 
     // The army: the cards as in battle, the selected one lit.
     let f = c.formation;
     let lines = f.display_lines() as f32;
-    let cs = 1.0f32.min(2.0 / lines).min(6.0 / f.display_cols() as f32);
+    let pane = window_layout::lower(win);
+    let cols = f.display_cols() as f32;
+    let cs = 1.0f32.min(2.0 / lines).min(6.0 / cols)
+        .min((pane.w - 16.0*k) / ((cols*96.0-8.0)*k))
+        .min((pane.h - 16.0*k) / (((lines-1.0)*133.0+128.0)*k));
     let (card, pitch) = (vec2(88.0 * cs * k, 128.0 * cs * k).round(), vec2(96.0 * cs * k, 133.0 * cs * k));
-    let grid_w = f.display_cols() as f32 * pitch.x - 8.0 * cs * k;
-    let gx = (strip.x + (strip.w - grid_w) / 2.0).round();
+    let gx = window_layout::army_grid_left(window_layout::lower(win), f.display_cols(), pitch.x, 8.0 * cs * k);
     let cell_at = |slot: razdor::rules::formation::Slot| {
         let (line, col) = f.display(slot);
-        vec2(gx + col as f32 * pitch.x, strip.y + strip.h + 10.0 * k + line as f32 * pitch.y).round()
+        vec2(gx + col as f32 * pitch.x, window_layout::lower_content(win).y + line as f32 * pitch.y).round()
     };
     // A press on a card or an empty cell, acted on after the grid is drawn.
     let mut pressed = None;
@@ -924,7 +929,8 @@ pub fn squad(
         (None, None) if show_tree => (tr("Click a unit to select it; Esc returns").to_string(), Color::new(1.0, 0.55, 0.25, 1.0)),
         (None, None) => (tr("Drag an item onto a unit to give it; Esc returns").to_string(), Color::new(1.0, 0.55, 0.25, 1.0)),
     };
-    chrome::hint_strip(strip, &hint, hc);
+    chrome::text_box(strip);
+    chrome::hint_text(strip, &hint, hc);
     // The press, as the original's (0x4c346c), ignored while a card slides (busy 0x68dc63).
     if let (Some((on, slot)), None) = (pressed, slide) {
         *message = None;

@@ -120,8 +120,7 @@ pub fn frame(
     let bar_pick = world_view::window_backdrop(game, assets, Some(super::game_bar::BarButton::Spells));
     let k = chrome::k();
     // The army screen's window: 836 × 600 video pixels over the map.
-    let (w, h) = ((836.0 * k).round(), (600.0 * k).round());
-    let r = Rect::new(((screen_width() - w) / 2.0).round(), ((screen_height() - chrome::bar_height() - h) / 2.0).max(2.0).round(), w, h);
+    let r = super::window_layout::window();
     let title = own("Title", n_("The hero's spell book"));
     let (inner, closed) = chrome::window(r, &title, chrome::Skin::Marble, true);
     let book: Vec<SpellDef> = game.book().into_iter().cloned().collect();

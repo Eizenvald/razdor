@@ -37,12 +37,15 @@ pub enum Fx {
     SwapGreenBlue,
     /// Higher-contrast brown ornaments for the shop's dark parchment panels.
     ShadeStrong,
+    /// The original trait icons use an opaque violet matte (RGB 129, 0, 127).
+    KeyPurple,
 }
 
 struct Chrome {
     dir: PathBuf,
     /// By path, then by [`Fx`] (its index).
-    textures: HashMap<String, [Option<Option<Texture2D>>; 7]>,
+    textures: HashMap<String, [Option<Option<Texture2D>>; 8]>,
+    visual_textures: HashMap<&'static str, ([f32; 4], Texture2D)>,
     animations: HashMap<String, Option<Vec<Texture2D>>>,
     texts: Option<Option<Ini>>,
 }
@@ -53,7 +56,7 @@ thread_local! {
 
 /// Use the art of the install in `dir` from now on.
 pub fn set_install(dir: PathBuf) {
-    CHROME.with(|c| *c.borrow_mut() = Some(Chrome { dir, textures: HashMap::new(), animations: HashMap::new(), texts: None }));
+    CHROME.with(|c| *c.borrow_mut() = Some(Chrome { dir, textures: HashMap::new(), visual_textures: HashMap::new(), animations: HashMap::new(), texts: None }));
 }
 
 // ------------------------------------------------------------------------------------------
@@ -145,6 +148,29 @@ pub fn transform(img: &mut Image, fx: Fx) {
                 p[..3].copy_from_slice(&[60, 20, 0]);
                 p[3] = a.min(p[3]);
             }
+            Fx::KeyPurple => {
+                // Bonus<N>.lit images have no embedded alpha: their opaque matte is
+                // exactly 129,0,127. A short ramp removes JPEG/DCT color bleed without
+                // eating the red and silver edges of the actual symbols.
+                let distance = (p[0] as i32 - 129).abs()
+                    .max(p[1] as i32)
+                    .max((p[2] as i32 - 127).abs()) as u32;
+                let alpha = distance.saturating_sub(10).saturating_mul(255) / 32;
+                let a = p[3].min(alpha.min(255) as u8) as u32;
+                if a == 0 {
+                    p[..3].fill(0);
+                } else if a < 255 {
+                    // Remove the matte color from antialiased edge pixels, so linear
+                    // texture filtering does not bring a violet fringe back at runtime.
+                    for (channel, matte) in p[..3].iter_mut().zip([129u32, 0, 127]) {
+                        *channel = ((*channel as u32 * 255)
+                            .saturating_sub(matte * (255 - a))
+                            / a)
+                            .min(255) as u8;
+                    }
+                }
+                p[3] = a as u8;
+            }
         }
     }
 }
@@ -189,14 +215,51 @@ pub fn art(rel: &str, fx: Fx) -> Option<Texture2D> {
     })
 }
 
-/// A spell's picture as the original composes it: its `Icon1..3` layers from
-/// `Graphics/Spells`, each with its `ColorC` taken away (the ini's "colour correction
-/// (-RGB)": 160,40,100 leaves «Исцеление»'s rays green), the backgrounds (`_` names) first,
-/// all glowing (black adds nothing). Draws nothing without an install.
+/// A spell's picture, with the available layers as a fallback if its framed
+/// composition cannot be made (for example, when a frame asset is missing).
 pub fn spell_icon(spell: &razdor::rules::content::SpellDef, r: Rect) {
-    // Compose the original's 100×100 spell illustration: colour corrections, icon mask,
-    // then silver frame. Treating the raw RGB as additive light gave it a purple halo.
-    super::spell_badges::draw_picture(spell, r);
+    if super::spell_badges::draw_picture(spell, r) {
+        return;
+    }
+    let mut layers: Vec<(&str, [i32; 3])> = spell.icons.iter().filter_map(|i| Some((i.image.as_deref()?, i.tint.unwrap_or([0; 3])))).collect();
+    layers.sort_by_key(|(name, _)| !name.starts_with('_'));
+    let mut drawn = false;
+    for (name, tint) in layers {
+        if let Some(t) = spell_layer(name, tint) {
+            tex(&t, r, WHITE);
+            drawn = true;
+        }
+    }
+    if !drawn {
+        surface(r, Skin::Strip);
+        shadow_centered(&spell.name.chars().next().unwrap_or('?').to_string(), r.x + r.w / 2.0, r.y + r.h * 0.65, (r.h * 0.5).max(10.0), CREAM);
+    }
+    silver_frame(r, 1.0);
+}
+
+/// A colour-corrected spell layer for the fallback picture.
+fn spell_layer(name: &str, minus: [i32; 3]) -> Option<Texture2D> {
+    let rel = format!("Spells/{name}.lit");
+    let key = format!("{rel}#{},{},{}", minus[0], minus[1], minus[2]);
+    CHROME.with(|c| {
+        let mut c = c.borrow_mut();
+        let c = c.as_mut()?;
+        if let Some(t) = c.textures.get(&key).and_then(|v| v[Fx::Glow as usize].as_ref()) {
+            return t.clone();
+        }
+        let t = find_path(&c.dir, &format!("Graphics/{rel}"))
+            .and_then(|p| gfx::decode_file(&p))
+            .map_err(|e| razdor::diag!("Discord Times art: {rel}: {e}"))
+            .ok()
+            .and_then(|mut frames| {
+                let img = frames.get_mut(0)?;
+                subtract(img, minus);
+                transform(img, Fx::Glow);
+                to_texture(img)
+            });
+        c.textures.entry(key).or_default()[Fx::Glow as usize] = Some(t.clone());
+        t
+    })
 }
 
 /// Windows art `name` with its channels scaled and shifted as loaded ([`scale_channels`]),
@@ -227,6 +290,78 @@ fn win_scaled(name: &str, k: [i32; 3], offset: [i32; 3]) -> Option<Texture2D> {
 /// Windows art (`Graphics/Windows/<name>.lit`).
 pub fn win(name: &str) -> Option<Texture2D> {
     art(&format!("Windows/{name}.lit"), Fx::Plain)
+}
+
+fn visual_texture(key: &'static str, rel: &str, params: [f32; 4], adjust: impl FnOnce(&mut Image)) -> Option<Texture2D> {
+    if let Some(t) = CHROME.with(|state| {
+        let state = state.borrow();
+        let (_, texture) = state.as_ref()?.visual_textures.get(key).filter(|(saved, _)| *saved == params)?;
+        Some(texture.clone())
+    }) {
+        return Some(t);
+    }
+    let mut decoded = image(rel)?;
+    adjust(&mut decoded);
+    let texture = to_texture(&decoded)?;
+    CHROME.with(|state| {
+        state.borrow_mut().as_mut()?.visual_textures.insert(key, (params, texture.clone()));
+        Some(texture)
+    })
+}
+
+fn paper_texture(brown: bool) -> Option<Texture2D> {
+    let v = super::window_layout::visual();
+    let (brightness, gamma, key) = if brown {
+        (v.brown_brightness, v.brown_gamma, "brown-paper")
+    } else {
+        (v.white_brightness, v.white_gamma, "light-paper")
+    };
+    visual_texture(key, "Windows/Win-paper.lit", [brightness, gamma, 0.0, 0.0], |img| {
+        let levels = std::array::from_fn::<_, 256, _>(|i| {
+            ((i as f32 / 255.0).powf(1.0 / gamma) * brightness * 255.0).clamp(0.0, 255.0) as u8
+        });
+        for p in img.rgba.chunks_exact_mut(4) {
+            for c in &mut p[..3] { *c = levels[*c as usize]; }
+        }
+    })
+}
+
+pub fn quest_border_texture() -> Option<Texture2D> {
+    let v = super::window_layout::visual();
+    let params = [v.quest_brightness, v.quest_gamma, v.quest_opacity, v.quest_cutoff];
+    visual_texture("quest-border", "Windows/QuestBorder.lit", params, |img| {
+        let levels = std::array::from_fn::<_, 256, _>(|i| {
+            ((i as f32 / 255.0).powf(1.0 / v.quest_gamma) * v.quest_brightness * 255.0).clamp(0.0, 255.0) as u8
+        });
+        for p in img.rgba.chunks_exact_mut(4) {
+            // The source alpha has opaque black scanlines. Derive alpha from the original
+            // brightness, then adjust colour without normalising every pixel to white.
+            let m = p[0].max(p[1]).max(p[2]) as f32;
+            p[3] = (((m - v.quest_cutoff) / 22.0).clamp(0.0, 1.0) * v.quest_opacity * 255.0) as u8;
+            for c in &mut p[..3] { *c = levels[*c as usize]; }
+        }
+    })
+}
+
+/// The decorative texture repeated across the resource strip below the game bar.
+pub fn bottom_bar_ornament() -> Option<Texture2D> {
+    let v = super::window_layout::visual();
+    visual_texture(
+        "bottom-bar-ornament",
+        "Windows/DownCorner.lit",
+        [v.bar_ornament_brightness, v.bar_ornament_gamma, 0.0, 0.0],
+        |img| {
+            for p in img.rgba.chunks_exact_mut(4) {
+                let gamma = v.bar_ornament_gamma.max(0.01);
+                for c in &mut p[..3] {
+                    *c = ((*c as f32 / 255.0).powf(1.0 / gamma) * v.bar_ornament_brightness * 255.0)
+                        .clamp(0.0, 255.0) as u8;
+                }
+                let mask = (p[0].max(p[1]).max(p[2]) as u32).saturating_sub(10).saturating_mul(16).min(255) as u8;
+                p[3] = p[3].min(mask);
+            }
+        },
+    )
 }
 
 pub fn win_fx(name: &str, fx: Fx) -> Option<Texture2D> {
@@ -767,15 +902,15 @@ pub enum Skin {
 
 impl Skin {
     fn texture(self) -> Option<(Texture2D, Color)> {
-        let paper = |c: Color| win("Win-paper").map(|t| (t, c));
+        let paper = |brown: bool, c: Color| paper_texture(brown).map(|t| (t, c));
         match self {
             Skin::Marble => win("Win-marble").map(|t| (t, WHITE)),
             Skin::Red => win("Win-red").map(|t| (t, WHITE)),
-            Skin::Paper => paper(WHITE),
+            Skin::Paper => paper(false, WHITE),
             // The original brown paper is the light Win-paper texture multiplied into
             // a dark sepia: its blue channel is removed, as in the reference art.
-            Skin::Brown => paper(Color::new(0.35, 0.22, 0.0, 1.0)),
-            Skin::Strip => paper(Color::new(0.37, 0.265, 0.02, 1.0)),
+            Skin::Brown => paper(true, Color::new(0.35, 0.22, 0.0, 1.0)),
+            Skin::Strip => paper(true, Color::new(0.37, 0.265, 0.02, 1.0)),
         }
     }
 
@@ -824,6 +959,30 @@ pub fn marble_noise(n: usize) -> Vec<u8> {
 
 thread_local! {
     static NOISE: RefCell<Option<Texture2D>> = const { RefCell::new(None) };
+    static UNIT_PANEL_FADE: RefCell<Option<Texture2D>> = const { RefCell::new(None) };
+}
+
+/// A smoothly interpolated brown tint used above the character stats in the unit panel.
+pub fn unit_panel_fade(r: Rect) {
+    let texture = UNIT_PANEL_FADE.with(|slot| {
+        slot.borrow_mut().get_or_insert_with(|| {
+            let height = 128usize;
+            let mut rgba = Vec::with_capacity(height * 4);
+            for y in 0..height {
+                let t = y as f32 / (height - 1) as f32;
+                rgba.extend_from_slice(&[
+                    ((1.0 - 0.5 * t) * 255.0).round() as u8,
+                    ((1.0 - 0.65 * t) * 255.0).round() as u8,
+                    ((1.0 - t) * 255.0).round() as u8,
+                    255,
+                ]);
+            }
+            let texture = Texture2D::from_rgba8(1, height as u16, &rgba);
+            texture.set_filter(FilterMode::Linear);
+            texture
+        }).clone()
+    });
+    multiply(|| tex(&texture, r, WHITE));
 }
 
 fn noise_texture() -> Texture2D {
@@ -898,7 +1057,7 @@ pub fn close_button(x: f32, y: f32, s: f32, red: bool) -> bool {
 }
 
 /// Title bar of a window: the window's own skin, the title centred; `ornate` puts the
-/// corner ornaments and the Benguiat font on a wide one (the town window's title is plain).
+/// corner ornaments on a wide one, including town and building windows.
 /// Returns true when its close box (if any) was clicked.
 fn title_bar_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bool) -> bool {
     let k = k();
@@ -957,12 +1116,7 @@ fn window_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bool)
     let tb = (26.0 * k).round();
     let closed = title_bar_styled(Rect::new(r.x, r.y, r.w, tb), title, skin, closable, ornate);
     silver_frame(r, (1.5 * k).max(1.0));
-    // A narrow marble gutter separates the content frame from the outer window edge.
-    // Individual panels keep their own inset and footer, as in the original dialogs.
-    let body = Rect::new(r.x + 3.0 * k, r.y + tb + 3.0 * k, r.w - 6.0 * k, r.h - tb - 6.0 * k);
-    if body.w > 0.0 && body.h > 0.0 {
-        silver_frame(body, k.max(1.0));
-    }
+    // Each caller draws the frames for its own content and footer.
     (Rect::new(r.x + 2.0 * k, r.y + tb + 1.0, r.w - 4.0 * k, r.h - tb - 3.0 * k), closed)
 }
 
@@ -977,15 +1131,8 @@ pub fn divider(r: Rect) {
     }
 }
 
-/// The divider with a hint in the middle (the battle's "press ESC" strip).
-pub fn hint_strip(r: Rect, hint: &str, color: Color) {
-    divider(r);
-    hint_text(r, hint, color);
-}
-
-/// The hint of a strip, in the middle of `r` over a dark band.
+/// The hint of a strip, drawn directly over its parchment background.
 pub fn hint_text(r: Rect, hint: &str, color: Color) {
-    draw_rectangle(r.x + r.h, r.y + r.h * 0.22, r.w - 2.0 * r.h, r.h * 0.56, Color::new(0.08, 0.03, 0.02, 0.55));
     let room = r.w - 3.0 * r.h;
     // Smaller if it must be, then shortened with "…".
     let size = super::widgets::fit_size(hint, room, (r.h * 0.62).round().max(11.0));
@@ -1011,25 +1158,32 @@ fn corners(r: Rect) {
     }
 }
 
+/// Tile the two sides of a parchment ornament at its native scale. Narrow panels
+/// reveal less of the source instead of squeezing the flourish horizontally.
+fn tile_side_strips(t: &Texture2D, r: Rect, max_frac: f32, tint: Color) {
+    let scale = k();
+    let strip_w = (t.width() * scale).min(r.w * max_frac);
+    if strip_w <= 0.0 || r.h <= 0.0 {
+        return;
+    }
+    let src_w = strip_w / scale;
+    let mut y = r.y;
+    while y < r.y + r.h {
+        let h = (t.height() * scale).min(r.y + r.h - y);
+        let src_h = h / scale;
+        tex_src(t, Rect::new(0.0, 0.0, src_w, src_h), Rect::new(r.x, y, strip_w, h), tint);
+        tex_src(t, Rect::new(t.width() - src_w, 0.0, src_w, src_h), Rect::new(r.x + r.w - strip_w, y, strip_w, h), tint);
+        y += h;
+    }
+}
+
 /// The red-brown parchment box of story and description texts, with silver corners.
 pub fn text_box(r: Rect) {
     surface(r, Skin::Brown);
     if let Some(t) = win_fx("Big_Frame_1", Fx::ShadeStrong) {
         t.set_filter(FilterMode::Nearest);
-        // Big_Frame_1 is the brown-paper ornament. Preserve its source scale and tile
-        // vertically; stretching the full 397 px flourish to every panel made it broad
-        // and blurry. UnitFrame remains reserved for unit UI.
-        let scale = k();
-        let strip = (t.width() * scale).min(r.w * 0.14);
-        let mut y = r.y;
-        while y < r.y + r.h {
-            let h = (t.height() * scale).min(r.y + r.h - y);
-            if h <= 0.0 { break; }
-            let src = Rect::new(0.0, 0.0, t.width(), h / scale);
-            tex_src(&t, src, Rect::new(r.x, y, strip, h), WHITE);
-            tex_src(&t, src, Rect::new(r.x + r.w - strip, y, strip, h), WHITE);
-            y += h;
-        }
+        let opacity = super::window_layout::visual().brown_ornament;
+        tile_side_strips(&t, r, 0.14, Color::new(1.0, 1.0, 1.0, opacity));
     }
     silver_frame(r, k().max(1.0));
     corners(r);
@@ -1039,13 +1193,6 @@ pub fn text_box(r: Rect) {
 pub fn shaded_text_box(r: Rect, alpha: f32) {
     draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.02, 0.015, 0.01, alpha.clamp(0.0, 1.0)));
     silver_frame(r, (k() * 0.9375).max(1.0));
-    corners(r);
-}
-
-/// Light parchment board with the original's silver corner ornaments.
-pub fn parchment_box(r: Rect) {
-    parchment(r, true);
-    silver_frame(r, k().max(1.0));
     corners(r);
 }
 
@@ -1064,33 +1211,31 @@ pub fn unit_parchment(r: Rect) {
     draw_rectangle_lines(r.x, r.y, r.w, r.h, 1.5, Color::new(0.75, 0.6, 0.3, 1.0));
 }
 
-/// Light parchment, e.g. the unit panel; ornaments darken the corners when the art is there.
-pub fn parchment(r: Rect, ornaments: bool) {
+/// Draw the parchment background and its side ornament without a frame.
+pub fn parchment_fill(r: Rect, ornaments: bool) {
     surface(r, Skin::Paper);
     if ornaments {
         // These panels use the repeatable gold side flourish, rather than the
         // silver portrait frame. Keep its original scale and crop the final tile.
         if let Some(t) = win_fx("Big_Frame_2", Fx::KeyBlack) {
-            t.set_filter(FilterMode::Nearest);
-            let scale = k();
-            let strip_w = (t.width() * scale).min(r.w * 0.22);
-            let mut y = r.y;
-            while y < r.y + r.h {
-                let h = (t.height() * scale).min(r.y + r.h - y);
-                if h <= 0.0 { break; }
-                tex_src(&t, Rect::new(0.0, 0.0, t.width(), h / scale), Rect::new(r.x, y, strip_w, h), Color::new(1.0, 0.78, 0.05, 0.62));
-                tex_src(&t, Rect::new(0.0, 0.0, t.width(), h / scale), Rect::new(r.x + r.w - strip_w, y, strip_w, h), Color::new(1.0, 0.78, 0.05, 0.62));
-                y += h;
-            }
+            t.set_filter(FilterMode::Linear);
+            let opacity = super::window_layout::visual().white_ornament;
+            tile_side_strips(&t, r, 0.22, Color::new(1.0, 0.78, 0.05, opacity));
         }
     }
     // The original darkens the parchment towards the edges.
-    let e = 14.0 * k();
-    let dark = Color::new(0.25, 0.12, 0.02, 0.18);
+    let visual = super::window_layout::visual();
+    let e = (visual.paper_edge_width * k()).min(r.w / 2.0).min(r.h / 2.0);
+    let dark = Color::new(0.25, 0.12, 0.02, visual.paper_edge_opacity);
     draw_rectangle(r.x, r.y, r.w, e, dark);
     draw_rectangle(r.x, r.y + r.h - e, r.w, e, dark);
     draw_rectangle(r.x, r.y + e, e, r.h - 2.0 * e, dark);
     draw_rectangle(r.x + r.w - e, r.y + e, e, r.h - 2.0 * e, dark);
+}
+
+/// Light parchment, e.g. the unit panel; ornaments darken the corners when the art is there.
+pub fn parchment(r: Rect, ornaments: bool) {
+    parchment_fill(r, ornaments);
     draw_rectangle_lines(r.x, r.y, r.w, r.h, 1.5, Color::new(0.75, 0.6, 0.3, 1.0));
 }
 
@@ -1101,16 +1246,28 @@ pub fn parchment(r: Rect, ornaments: bool) {
 /// A text button on green marble with a silver edge (the original's `Btn*`). True when
 /// clicked this frame.
 pub fn marble_button(r: Rect, label: &str, enabled: bool, hover: bool) {
+    marble_button_tinted(r, label, enabled, hover, false);
+}
+
+/// The quest action uses the same button art, with the original's red enabled state.
+pub fn quest_button(r: Rect, label: &str, enabled: bool, hover: bool) {
+    marble_button_tinted(r, label, enabled, hover, true);
+}
+
+fn marble_button_tinted(r: Rect, label: &str, enabled: bool, hover: bool, quest_red: bool) {
     let name = if r.w < 110.0 { "Btn1" } else if r.w < 145.0 { "Btn2" } else { "Btn3" };
     let state = if hover && enabled { "Down" } else { "Up" };
     let fx = if enabled { Fx::Plain } else { Fx::Grey };
     if let Some(t) = win_fx(&format!("{name}{state}"), fx) {
-        three_slice(&t, r, 14.0, WHITE);
+        let tint = if quest_red && enabled { Color::new(1.0, 0.32, 0.25, 1.0) } else { WHITE };
+        three_slice(&t, r, 14.0, tint);
     } else {
-        let bg = match (enabled, hover) {
-            (false, _) => Color::new(0.2, 0.22, 0.21, 1.0),
-            (true, true) => Color::new(0.16, 0.36, 0.28, 1.0),
-            (true, false) => Color::new(0.10, 0.25, 0.19, 1.0),
+        let bg = match (enabled, hover, quest_red) {
+            (false, _, _) => Color::new(0.2, 0.22, 0.21, 1.0),
+            (true, true, true) => Color::new(0.55, 0.09, 0.04, 1.0),
+            (true, false, true) => Color::new(0.45, 0.06, 0.03, 1.0),
+            (true, true, false) => Color::new(0.16, 0.36, 0.28, 1.0),
+            (true, false, false) => Color::new(0.10, 0.25, 0.19, 1.0),
         };
         draw_rectangle(r.x, r.y, r.w, r.h, bg);
         draw_rectangle_lines(r.x, r.y, r.w, r.h, 2.0, if enabled { SILVER } else { SILVER_DARK });
@@ -1118,6 +1275,8 @@ pub fn marble_button(r: Rect, label: &str, enabled: bool, hover: bool) {
     }
     let color = if !enabled {
         Color::new(0.6, 0.6, 0.58, 1.0)
+    } else if quest_red {
+        CREAM
     } else if hover {
         GOLD
     } else {
@@ -1412,7 +1571,7 @@ pub fn badge(name: &str, cx: f32, cy: f32, size: f32, fallback: Color) {
 
 /// A trait icon (`Bonus<N>.lit`, `Bonus-2Row`, `HeroBonus<N>`), or a small shield.
 pub fn trait_icon(name: &str, x: f32, y: f32, size: f32) {
-    if let Some(t) = win(name) {
+    if let Some(t) = win_fx(name, Fx::KeyPurple) {
         tex(&t, Rect::new(x, y, size, size), WHITE);
     } else {
         let c = Color::new(0.25, 0.35, 0.75, 1.0);

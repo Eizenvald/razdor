@@ -865,7 +865,7 @@ impl BattleView {
 
         // The strip between the formations: what to do, or what just happened.
         let (hint, color) = self.strip_text(player_turn, &targets, &moves);
-        chrome::divider(l.strip);
+        chrome::text_box(l.strip);
         let text_r = Rect { w: l.strip.w - 60.0 * k, x: l.strip.x + 30.0 * k, ..l.strip };
         chrome::hint_text(text_r, &hint, color);
         let limit = b.content().options.battle_end_turn;

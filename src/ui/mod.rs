@@ -34,6 +34,7 @@ pub mod unit_drag;
 pub mod unit_sheet;
 pub mod update_view;
 pub mod widgets;
+pub mod window_layout;
 pub mod world_view;
 
 use std::collections::VecDeque;
