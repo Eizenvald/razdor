@@ -136,8 +136,8 @@ thread_local! {
     /// What the backpack's filter line holds (`ui::item_filter`).
     static FILTER: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
     /// The class a promotion portrait under the pointer put on the left panel (0x4c39d8
-    /// repaints it as a fresh unit of that type); it stays when the pointer leaves, as the
-    /// original's, until a card is hovered or pressed.
+    /// repaints it as a fresh unit of that type) while the pointer is on it (Razdor's: the
+    /// original's keeps it after, until a card is hovered or pressed, 0x4c3cf4).
     static PANEL_TYPE: std::cell::Cell<Option<razdor::rules::content::UnitId>> = const { std::cell::Cell::new(None) };
     /// The promotion playing (0x4b1a04).
     static PROMO: std::cell::Cell<Option<Promo>> = const { std::cell::Cell::new(None) };
@@ -755,8 +755,11 @@ pub fn squad(
     let mut tree_hint = None;
     if let Some(t) = tree_of {
         let tu = game.squad[t].clone();
-        if let Some(to) = tree_view(game, assets, t, &tu, content, promo.filter(|p| p.unit == t)) {
-            PANEL_TYPE.with(|p| p.set(Some(to)));
+        let shown = tree_view(game, assets, t, &tu, content, promo.filter(|p| p.unit == t));
+        // Razdor's: the panel goes back to the unit when the pointer leaves the portrait, where
+        // the original's keeps the class (0x4c3cf4; a player's request, 2026-10-12).
+        PANEL_TYPE.with(|p| p.set(shown));
+        if shown.is_some() {
             // The hint line (0x4c39d8): `[Army]` line 4 when it lacks the level, 5 to choose,
             // 6 when it has no further class.
             let tree = tu.upgrade_tree(&c);
