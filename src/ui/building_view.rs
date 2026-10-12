@@ -690,17 +690,23 @@ fn barracks(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
     };
     // A press on a card or an empty cell of the hero's grid (0x4c653c), acted on below.
     let mut pressed = None;
+    let anim = view.anim_at();
+    // The cell a card slides into (moved or hired) stays drawn empty until the card lands.
+    let landing = match anim {
+        Some((CardAnimKind::Slid { unit, .. } | CardAnimKind::Hired { unit, .. }, _)) => game.squad.get(unit).map(|u| u.slot),
+        _ => None,
+    };
     for slot in form.slots() {
-        if !game.squad.iter().any(|u| u.slot == slot) {
+        let taken = game.squad.iter().any(|u| u.slot == slot);
+        if !taken || landing == Some(slot) {
             let p = cell_at(slot);
             chrome::empty_cell(Rect::new(p.x, p.y, card.x, card.y), chrome::CellIcon::of(form, slot), true);
-            if mouse_in(p.x, p.y, card.x, card.y) && clicked() {
+            if !taken && mouse_in(p.x, p.y, card.x, card.y) && clicked() {
                 pressed = Some((None, slot));
             }
         }
     }
     let mut action = None;
-    let anim = view.anim_at();
     let selected = view.garrison_sel.filter(|&(g, i)| !g && i < game.squad.len()).map(|s| s.1);
     for i in 0..game.squad.len() {
         let u = game.squad[i].clone();

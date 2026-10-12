@@ -137,8 +137,8 @@ thread_local! {
     /// What the backpack's filter line holds (`ui::item_filter`).
     static FILTER: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
     /// The class a promotion portrait under the pointer put on the left panel (0x4c39d8
-    /// repaints it as a fresh unit of that type); it stays when the pointer leaves, as the
-    /// original's, until a card is hovered or pressed.
+    /// repaints it as a fresh unit of that type) while the pointer is on it (Razdor's: the
+    /// original's keeps it after, until a card is hovered or pressed, 0x4c3cf4).
     static PANEL_TYPE: std::cell::Cell<Option<razdor::rules::content::UnitId>> = const { std::cell::Cell::new(None) };
     /// The promotion playing (0x4b1a04).
     static PROMO: std::cell::Cell<Option<Promo>> = const { std::cell::Cell::new(None) };
@@ -715,6 +715,12 @@ pub fn squad(
             held = Some(Held { from: From::Worn(sel, slot), item, at: pointer().into(), moved: false });
         }
     }
+    // The worn slot under the pointer: a carried item let go there goes into that very slot
+    // (the hero window's click on a worn slot, 0x4c24f4).
+    let slot_under = {
+        let (mx, my) = pointer();
+        unit_sheet::slot_rects(sheet_rect).iter().position(|r| r.contains(vec2(mx, my))).filter(|&s| !showing_type && !locked(s))
+    };
     draw_line(win.x + 247.0 * k, win.y + 27.0 * k, win.x + 247.0 * k, win.y + win.h - 2.0, 1.5 * k, chrome::SILVER);
 
     // Top middle, as the original switches it: the hero's backpack, or the selected unit's
@@ -751,8 +757,11 @@ pub fn squad(
     let mut tree_hint = None;
     if let Some(t) = tree_of {
         let tu = game.squad[t].clone();
-        if let Some(to) = tree_view(game, assets, t, &tu, content, promo.filter(|p| p.unit == t)) {
-            PANEL_TYPE.with(|p| p.set(Some(to)));
+        let shown = tree_view(game, assets, t, &tu, content, promo.filter(|p| p.unit == t));
+        // Razdor's: the panel goes back to the unit when the pointer leaves the portrait, where
+        // the original's keeps the class (0x4c3cf4; a player's request, 2026-10-12).
+        PANEL_TYPE.with(|p| p.set(shown));
+        if shown.is_some() {
             // The hint line (0x4c39d8): `[Army]` line 4 when it lacks the level, 5 to choose,
             // 6 when it has no further class.
             let tree = tu.upgrade_tree(&c);
@@ -832,13 +841,16 @@ pub fn squad(
     };
     // A press on a card or an empty cell, acted on after the grid is drawn.
     let mut pressed = None;
+    // The cell a card slides into stays drawn empty until the card lands on it.
+    let landing = slide.map(|s| game.squad[s.unit].slot);
     for slot in f.slots() {
-        if game.squad.iter().any(|u| u.slot == slot) {
+        let taken = game.squad.iter().any(|u| u.slot == slot);
+        if taken && landing != Some(slot) {
             continue;
         }
         let p = cell_at(slot);
         chrome::empty_cell(Rect::new(p.x, p.y, card.x, card.y), chrome::CellIcon::of(f, slot), true);
-        if mouse_in(p.x, p.y, card.x, card.y) && clicked() {
+        if !taken && mouse_in(p.x, p.y, card.x, card.y) && clicked() {
             pressed = Some((None, slot));
         }
     }
@@ -981,19 +993,21 @@ pub fn squad(
             // window's: it wears the item.
             let card = if h.moved { card_under } else { None };
             let on_sheet = h.moved && card.is_none() && sheet_rect.contains(vec2(mx, my));
-            match (h.from, h.moved, card) {
-                (From::Pack(i), false, _) => *message = use_pack_item(game, sel, i),
-                (From::Worn(unit, slot), false, _) => *message = game.unequip(unit, slot).err().map(equip_error),
-                (from, true, Some(t)) => *message = give_on_card(game, from, t),
-                (From::Pack(i), true, None) if on_sheet => *message = use_pack_item(game, sel, i),
-                (From::Worn(unit, slot), true, None) if on_sheet && sel != unit => {
-                    let done = game.give(unit, slot, sel);
-                    if done.is_ok() {
-                        cue(Cue::Item(c.item(h.item).kind));
-                    }
-                    *message = done.err().map(equip_error);
+            let worn = |done: Result<(), EquipError>| {
+                if done.is_ok() {
+                    cue(Cue::Item(c.item(h.item).kind));
                 }
-                (From::Worn(unit, slot), true, None) if over_pack => *message = game.unequip(unit, slot).err().map(equip_error),
+                done.err().map(equip_error)
+            };
+            match (h.from, h.moved, card, slot_under.filter(|_| on_sheet)) {
+                (From::Pack(i), false, _, _) => *message = use_pack_item(game, sel, i),
+                (From::Worn(unit, slot), false, _, _) => *message = game.unequip(unit, slot).err().map(equip_error),
+                (from, true, Some(t), _) => *message = give_on_card(game, from, t),
+                (From::Pack(i), true, None, Some(s)) => *message = worn(game.equip_at(sel, i, Some(s))),
+                (From::Worn(unit, slot), true, None, Some(s)) => *message = worn(game.move_worn(unit, slot, sel, s)),
+                (From::Pack(i), true, None, None) if on_sheet => *message = use_pack_item(game, sel, i),
+                (From::Worn(unit, slot), true, None, None) if on_sheet && sel != unit => *message = worn(game.give(unit, slot, sel)),
+                (From::Worn(unit, slot), true, None, _) if over_pack => *message = game.unequip(unit, slot).err().map(equip_error),
                 _ => {}
             }
         }

@@ -2303,20 +2303,36 @@ impl Game {
     }
 
     /// Moves a pack item onto squad member `unit`: into item slot `slot` when given, as a
-    /// click on an empty worn slot of the hero window puts it in that very slot (0x4c24f4;
-    /// an occupied slot takes nothing), else into the lowest free one. The wear test runs
-    /// either way.
+    /// click on an empty worn slot of the hero window puts it in that very slot (0x4c24f4),
+    /// else into the lowest free one. The wear test runs either way. Razdor's: an occupied
+    /// slot swaps, its item taking the pack item's place, where the original's takes nothing
+    /// (a player's request, 2026-10-12).
     pub fn equip_at(&mut self, unit: usize, pack_index: usize, slot: Option<usize>) -> Result<(), EquipError> {
         let item = *self.pack.get(pack_index).ok_or(EquipError::NoSuchItem)?;
         let u = self.squad.get(unit).ok_or(EquipError::NoSuchItem)?;
-        let free = items::slot_for(&self.content, u, item)?;
-        let slot = match slot {
-            Some(k) if u.items.get(k) == Some(&None) => k,
-            Some(_) => return Err(EquipError::NoFreeSlot),
-            None => free,
+        let c = self.content.clone();
+        let Some(k) = slot else {
+            let free = items::slot_for(&c, u, item)?;
+            items::put_on(&c, &mut self.squad[unit], free, item);
+            self.pack.remove(pack_index);
+            return Ok(());
         };
-        items::put_on(&self.content, &mut self.squad[unit], slot, item);
-        self.pack.remove(pack_index);
+        if k >= u.items.len() {
+            return Err(EquipError::NoFreeSlot);
+        }
+        let saved = u.clone();
+        let other = items::take_off(&c, &mut self.squad[unit], k);
+        if let Err(e) = items::slot_for(&c, &self.squad[unit], item) {
+            self.squad[unit] = saved;
+            return Err(e);
+        }
+        items::put_on(&c, &mut self.squad[unit], k, item);
+        match other {
+            Some(b) => self.pack[pack_index] = b,
+            None => {
+                self.pack.remove(pack_index);
+            }
+        }
         Ok(())
     }
 
@@ -2355,6 +2371,38 @@ impl Game {
         items::take_off(&c, &mut self.squad[from], slot);
         items::put_on(&c, &mut self.squad[to], free, item);
         Ok(())
+    }
+
+    /// Moves the item in slot `from_slot` of squad member `from` into slot `slot` of squad
+    /// member `to` (the same unit too), as the hero window's pick-up and click on an empty
+    /// worn slot do (0x4c24f4): the item is taken off first, the wear test runs and it goes
+    /// into that very slot. Razdor's: an occupied slot swaps, its item going to `from_slot`
+    /// under its own wear test, where the original's takes nothing (a player's request,
+    /// 2026-10-12). A refusal puts everything back.
+    pub fn move_worn(&mut self, from: usize, from_slot: usize, to: usize, slot: usize) -> Result<(), EquipError> {
+        let item = self.squad.get(from).and_then(|u| u.items.get(from_slot).copied().flatten()).ok_or(EquipError::NoSuchItem)?;
+        if (from, from_slot) == (to, slot) {
+            return Ok(());
+        }
+        if self.squad.get(to).and_then(|u| u.items.get(slot)).is_none() {
+            return Err(EquipError::NoSuchItem);
+        }
+        let c = self.content.clone();
+        let saved = (self.squad[from].clone(), self.squad[to].clone());
+        items::take_off(&c, &mut self.squad[from], from_slot);
+        let other = items::take_off(&c, &mut self.squad[to], slot);
+        let done = items::slot_for(&c, &self.squad[to], item).and_then(|_| {
+            items::put_on(&c, &mut self.squad[to], slot, item);
+            match other {
+                Some(b) => items::slot_for(&c, &self.squad[from], b).map(|_| items::put_on(&c, &mut self.squad[from], from_slot, b)),
+                None => Ok(()),
+            }
+        });
+        if done.is_err() {
+            self.squad[to] = saved.1;
+            self.squad[from] = saved.0;
+        }
+        done
     }
 }
 
@@ -3269,12 +3317,33 @@ mod tests {
         g.squad[0].items[2] = None;
         g.squad[0].items[1] = Some(shield);
         g.pack = vec![shield];
-        assert_eq!(g.equip_at(0, 0, Some(1)), Err(EquipError::SameType), "the wear test still runs");
+        assert_eq!(g.equip_at(0, 0, Some(0)), Err(EquipError::SameType), "the wear test still runs");
         g.squad[0].items[1] = None;
-        g.squad[0].items[3] = Some(item(&g, "short_sword"));
-        assert_eq!(g.equip_at(0, 0, Some(3)), Err(EquipError::NoFreeSlot), "an occupied slot does not swap");
+        let sword = item(&g, "short_sword");
+        g.squad[0].items[3] = Some(sword);
         assert_eq!(g.equip(0, 0), Ok(()));
         assert_eq!(g.hero().items[0], Some(shield), "the army card's drop: the lowest free slot");
+        // Razdor's: an occupied slot swaps with the pack item.
+        let other = item(&g, "oak_shield");
+        g.squad[0].items[0] = None;
+        g.pack = vec![other];
+        g.squad[0].items[3] = Some(shield);
+        assert_eq!(g.equip_at(0, 0, Some(3)), Ok(()));
+        assert_eq!((g.hero().items[3], g.pack.clone()), (Some(other), vec![shield]));
+    }
+
+    #[test]
+    fn a_worn_item_moves_to_an_empty_slot_of_its_own_unit() {
+        // 0x4c24f4: picked up from a worn slot, it can be put on another empty one.
+        let mut g = quiet_game(HeroClass::Knight);
+        let (shield, sword) = (item(&g, "oak_shield"), item(&g, "short_sword"));
+        g.squad[0].items = [Some(shield), None, None, Some(sword)];
+        assert_eq!(g.move_worn(0, 0, 0, 2), Ok(()));
+        assert_eq!(g.hero().items, [None, None, Some(shield), Some(sword)]);
+        // Razdor's: an occupied slot swaps.
+        assert_eq!(g.move_worn(0, 2, 0, 3), Ok(()));
+        assert_eq!(g.hero().items, [None, None, Some(sword), Some(shield)]);
+        assert_eq!(g.move_worn(0, 1, 0, 0), Err(EquipError::NoSuchItem));
     }
 
     #[test]
