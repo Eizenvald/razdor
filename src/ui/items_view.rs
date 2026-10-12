@@ -836,13 +836,16 @@ pub fn squad(
     };
     // A press on a card or an empty cell, acted on after the grid is drawn.
     let mut pressed = None;
+    // The cell a card slides into stays drawn empty until the card lands on it.
+    let landing = slide.map(|s| game.squad[s.unit].slot);
     for slot in f.slots() {
-        if game.squad.iter().any(|u| u.slot == slot) {
+        let taken = game.squad.iter().any(|u| u.slot == slot);
+        if taken && landing != Some(slot) {
             continue;
         }
         let p = cell_at(slot);
         chrome::empty_cell(Rect::new(p.x, p.y, card.x, card.y), chrome::CellIcon::of(f, slot), true);
-        if mouse_in(p.x, p.y, card.x, card.y) && clicked() {
+        if !taken && mouse_in(p.x, p.y, card.x, card.y) && clicked() {
             pressed = Some((None, slot));
         }
     }
