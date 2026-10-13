@@ -25,5 +25,11 @@ audio = ["macroquad/audio"]
 # (`ui::gamepad`). On Linux it links libudev. Without it the game is mouse and keyboard only.
 gamepad = ["dep:gilrs"]
 
+# Line tables only: backtraces keep file and line, and the debug build stays several times
+# smaller on disk (full debug info made target/debug grow past 30 GB).
+[profile.dev]
+debug = "line-tables-only"
+
 [profile.dev.package."*"]
 opt-level = 2
+debug = false
