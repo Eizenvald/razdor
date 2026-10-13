@@ -8,14 +8,29 @@ Reads the hook's JSON on stdin and exits 2 (with the reason on stderr) to block 
 - the game started in a window (`target/*/razdor`, `cargo run`, `Razdor.exe`, `wine …Razdor`)
   unless under `xvfb-run`, with `DISPLAY` set to another (Xvfb) display in the same command,
   or with `RAZDOR_ALLOW_WINDOW=1` (the owner asked for a visible run);
-- `git add` / `git commit` that would put the game's content in the repo (.lit .ugs .dtm .dtc
-  .wav .ogg .mp3 .bik .rzsave, Rus_*.ini, _Global.ini);
+- `git add` / `git commit` / `git update-index` that would put the game's content in the repo
+  (.lit .ugs .dtm .dtc .wav .ogg .mp3 .bik .rzsave, Rus_*.ini, _Global.ini);
 - pushes to the frozen dt-feat, force pushes, `--no-verify`;
-- recursive `rm` outside the scratch folders (/tmp/claude-*, /mnt/ai_models/razdor-scratch).
+- recursive `rm`, `find -delete` and `git clean -f` outside the scratch folders
+  (/tmp/claude-<id>/…, /mnt/ai_models/razdor-scratch/…).
 
-Commands are parsed, not grepped: `git push` inside a commit message or an `echo` is not a push;
-`bash -c` / `sh -c` / `eval` strings are parsed too. The hook fails open on its own errors,
-except that a command whose text pushes to dt-feat is blocked when it cannot be parsed.
+Commands are parsed, not grepped: `git push` inside a commit message or an `echo` is not a push.
+`bash -c` / `sh -c` / `eval` / `env -S` strings, `$( )` and backtick substitutions (also in
+double quotes and unquoted heredocs) and git aliases are checked too.
+
+What this guards against: accidents in the owner's own repo, not a hostile author of commands.
+So the dangerous categories (push to dt-feat, force push, --no-verify, game content, deletes)
+fail CLOSED: a command the parser cannot read, or whose target it cannot know (a variable or a
+substitution in a refspec, a cwd, an rm path; a shell fed a script on stdin; xargs into git or
+rm), is blocked when it mentions such an action. The advisory rules (cargo pinning, the window)
+fail open. Accepted gaps, as they need deliberate effort rather than a slip: code that runs git
+or rm from another language (python -c, perl -e), a script file run with `sh file` / `source`,
+the owner's interactive shell aliases, and plumbing such as `git commit-tree`.
+
+The hook runs only read-only git commands, never anything taken from the command text as code,
+and runs them hardened: no system or global config, fsmonitor and hooks off, no optional locks,
+no external diff or textconv, and only listings that never run filters (ls-files, diff --cached).
+
 Cases: guard-bash.cases.tsv, run by test-guard.sh.
 """
 
@@ -31,50 +46,119 @@ PIN_HINT = "CARGO_BUILD_JOBS=4 taskset -c 16-19 cargo …"
 FROZEN = {"dt-feat"}
 GAME_EXT = re.compile(r"\.(lit|ugs|dtm|dtc|wav|ogg|mp3|bik|rzsave)$", re.I)
 GAME_INI = re.compile(r"(^|/)(rus_[^/]*|_global)\.ini$", re.I)
-SCRATCH = ("/tmp/claude-", "/mnt/ai_models/razdor-scratch")
+SCRATCH = (re.compile(r"^/tmp/claude-[^/]+/.+"), re.compile(r"^/mnt/ai_models/razdor-scratch/.+"))
 CARGO_PINNED = {"build", "b", "test", "t", "run", "r", "clippy", "check", "c", "bench"}
-OPS = {";", "&&", "||", "|", "&", "|&", ";;", "(", ")", "\n"}
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "fish"}
+# Words that make an unreadable command dangerous enough to refuse.
+DANGER = re.compile(r"\b(git|rm|find|xargs|unlink|shred)\b|--no-verify|dt-feat|--force|\+[\w/]+:")
+ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+OPCHARS = set(";&|()\n")
+GIT_TIMEOUT = 3
 
 
 class Block(Exception):
     pass
 
 
-def strip_heredocs(text):
-    """Drops heredoc bodies: their lines are data, not commands."""
-    out, lines, i = [], text.split("\n"), 0
+class Unknown(Exception):
+    """The parser cannot tell what the shell would run."""
+
+
+# ---------------------------------------------------------------- shell reading
+
+
+def substitutions(text):
+    """The commands inside `$( )` and backticks that the shell would run: outside single quotes
+    and ANSI-C `$'…'` strings, inside double quotes too."""
+    out, i, n, state = [], 0, len(text), "normal"
+    while i < n:
+        c = text[i]
+        if state == "single":
+            if c == "'":
+                state = "normal"
+        elif state == "ansi":
+            if c == "\\":
+                i += 1
+            elif c == "'":
+                state = "normal"
+        else:
+            if c == "\\":
+                i += 2
+                continue
+            if state == "normal" and c == "'":
+                state = "single"
+            elif state == "normal" and text.startswith("$'", i):
+                state = "ansi"
+                i += 1
+            elif c == '"':
+                state = "double" if state == "normal" else "normal"
+            elif text.startswith("$((", i):
+                i += 3  # arithmetic; may still hold a substitution, scanned as text
+                continue
+            elif text.startswith("$(", i):
+                depth, j = 1, i + 2
+                while j < n and depth:
+                    depth += {"(": 1, ")": -1}.get(text[j], 0)
+                    j += 1
+                if depth:
+                    raise Unknown("an unclosed $(")
+                out.append(text[i + 2:j - 1])
+                i = j
+                continue
+            elif c == "`":
+                j = text.find("`", i + 1)
+                if j < 0:
+                    raise Unknown("an unclosed backtick")
+                out.append(text[i + 1:j])
+                i = j + 1
+                continue
+        i += 1
+    if state in ("single", "double", "ansi"):
+        raise Unknown("an unclosed quote")
+    return out
+
+
+HEREDOC = re.compile(r"(?<!<)<<(?!<)-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+
+
+def split_heredocs(text):
+    """Drops heredoc bodies (their lines are data) and returns (text, bodies that expand)."""
+    out, expanding, lines, i = [], [], text.split("\n"), 0
     while i < len(lines):
         line = lines[i]
         out.append(line)
-        tags = re.findall(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1", line)
         i += 1
-        for _, tag in tags:
+        for quote, tag in HEREDOC.findall(line):
+            body = []
             while i < len(lines) and lines[i].strip() != tag:
+                body.append(lines[i])
                 i += 1
-            i += 1  # the terminator
-    return "\n".join(out)
+            i += 1
+            if not quote:
+                expanding.append("\n".join(body))
+    return "\n".join(out), expanding
 
 
 def segments(text):
     """Splits a command line into simple commands (lists of words)."""
-    lex = shlex.shlex(strip_heredocs(text).replace("\\\n", " "), posix=True, punctuation_chars=";&|()\n")
+    lex = shlex.shlex(text.replace("\\\n", " "), posix=True, punctuation_chars=";&|()\n")
     lex.whitespace = " \t\r"
     lex.whitespace_split = True
     lex.commenters = "#"
     seg, segs = [], []
-    for tok in lex:
-        if tok in OPS or (tok and set(tok) <= set(";&|()\n")):
-            if seg:
-                segs.append(seg)
-            seg = []
-        else:
-            seg.append(tok)
+    try:
+        for tok in lex:
+            if tok and set(tok) <= OPCHARS:
+                if seg:
+                    segs.append(seg)
+                seg = []
+            else:
+                seg.append(tok)
+    except ValueError as e:
+        raise Unknown(str(e))
     if seg:
         segs.append(seg)
     return segs
-
-
-ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 
 def cpus(spec):
@@ -88,8 +172,9 @@ def cpus(spec):
     return out
 
 
-def unwrap(words):
-    """Strips assignments and wrappers; returns (argv, env, pinned, xvfb)."""
+def unwrap(words, nested):
+    """Strips assignments and wrappers; returns (argv, env, pinned, xvfb). Strings a wrapper
+    runs through a shell (`env -S`, `watch`) are appended to `nested`."""
     env, pinned, xvfb = {}, False, False
     w = list(words)
     while w:
@@ -101,12 +186,20 @@ def unwrap(words):
         elif head == "env":
             w = w[1:]
             while w and (w[0].startswith("-") or ASSIGN.match(w[0])):
-                if ASSIGN.match(w[0]):
-                    k, v = w[0].split("=", 1)
-                    env[k] = v
-                elif w[0] in ("-u", "-C", "--unset", "--chdir") and len(w) > 1:
-                    w = w[1:]
+                flag = w[0]
                 w = w[1:]
+                if ASSIGN.match(flag):
+                    k, v = flag.split("=", 1)
+                    env[k] = v
+                elif flag in ("-S", "--split-string") and w:
+                    nested.append(" ".join(w))
+                    return [], env, pinned, xvfb
+                elif flag.startswith("--split-string=") or (flag.startswith("-S") and len(flag) > 2):
+                    nested.append(flag.split("=", 1)[1] if "=" in flag else flag[2:])
+                    nested.append(" ".join(w))
+                    return [], env, pinned, xvfb
+                elif flag in ("-u", "-C", "--unset", "--chdir") and w:
+                    w = w[1:]
         elif head == "taskset":
             w = w[1:]
             spec = None
@@ -124,7 +217,7 @@ def unwrap(words):
                 pinned = spec is not None and cpus(spec) <= ALLOWED_CPUS
             except ValueError:
                 pinned = False
-        elif head in ("xvfb-run",):
+        elif head == "xvfb-run":
             xvfb = True
             w = w[1:]
             while w and w[0].startswith("-"):
@@ -132,29 +225,35 @@ def unwrap(words):
                 w = w[1:]
                 if flag in ("-s", "-n", "-e", "-f", "-p", "--server-args", "--server-num", "--error-file", "--auth-file", "--xauth-protocol") and w:
                     w = w[1:]
-        elif head in ("sudo", "nohup", "setsid", "command", "exec", "time", "builtin"):
+        elif head in ("sudo", "doas", "nohup", "setsid", "command", "exec", "time", "builtin", "nice", "ionice", "stdbuf", "timeout", "chrt", "unbuffer"):
             w = w[1:]
+            takes = {"-u", "-g", "-n", "-c", "-k", "-s", "-o", "-e", "-i", "-a", "--signal", "--kill-after", "--user", "--group"}
             while w and w[0].startswith("-"):
+                flag = w[0]
                 w = w[1:]
-        elif head in ("nice", "ionice", "stdbuf", "timeout", "chrt"):
+                if flag in takes and w:
+                    w = w[1:]
+            if head in ("timeout", "chrt") and w:
+                w = w[1:]  # the duration / priority
+        elif head == "watch":
             w = w[1:]
             while w and w[0].startswith("-"):
                 flag = w[0]
                 w = w[1:]
-                if flag in ("-n", "-c", "-k", "-s", "-o", "-e", "-i", "--signal", "--kill-after") and w:
+                if flag in ("-n", "-d", "--interval") and w:
                     w = w[1:]
-            if head in ("timeout", "chrt") and w:
-                w = w[1:]  # the duration / priority
+            nested.append(" ".join(w))
+            return [], env, pinned, xvfb
         elif head in ("perf", "strace", "ltrace", "valgrind"):
             if "--" in w:
                 w = w[w.index("--") + 1:]
                 continue
             w = w[1:]
-            if head == "perf" and w and w[0] in ("record", "stat", "trace"):
+            if head == "perf":
+                if not w or w[0] not in ("record", "stat", "trace"):
+                    return [], env, pinned, xvfb
                 w = w[1:]
-            elif head == "perf":
-                return [], env, pinned, xvfb
-            takes = {"-F", "-o", "-e", "-c", "-p", "-t", "-C", "-m", "-s", "-O", "-u", "-E", "-a", "--call-graph", "--freq", "--output", "--event"}
+            takes = {"-F", "-o", "-e", "-c", "-p", "-t", "-C", "-m", "-s", "-O", "-u", "-E", "--call-graph", "--freq", "--output", "--event"}
             while w and w[0].startswith("-"):
                 flag = w[0]
                 w = w[1:]
@@ -165,12 +264,21 @@ def unwrap(words):
     return w, env, pinned, xvfb
 
 
+# ---------------------------------------------------------------- git, read-only and hardened
+
+
 def git_out(args, cwd):
+    """A read-only git listing, with no config that can run code."""
+    if cwd is None:
+        raise Unknown("the working folder")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null", GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", GIT_PAGER="cat", PAGER="cat")
+    hard = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "core.untrackedCache=false", "-c", "diff.external=", "--no-pager"]
     try:
-        r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=10)
-        return r.stdout if r.returncode == 0 else ""
-    except Exception:
-        return ""
+        r = subprocess.run(["git", *hard, *args], cwd=cwd, env=env, capture_output=True, text=True, timeout=GIT_TIMEOUT, stdin=subprocess.DEVNULL)
+    except Exception as e:
+        raise Unknown(f"git {args[0]}: {e}")
+    return r.stdout if r.returncode == 0 else ""
 
 
 def is_game_content(path):
@@ -183,35 +291,12 @@ def check_paths(paths, what):
         raise Block(f"{what} would put the game's content in the repo ({', '.join(bad[:5])}). Razdor is public: never commit the original's files, pictures, sounds, maps, ini files or saves.")
 
 
-def check_git(argv, cwd):
-    w = argv[1:]
-    while w and w[0].startswith("-"):
-        flag = w[0]
-        w = w[1:]
-        if flag in ("-C", "-c", "--git-dir", "--work-tree", "--namespace") and w:
-            if flag == "-C":
-                cwd = os.path.join(cwd, w[0])
-            w = w[1:]
-    if not w:
-        return
-    sub, args = w[0], w[1:]
-    if "--no-verify" in args or (sub == "commit" and "-n" in args):
-        raise Block("--no-verify skips the repo's git hooks; fix what they report instead.")
-    if sub == "push":
-        check_push(args, cwd)
-    elif sub == "add":
-        flags = [a for a in args if a.startswith("-")]
-        paths = [a for a in args if not a.startswith("-") and a != "--"]
-        check_paths(paths, "git add")
-        spec = [] if any(f in ("-A", "--all") for f in flags) else paths
-        if any(f in ("-A", "--all", "-u", "--update") for f in flags) or paths:
-            out = git_out(["status", "--porcelain=v1", "--untracked-files=all", "--", *spec], cwd)
-            check_paths([line[3:].split(" -> ")[-1].strip('"') for line in out.splitlines()], "git add")
-    elif sub == "commit":
-        staged = git_out(["diff", "--cached", "--name-only"], cwd).splitlines()
-        if any(commits_all(a) for a in args):
-            staged += git_out(["diff", "--name-only"], cwd).splitlines()
-        check_paths(staged, "git commit")
+def listed(cwd, spec):
+    """Every file `git add` could take under the pathspecs: untracked (not ignored) and tracked.
+    Listings only: nothing here compares contents, so no filter or textconv runs."""
+    files = git_out(["ls-files", "--others", "--exclude-standard", "--", *spec], cwd).splitlines()
+    files += git_out(["ls-files", "--", *spec], cwd).splitlines()
+    return files
 
 
 def commits_all(arg):
@@ -226,6 +311,99 @@ def commits_all(arg):
         if ch in "mFCctS":
             return False
     return False
+
+
+def check_git(argv, cwd, env, depth):
+    w = argv[1:]
+    configs = []
+    while w and w[0].startswith("-"):
+        flag = w[0]
+        w = w[1:]
+        if flag in ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path") and w:
+            if flag == "-C":
+                cwd = None if cwd is None or "$" in w[0] else os.path.normpath(os.path.join(cwd, w[0]))
+            elif flag == "-c":
+                configs.append(w[0])
+            elif flag in ("--git-dir", "--work-tree"):
+                cwd = None
+            w = w[1:]
+        elif flag.startswith(("--git-dir=", "--work-tree=")):
+            cwd = None
+        elif flag.startswith("--config-env"):
+            configs.append(flag)
+    if not w:
+        return
+    sub, args = w[0], w[1:]
+    if "$" in sub or "`" in sub:
+        raise Unknown("a git subcommand from a variable")
+    if any(k in env for k in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")) or any(k.startswith("GIT_CONFIG") for k in env):
+        cwd = None
+    risky = [c for c in configs if re.match(r"(alias|push|remote|core\.hookspath|branch)\.", c, re.I) or c.startswith("--config-env")]
+    known = {"push", "add", "commit", "clean", "update-index", "status", "log", "diff", "show", "rev-parse", "branch", "tag", "fetch", "pull", "checkout", "switch", "restore", "reset", "stash", "worktree", "cherry-pick", "rebase", "merge", "init", "clone", "config", "remote", "ls-files", "grep", "blame", "describe", "symbolic-ref", "rev-list", "shortlog", "mv", "rm", "apply", "am", "format-patch", "bisect", "notes", "gc", "fsck", "reflog", "submodule", "archive", "help", "version", "--version", "cat-file", "ls-tree", "for-each-ref", "name-rev", "merge-base", "whatchanged", "range-diff", "sparse-checkout", "maintenance", "count-objects", "verify-commit", "send-email", "request-pull", "difftool", "mergetool", "citool", "gui", "instaweb", "replace", "filter-branch", "hash-object", "read-tree", "write-tree", "commit-tree", "update-ref", "check-ignore", "check-attr", "var"}
+    if any(c.lower().startswith("alias.") for c in configs):
+        raise Unknown("an alias set on the command line")
+    if sub not in known:
+        if depth > 3:
+            raise Unknown("alias loop")
+        expansion = git_out(["config", "--get", f"alias.{sub}"], cwd).strip() if cwd is not None else ""
+        if not expansion:
+            if cwd is None:
+                raise Unknown("a git command in an unknown repository")
+            return
+        if expansion.startswith("!"):
+            check_text(expansion[1:], cwd, depth + 1)
+            return
+        try:
+            exp = shlex.split(expansion)
+        except ValueError:
+            raise Unknown("an unreadable git alias")
+        check_git(["git", *exp, *args], cwd, env, depth + 1)
+        return
+    dangerous = sub in ("push", "add", "commit", "clean", "update-index")
+    if dangerous and risky:
+        raise Unknown(f"git {sub} with config set on the command line ({', '.join(risky)})")
+    if "--no-verify" in args or (sub in ("commit", "merge", "am", "rebase") and "-n" in args and sub == "commit"):
+        raise Block("--no-verify skips the repo's git hooks; fix what they report instead.")
+    if sub == "push":
+        check_push(args, cwd)
+    elif sub in ("add", "update-index"):
+        flags = [a for a in args if a.startswith("-")]
+        paths = [a for a in args if not a.startswith("-") and a != "--"]
+        check_paths(paths, f"git {sub}")
+        if sub == "update-index":
+            return
+        if any("$" in p or "`" in p for p in paths):
+            raise Unknown("git add of a path from a variable")
+        if cwd is None:
+            raise Unknown("git add in an unknown repository")
+        spec = [] if any(f in ("-A", "--all") for f in flags) or not paths else paths
+        check_paths(listed(cwd, spec), f"git {sub}")
+    elif sub == "commit":
+        if cwd is None:
+            raise Unknown("git commit in an unknown repository")
+        staged = git_out(["diff", "--cached", "--name-only", "--no-ext-diff", "--no-textconv"], cwd).splitlines()
+        paths = [a for a in args if not a.startswith("-")]
+        if any(commits_all(a) for a in args):
+            staged += git_out(["ls-files"], cwd).splitlines()
+        check_paths(staged, "git commit")
+        # `git commit <paths>` commits those paths as they are in the folder.
+        value_flags = {"-m", "-F", "-C", "-c", "-t", "--author", "--date", "--message", "--file", "--template", "--fixup", "--squash", "--trailer", "--cleanup"}
+        pathspecs, skip = [], False
+        for a in args:
+            if skip:
+                skip = False
+            elif a in value_flags or (a.startswith("-") and not a.startswith("--") and a[-1] in "mFCct" and len(a) > 1):
+                skip = True
+            elif not a.startswith("-"):
+                pathspecs.append(a)
+        if pathspecs:
+            check_paths(pathspecs, "git commit")
+            check_paths(git_out(["ls-files", "--", *pathspecs], cwd).splitlines(), "git commit")
+    elif sub == "clean":
+        flags = "".join(a[1:] for a in args if a.startswith("-") and not a.startswith("--"))
+        if ("f" in flags or "--force" in args) and "n" not in flags and "--dry-run" not in args:
+            if cwd is None or not in_scratch(cwd):
+                raise Block("git clean -f deletes untracked and maybe ignored files (.env, docs/notes, target). Run it with -n first and ask the owner.")
 
 
 def current_branch(cwd):
@@ -243,51 +421,91 @@ def resolve_dest(ref, cwd):
 
 def check_push(args, cwd):
     for a in args:
-        if a in ("-f", "--force", "--mirror", "--all") or a.startswith("--force-with-lease") or a.startswith("--force-if-includes") or (a.startswith("-") and not a.startswith("--") and "f" in a[1:]):
-            raise Block(f"git push {a}: force, mirror and all-branch pushes are not allowed; push the branch normally.")
+        if a in ("-f", "--force", "--mirror", "--all", "--prune") or a.startswith(("--force-with-lease", "--force-if-includes")) or (a.startswith("-") and not a.startswith("--") and "f" in a[1:]):
+            raise Block(f"git push {a}: force, mirror, prune and all-branch pushes are not allowed; push the branch normally.")
     takes = {"-o", "--push-option", "--repo", "--receive-pack", "--exec"}
     pos, skip = [], False
     for a in args:
         if skip:
             skip = False
-            continue
-        if a in takes:
+        elif a in takes:
             skip = True
         elif not a.startswith("-"):
             pos.append(a)
+    if cwd is None:
+        raise Unknown("a push from an unknown repository")
     refspecs = pos[1:]
     if not refspecs:
+        default = git_out(["config", "--get", "push.default"], cwd).strip()
+        remote = pos[0] if pos else git_out(["config", "--get", f"branch.{current_branch(cwd)}.remote"], cwd).strip() or "origin"
+        if default == "matching" or "$" in remote or git_out(["config", "--get-all", f"remote.{remote}.push"], cwd).strip():
+            raise Unknown("a push whose branches come from the config")
         dests = [current_branch(cwd)]
     else:
         dests = []
         for spec in refspecs:
             if spec.startswith("+"):
                 raise Block(f"git push {spec}: a '+' refspec is a force push.")
+            if "$" in spec or "`" in spec or "*" in spec:
+                raise Unknown(f"the refspec {spec}")
             src, _, dst = spec.partition(":")
             dests.append(resolve_dest(dst if ":" in spec else src, cwd))
     for d in dests:
         if d in FROZEN:
-            raise Block(f"dt-feat is frozen: nothing is pushed to it. Work goes to main (parity fixes also cherry-picked to dt-original).")
+            raise Block("dt-feat is frozen: nothing is pushed to it. Work goes to main (parity fixes also cherry-picked to dt-original).")
+
+
+# ---------------------------------------------------------------- deletes
+
+
+def in_scratch(path):
+    real = os.path.realpath(path)
+    return any(r.match(real) for r in SCRATCH)
+
+
+def check_delete_targets(targets, cwd, what):
+    for t in targets:
+        if "$" in t or "`" in t or t.startswith("~"):
+            raise Block(f"{what} {t}: the path comes from a variable; spell it out (deletes only inside /tmp/claude-<id>/… or /mnt/ai_models/razdor-scratch/…).")
+        if cwd is None and not t.startswith("/"):
+            raise Block(f"{what} {t}: a relative path after an unknown cd.")
+        p = os.path.normpath(os.path.join(cwd or "/", t))
+        if not in_scratch(p.rstrip("*?") or "/"):
+            raise Block(f"{what} {t}: recursive deletes only inside /tmp/claude-<id>/… or /mnt/ai_models/razdor-scratch/…. Ask the owner (or queue it for them) before deleting anything else.")
 
 
 def check_rm(argv, cwd):
-    flags = "".join(a[1:] for a in argv[1:] if a.startswith("-") and not a.startswith("--"))
-    recursive = "r" in flags or "R" in flags or "--recursive" in argv
-    if not recursive:
-        return
-    targets = [a for a in argv[1:] if not a.startswith("-")]
-    for t in targets:
-        if "$" in t or "*" in t or "?" in t or t.startswith("~"):
-            p = t
+    args = argv[1:]
+    targets, flags, end = [], "", False
+    for a in args:
+        if end or not a.startswith("-") or a == "-":
+            targets.append(a)
+        elif a == "--":
+            end = True
+        elif a.startswith("--"):
+            flags += "r" if a == "--recursive" else ""
         else:
-            p = os.path.normpath(os.path.join(cwd, t))
-        if not p.startswith(SCRATCH):
-            raise Block(f"rm -r {t}: recursive deletes only inside /tmp/claude-* or /mnt/ai_models/razdor-scratch. Ask the owner (or queue it for them) before deleting anything else.")
+            flags += a[1:]
+    if "r" in flags or "R" in flags:
+        check_delete_targets(targets, cwd, "rm -r")
+
+
+def check_find(argv, cwd):
+    args = argv[1:]
+    deletes = "-delete" in args or any(a in ("-exec", "-execdir", "-ok", "-okdir") and i + 1 < len(args) and os.path.basename(args[i + 1]) in ("rm", "shred", "unlink") for i, a in enumerate(args))
+    if deletes:
+        starts = []
+        for a in args:
+            if a.startswith(("-", "(", "!")):
+                break
+            starts.append(a)
+        check_delete_targets(starts or ["."], cwd, "find -delete")
+
+
+# ---------------------------------------------------------------- the checks
 
 
 def launches_game(argv):
-    if not argv:
-        return False
     head = argv[0]
     base = os.path.basename(head)
     if base == "cargo":
@@ -303,33 +521,56 @@ def launches_game(argv):
         return False
     if base in ("wine", "wine64", "wine-stable"):
         return any(os.path.basename(a).lower() in ("razdor.exe", "razdor") for a in argv[1:])
-    if base in ("razdor", "razdor-macos", "Razdor.exe") and ("/" in head or base == "Razdor.exe"):
-        return True
-    return False
+    return base in ("razdor", "razdor-macos", "Razdor.exe") and ("/" in head or base == "Razdor.exe")
 
 
-def check_segment(words, cwd, exported):
-    argv, env, pinned, xvfb = unwrap(words)
+def check_segment(words, cwd, exported, depth):
+    nested = []
+    argv, env, pinned, xvfb = unwrap(words, nested)
+    for text in nested:
+        check_text(text, cwd, depth + 1)
     if not argv:
-        if env and not words[len(env):]:
+        if env and len(env) == len(words):
             exported.update(env)  # a bare assignment holds for the rest of the line
         return
     head = os.path.basename(argv[0])
+    if "$" in argv[0] or "`" in argv[0]:
+        raise Unknown("a command name from a variable")
     if head == "export":
         for a in argv[1:]:
             if ASSIGN.match(a):
                 k, v = a.split("=", 1)
                 exported[k] = v
         return
-    if head == "cd" and len(argv) > 1:
-        return
-    if head in ("bash", "sh", "zsh", "dash") and "-c" in argv:
-        i = argv.index("-c")
-        if i + 1 < len(argv):
-            check_text(argv[i + 1], cwd)
-        return
+    if head in SHELLS:
+        cflag = next((i for i, a in enumerate(argv[1:], 1) if a.startswith("-") and not a.startswith("--") and "c" in a[1:]), None)
+        if cflag is not None:
+            if cflag + 1 < len(argv):
+                check_text(argv[cflag + 1], cwd, depth + 1)
+            return
+        words, skip = [], False
+        for a in argv[1:]:
+            if skip:
+                skip = False
+            elif re.match(r"^\d*[<>]", a):
+                skip = re.fullmatch(r"\d*(<<<|<<-?|<|>>?|&>>?|>&|<&)", a) is not None
+            elif not a.startswith("-"):
+                words.append(a)
+        if not words:
+            raise Unknown("a shell reading its script from stdin")
+        return  # `sh script.sh`: an accepted gap (see the top)
     if head == "eval":
-        check_text(" ".join(argv[1:]), cwd)
+        check_text(" ".join(argv[1:]), cwd, depth + 1)
+        return
+    if head == "xargs":
+        rest = argv[1:]
+        while rest and rest[0].startswith("-"):
+            flag = rest[0]
+            rest = rest[1:]
+            if flag in ("-I", "-n", "-P", "-L", "-d", "-E", "-s", "-a") and rest:
+                rest = rest[1:]
+        if rest and os.path.basename(rest[0]) in ("git", "rm", "unlink", "shred", "find") | SHELLS:
+            raise Unknown(f"xargs into {rest[0]} (its arguments come from stdin)")
         return
     allenv = {**exported, **env}
     if head == "cargo":
@@ -342,18 +583,34 @@ def check_segment(words, cwd, exported):
         if not (xvfb or allenv.get("RAZDOR_ALLOW_WINDOW") == "1" or (display and display not in (":0", ":0.0", os.environ.get("DISPLAY", ":0")))):
             raise Block("This starts Razdor in a window on the owner's desktop. Run it off-screen under xvfb-run (see the offscreen-snapshot skill), or add RAZDOR_ALLOW_WINDOW=1 only when the owner asked for a visible run.")
     if head == "git":
-        check_git(argv, cwd)
+        check_git(argv, cwd, allenv, depth)
     elif head == "rm":
         check_rm(argv, cwd)
+    elif head == "find":
+        check_find(argv, cwd)
+    elif head in ("unlink", "shred") and len(argv) > 1:
+        pass  # single files: not a recursive delete
 
 
-def check_text(text, cwd):
+def check_text(text, cwd, depth=0):
+    if depth > 8:
+        raise Unknown("nesting too deep")
+    body, expanding = split_heredocs(text)
+    for inner in substitutions(body) + [s for b in expanding for s in substitutions(b)]:
+        check_text(inner, cwd, depth + 1)
     exported = {}
-    for seg in segments(text):
-        if seg and seg[0] == "cd" and len(seg) > 1 and "$" not in seg[1]:
-            cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(seg[1])))
+    for seg in segments(body):
+        head = os.path.basename(seg[0]) if seg else ""
+        if head in ("cd", "pushd"):
+            target = seg[1] if len(seg) > 1 else os.path.expanduser("~")
+            if cwd is None or "$" in target or "`" in target:
+                cwd = None
+            elif target != "-":
+                cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(target)))
+            else:
+                cwd = None
             continue
-        check_segment(seg, cwd, exported)
+        check_segment(seg, cwd, exported, depth)
 
 
 def main():
@@ -369,9 +626,9 @@ def main():
     except Block as b:
         print(f"Blocked by .claude/hooks/guard-bash.py: {b}", file=sys.stderr)
         return 2
-    except Exception:
-        if re.search(r"\bgit\b[^\n]*\bpush\b[^\n]*dt-feat", cmd):
-            print("Blocked by .claude/hooks/guard-bash.py: dt-feat is frozen (the command could not be parsed, so a push to it is refused).", file=sys.stderr)
+    except Exception as e:  # Unknown, or the hook's own error
+        if DANGER.search(cmd):
+            print(f"Blocked by .claude/hooks/guard-bash.py: the guard cannot tell what this command does ({e}), and it may push, stage game files or delete. Spell it out plainly (no variables or substitutions in the dangerous part), or ask the owner to run it.", file=sys.stderr)
             return 2
         return 0
     return 0

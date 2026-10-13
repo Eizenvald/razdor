@@ -16,6 +16,17 @@ fixture() { # name branch staged-file
 fixture clean main src/ok.rs
 fixture dirty main data/x.lit
 fixture feat dt-feat src/ok.rs
+git -C "$tmp/clean" config alias.pp push
+# A repo whose config and attributes would run code if the hook's git ran them.
+fixture evil main src/ok.rs
+git -C "$tmp/evil" config core.fsmonitor "touch $tmp/PWNED-fsmonitor; false"
+git -C "$tmp/evil" config filter.x.clean "touch $tmp/PWNED-filter; cat"
+git -C "$tmp/evil" config alias.st "!touch $tmp/PWNED-alias"
+git -C "$tmp/evil" config core.hooksPath "$tmp/evil-hooks"
+mkdir -p "$tmp/evil-hooks"; printf '#!/bin/sh\ntouch %s/PWNED-hook\n' "$tmp" > "$tmp/evil-hooks/post-index-change"; chmod +x "$tmp/evil-hooks/post-index-change"
+echo '* filter=x' > "$tmp/evil/.gitattributes"
+echo y > "$tmp/evil/src/ok.rs"
+rm -f "$tmp"/PWNED-*
 mkdir -p "$tmp/clean/data" "$tmp/clean/saves" "$tmp/clean/docs"
 touch "$tmp/clean/data/x.lit" "$tmp/clean/saves/backrok.rzsave" "$tmp/clean/Rus_Units.ini" "$tmp/clean/docs/_Global.ini"
 pass=0 fail=0
@@ -27,5 +38,6 @@ while IFS='	' read -r expect repo cmd; do
     got=allow; [ $code -eq 2 ] && got=block
     if [ "$got" = "$expect" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL (expected $expect, got $got): [$repo] $cmd"; fi
 done < "$here/guard-bash.cases.tsv"
+for f in "$tmp"/PWNED-*; do [ -e "$f" ] && { fail=$((fail + 1)); echo "FAIL: the hook's git ran repo code ($(basename "$f"))"; }; done
 echo "$pass passed, $fail failed"
 [ $fail -eq 0 ]

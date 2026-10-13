@@ -72,3 +72,52 @@ block	clean	rm -rf $HOME/x
 block	clean	rm -rf /tmp/claude-1000/../../home/indicozy
 allow	clean	python3 - <<'EOF'\nimport os\nprint("rm -rf / and cargo test and git push --force")\nEOF\necho done
 block	clean	python3 - <<'EOF'\nprint(1)\nEOF\ncargo test
+# the security review (fail closed on what the parser cannot know; substitutions; wrappers; aliases)
+block	clean	bash <<< "git push origin dt-feat"
+block	clean	echo "git push origin dt-feat" | bash
+block	clean	echo "$(git push origin dt-feat)"
+block	clean	echo `git push origin dt-feat`
+allow	clean	echo '$(git push origin dt-feat)'
+allow	clean	echo "$(date) and $(git rev-parse HEAD)"
+block	clean	B=dt-feat; git push origin $B
+block	clean	git push origin "$BRANCH"
+block	clean	$GIT push origin dt-feat
+block	clean	git -c alias.p=push p origin dt-feat
+block	clean	git pp origin dt-feat
+allow	clean	git pp origin main
+block	clean	git -c push.default=matching push
+block	clean	env -S "git push origin dt-feat"
+block	clean	bash -lc "git push origin dt-feat"
+block	clean	sudo -u indicozy git push origin dt-feat
+block	clean	nice -n 5 git push --force origin main
+block	clean	timeout 60 git push origin dt-feat
+block	clean	command git push origin dt-feat
+block	clean	watch "git push origin dt-feat"
+block	clean	git push origin 'refs/heads/*:refs/heads/*'
+block	clean	git push --delete origin dt-feat
+block	clean	git push -uf origin main
+block	clean	git push origin main --prune
+block	clean	GIT_DIR=/tmp/x/.git git push origin main
+block	clean	echo 'unclosed ; git push origin main
+block	clean	cat <<EOF\n$(git push origin dt-feat)\nEOF
+allow	clean	cat <<'EOF'\n$(git push origin dt-feat)\nEOF
+block	clean	ls | xargs rm -rf
+block	clean	git ls-files | xargs git add
+block	clean	git commit -m x src/../data/x.lit
+block	clean	git update-index --add data/x.lit
+block	clean	find . -name '*.orig' -delete
+allow	clean	find /tmp/claude-1000/x -name '*.png' -delete
+block	clean	find docs -exec rm -rf {} +
+block	clean	git clean -fdx
+allow	clean	git clean -n
+block	clean	rm -rf /tmp/claude-1000
+block	clean	rm -rf /mnt/ai_models/razdor-scratch-old/x
+block	clean	cd $X && rm -rf build
+block	clean	rm -rf -- target
+block	clean	rm --recursive --force target
+block	clean	perf record -a target/release/razdor
+allow	evil	git status
+allow	evil	git add src/ok.rs
+allow	evil	git commit -m ok
+allow	evil	git st
+allow	evil	git push origin main
