@@ -675,11 +675,7 @@ pub fn squad(
     // The unit's panel; a click on a worn item takes it off.
     let stats = u.stats(&c);
     let hero = (sel == 0).then(|| razdor::rules::content::HeroClass::ALL.into_iter().find(|h| h.unit() == u.def)).flatten();
-    let mut status = Vec::new();
-    if !u.potions.is_empty() {
-        let names: Vec<&str> = u.potions.iter().map(|&p| c.item(p).name.as_str()).collect();
-        status.push((razdor::trf!("Until the next battle: {names}", names = names.join(", ")), chrome::BLUE_TEXT));
-    }
+    let status = potion_status(&c, &u);
     // Dead and unpaid are the original's trait lines (`unit_sheet::state_lines`).
     let label = if showing_type { c.unit(u.def).name.clone() } else { game.squad_label(sel) };
     let sheet = unit_sheet::Sheet {
@@ -909,15 +905,6 @@ pub fn squad(
     // selected, the quoted name in #NAME1; over an empty cell its row's text by the fixed
     // card numbers (Line1 for cards 1–4, Line2 for 7–10, Line3 for 0, 5, 6, 11). A personal
     // item under the pointer says it is his own (0x4c280c).
-    let army_line = |n: usize, who: usize| chrome::ui_line("Army", n).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru).map(|t| t.replace("#NAME1", &format!("\"{}\"", game.squad_label(who))));
-    let row_text = |slot: razdor::rules::formation::Slot| {
-        let key = match unit_sheet::strip_place(f, slot) {
-            1..=4 => "Line1",
-            7..=10 => "Line2",
-            _ => "Line3",
-        };
-        chrome::ui_text("Army", key).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru)
-    };
     // Hovering or pressing a card puts its own unit back on the left panel.
     if card_under.is_some() {
         PANEL_TYPE.with(|p| p.set(None));
@@ -929,10 +916,10 @@ pub fn squad(
         chrome::ui_text("Army", "ItemI").filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru).or_else(|| Some(tr("His own item: it cannot be taken off while he lives.").to_string()))
     } else {
         match (card_under, selected.selected) {
-            (Some(i), Some(s)) if i == s => army_line(0, s),
-            (Some(_), Some(s)) => army_line(2, s),
-            (Some(i), None) => army_line(1, i),
-            (None, _) => empty_under.and_then(row_text),
+            (Some(i), Some(s)) if i == s => army_line(0, &game.squad_label(s)),
+            (Some(_), Some(s)) => army_line(2, &game.squad_label(s)),
+            (Some(i), None) => army_line(1, &game.squad_label(i)),
+            (None, _) => empty_under.and_then(|slot| row_text(f, slot)),
         }
     };
     let (hint, hc) = match (message.as_ref(), pointed) {
@@ -1055,6 +1042,31 @@ pub fn squad(
     next
 }
 
+/// The unit's potions still working, as its panel's status line (blue).
+pub(super) fn potion_status(c: &Content, u: &Unit) -> Vec<(String, Color)> {
+    if u.potions.is_empty() {
+        return Vec::new();
+    }
+    let names: Vec<&str> = u.potions.iter().map(|&p| c.item(p).name.as_str()).collect();
+    vec![(razdor::trf!("Until the next battle: {names}", names = names.join(", ")), chrome::BLUE_TEXT)]
+}
+
+/// `[Army]` hint line `n` with `name` quoted in #NAME1 (0x4c2f54), in a Russian game only.
+pub(super) fn army_line(n: usize, name: &str) -> Option<String> {
+    chrome::ui_line("Army", n).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru).map(|t| t.replace("#NAME1", &format!("\"{name}\"")))
+}
+
+/// The hint over an empty cell: its row's text by the fixed card numbers (Line1 for cards
+/// 1–4, Line2 for 7–10, Line3 for 0, 5, 6, 11), in a Russian game only.
+pub(super) fn row_text(f: razdor::rules::formation::Formation, slot: razdor::rules::formation::Slot) -> Option<String> {
+    let key = match unit_sheet::strip_place(f, slot) {
+        1..=4 => "Line1",
+        7..=10 => "Line2",
+        _ => "Line3",
+    };
+    chrome::ui_text("Army", key).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{promo_ease, promo_look, promo_ms, ArmySel, GridPress};
@@ -1145,3 +1157,4 @@ mod tests {
         assert_eq!((l.frame, l.along, l.all_glow), (49, 1.0, 0));
     }
 }
+

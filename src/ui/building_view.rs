@@ -47,9 +47,12 @@ fn quest_selection_row(r: Rect) {
     draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.72, 0.07, 0.04, 0.34));
 }
 
-fn take_quest_button(r: Rect, enabled: bool) -> bool {
+/// The quest panel's button: "Hear rumour" with a rumour picked, else "Take quest".
+fn take_quest_button(r: Rect, picked: Option<HallEntry>) -> bool {
+    let enabled = picked.is_some();
+    let label = if matches!(picked, Some(HallEntry::Rumour(_))) { tr("Hear rumour") } else { tr("Take quest") };
     let hover = enabled && mouse_in(r.x, r.y, r.w, r.h);
-    chrome::quest_button(r, tr("Take quest"), enabled, hover);
+    chrome::quest_button(r, label, enabled, hover);
     let pressed = hover && clicked();
     if pressed { cue(Cue::Button); }
     pressed
@@ -71,7 +74,7 @@ pub struct BuildingView {
     pub pick: Option<usize>,
     pub scroll: usize,
     /// Shared quest and rumour selection across non-army building tabs.
-    hall_pick: Option<usize>,
+    pub hall_pick: Option<usize>,
     hall_scroll: usize,
     /// The market shows the "sell" shop (the pack) instead of the goods.
     pub selling: bool,
@@ -290,7 +293,6 @@ fn hall_picture(kind: LocationKind, (picture_type, variant): (u8, u8)) -> Option
 fn main_hall(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, message: &mut Option<String>, dialogs: &mut VecDeque<Dialog>) -> Option<Screen> {
     let k = chrome::k();
     let l = game.location?;
-    let (x, w) = (f.cx, f.cw);
     let pic_h = window_layout::upper(Rect::new(f.x, f.y, f.w, f.h)).h;
     {
         let upper = window_layout::upper(Rect::new(f.x, f.y, f.w, f.h));
@@ -311,87 +313,7 @@ fn main_hall(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingVie
         }
         chrome::silver_frame(Rect::new(x, y, w, pic_h), k.max(1.0));
     }
-    let entries = game.hall_entries();
-    if view.hall_pick.is_some_and(|k| k >= entries.len()) {
-        view.hall_pick = None;
-    }
-    let picked = view.hall_pick.and_then(|k| entries.get(k).copied());
-    chrome::divider(window_layout::divider(Rect::new(f.x, f.y, f.w, f.h)));
-    let panel = window_layout::lower_content(Rect::new(f.x, f.y, f.w, f.h));
-    let ly = panel.y;
-    if entries.is_empty() {
-        // The original hides the whole quest area when there is nothing to offer. Keep
-        // its chain divider and let the brown parchment description panel fill the space.
-        let desc = game.world.locations[l].description.clone();
-        let box_y = ly;
-        description_box(&desc, x, box_y, w, f.y + f.h - box_y - 10.0 * k);
-        return None;
-    }
-    let (quest_border, take) = window_layout::quest_rects(panel);
-    if let Some(t) = chrome::quest_border_texture() {
-        chrome::tex(&t, quest_border, WHITE);
-    } else {
-        draw_rectangle(quest_border.x, quest_border.y, quest_border.w, quest_border.h, Color::new(0.0, 0.0, 0.0, 0.3));
-        chrome::silver_frame(quest_border, 1.0);
-    }
-    let mut next = None;
-    let title_area = Rect::new(quest_border.x + 62.0 * k, quest_border.y, quest_border.w - 70.0*k, quest_border.h);
-    let section_title = tr("Quests and rumours:");
-    let title_size = fit_size(&section_title, title_area.w, 20.0 * k);
-    chrome::shadow_centered(&section_title, title_area.x + title_area.w / 2.0, title_area.y + (title_area.h + title_size * 0.36) / 2.0, title_size, chrome::GOLD);
-    if take_quest_button(take, picked.is_some()) {
-        if let Some(HallEntry::Rumour(id) | HallEntry::Quest(id)) = picked {
-            match game.take_hall_entry(id) {
-                Ok(events) => {
-                    *message = None;
-                    view.hall_pick = None;
-                    next = world_view::handle_events(game, events, message, dialogs);
-                }
-                Err(e) => *message = Some(service_error(e)),
-            }
-        }
-    }
-    let list_y = (quest_border.y + quest_border.h).max(take.y + take.h) + 5.0*k;
-    let (row_h, rows) = (24.0 * k, 3);
-    let list_h = rows as f32 * row_h + 12.0 * k;
-    let list = Rect::new(x, list_y, w, list_h);
-    chrome::parchment_fill(list, true);
-    let max_scroll = entries.len().saturating_sub(rows);
-    if mouse_in(x, list_y, w, list_h) {
-        let wh = wheel();
-        if wh < 0.0 {
-            view.hall_scroll = (view.hall_scroll + 1).min(max_scroll);
-        } else if wh > 0.0 {
-            view.hall_scroll = view.hall_scroll.saturating_sub(1);
-        }
-    }
-    view.hall_scroll = view.hall_scroll.min(max_scroll);
-    // Razdor's scrollbar on the right when the entries do not all fit (a touch screen has no
-    // wheel); the rows give it room.
-    scrollbar(Rect::new(x + w - 16.0 * k, list_y + 4.0 * k, 12.0 * k, list_h - 8.0 * k), &mut view.hall_scroll, rows, entries.len());
-    let row_w = if max_scroll > 0 { w - 16.0 * k } else { w };
-    let visible_rows = entries.len().saturating_sub(view.hall_scroll).min(rows);
-    let first_row_y = list_y + (list_h - visible_rows as f32 * row_h) / 2.0;
-    for (n, entry) in entries.iter().enumerate().skip(view.hall_scroll).take(rows) {
-        let w = row_w;
-        let ry = first_row_y + (n - view.hall_scroll) as f32 * row_h;
-        let id = match *entry { HallEntry::Rumour(id) | HallEntry::Quest(id) => id };
-        if view.hall_pick == Some(n) {
-            quest_selection_row(Rect::new(x, ry, row_w, row_h));
-        }
-        let title: String = story::event_title(game, id).chars().take(60).collect();
-        let size = 16.0 * k;
-        let shown = ellipsize(&title, w - 20.0 * k, size);
-        text_centered(&shown, x + w / 2.0, ry + row_h / 2.0 + size * 0.36, size, quest_text_color());
-        if mouse_in(x, ry, w, row_h) && clicked() {
-            view.hall_pick = Some(n);
-        }
-    }
-    let dy = list_y + list_h + 10.0 * k;
-    let desc = game.world.locations[l].description.clone();
-    description_box(&desc, x, dy, w, f.y + f.h - dy - 10.0 * k);
-    quest_section_frame(panel, list);
-    next
+    hall_offers(game, f, view, message, dialogs)
 }
 
 /// One silver frame encloses the quest header and paper list; a matching line divides them.
@@ -401,8 +323,10 @@ fn quest_section_frame(panel: Rect, list: Rect) {
     draw_line(panel.x + 1.0, list.y, panel.x + panel.w - 1.0, list.y, chrome::k().max(1.0), chrome::SILVER);
 }
 
-/// Rumours and quests remain available from every building tab that does not manage armies.
-fn other_hall_offers(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut Option<String>, dialogs: &mut VecDeque<Dialog>) -> Option<Screen> {
+/// The quests and rumours under the main hall's picture; they remain available from every
+/// building tab that does not manage armies. With none on offer, the original hides the
+/// whole quest area: its divider stays and the building's description fills the space.
+fn hall_offers(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut Option<String>, dialogs: &mut VecDeque<Dialog>) -> Option<Screen> {
     let k = chrome::k();
     let entries = game.hall_entries();
     let strip = card_panel_divider(f);
@@ -427,8 +351,8 @@ fn other_hall_offers(game: &mut Game, f: &Frame, view: &mut BuildingView, messag
         chrome::silver_frame(quest_border, 1.0);
     }
     let title_area = Rect::new(quest_border.x + 62.0*k, quest_border.y, quest_border.w - 70.0*k, quest_border.h);
-    let title_size = fit_size(&title, title_area.w, 20.0 * k);
-    chrome::shadow_centered(&title, title_area.center().x, title_area.y + (title_area.h + title_size * 0.36) / 2.0, title_size, chrome::GOLD);
+    let title_size = fit_size(title, title_area.w, 20.0 * k);
+    chrome::shadow_centered(title, title_area.center().x, title_area.y + (title_area.h + title_size * 0.36) / 2.0, title_size, chrome::GOLD);
 
     let rows = 3usize;
     let row_h = 24.0 * k;
@@ -469,8 +393,9 @@ fn other_hall_offers(game: &mut Game, f: &Frame, view: &mut BuildingView, messag
     }
 
     let mut next = None;
-    if take_quest_button(take, view.hall_pick.is_some()) {
-        if let Some(HallEntry::Rumour(id) | HallEntry::Quest(id)) = view.hall_pick.and_then(|n| entries.get(n).copied()) {
+    let picked = view.hall_pick.and_then(|n| entries.get(n).copied());
+    if take_quest_button(take, picked) {
+        if let Some(HallEntry::Rumour(id) | HallEntry::Quest(id)) = picked {
             match game.take_hall_entry(id) {
                 Ok(events) => {
                     view.hall_pick = None;
@@ -539,7 +464,7 @@ fn selected_unit_panel(game: &Game, assets: &Assets, f: &Frame, view: &BuildingV
         unpaid: unit.unpaid,
         building: 0,
         hero,
-        status: Vec::new(),
+        status: super::items_view::potion_status(c, unit),
         battle: false,
     };
     let mut hover = None;
@@ -961,10 +886,6 @@ fn garrison(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
         (Some((true, _)), _, Some(Hit::Unit(i))) if unique(i) => Some((11, n_("You cannot change places with the selected character!"))),
         _ => None,
     };
-    if let Some((line, ours)) = refusal {
-        let t = chrome::ui_line("Army", line).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru).unwrap_or_else(|| tr(ours).to_string());
-        hover.insert(0, (t, chrome::RED_TEXT));
-    }
     let pointed = match (top, bottom) {
         (Some(Hit::Unit(j)), _) => Some((true, j)),
         (_, Some(Hit::Unit(i))) => Some((false, i)),
@@ -973,39 +894,21 @@ fn garrison(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
     let unit_name = |(guard, i): (bool, usize)| {
         if guard { guards[i].unit.name(&c).to_string() } else { game.squad_label(i) }
     };
+    // The refusal and the army window's hint lines (0x4c2f54) go on the strip, not the tooltip.
     let hint = if let Some((line, ours)) = refusal {
-        chrome::ui_line("Army", line).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru).unwrap_or_else(|| tr(ours).to_string())
+        Some(chrome::ui_line("Army", line).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru).unwrap_or_else(|| tr(ours).to_string()))
     } else if let Some(pointed) = pointed {
-        let (line, who) = match sel {
-            Some(selected) if selected == pointed => (0, selected),
-            Some(selected) => (2, selected),
-            None => (1, pointed),
-        };
-        let name = unit_name(who);
-        chrome::ui_line("Army", line)
-            .filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru)
-            .map(|t| t.replace("#NAME1", &format!("\"{name}\"")))
-            .unwrap_or_else(|| match line {
-                0 => format!("Click to deselect \"{name}\""),
-                2 => format!("Click to move \"{name}\""),
-                _ => format!("Click to select \"{name}\""),
-            })
+        match sel {
+            Some(selected) if selected == pointed => super::items_view::army_line(0, &unit_name(selected)),
+            Some(selected) => super::items_view::army_line(2, &unit_name(selected)),
+            None => super::items_view::army_line(1, &unit_name(pointed)),
+        }
     } else {
-        let cell = top.or(bottom).and_then(|hit| match hit { Hit::Cell(slot) => Some(slot), _ => None });
-        cell.and_then(|slot| {
-            let key = match super::unit_sheet::strip_place(c.formation, slot) {
-                1..=4 => "Line1",
-                7..=10 => "Line2",
-                _ => "Line3",
-            };
-            chrome::ui_text("Army", key).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru)
-        }).unwrap_or_default()
+        top.or(bottom).and_then(|hit| match hit { Hit::Cell(slot) => super::items_view::row_text(c.formation, slot), _ => None })
     };
-    if hint.is_empty() {
-        chrome::text_box(card_panel_divider(f));
-    } else {
-        let strip = card_panel_divider(f);
-        chrome::text_box(strip);
+    let strip = card_panel_divider(f);
+    chrome::text_box(strip);
+    if let Some(hint) = hint {
         chrome::hint_text(strip, &hint, if refusal.is_some() { chrome::RED_TEXT } else { Color::new(0.4, 1.0, 0.8, 1.0) });
     }
     if let Some((j, cell, price)) = view.garrison_buy {
@@ -1213,7 +1116,8 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
     let c = game.content.clone();
     let dw = w * 0.492;
     let (lx, lw) = (x + dw + 8.0 * k, w - dw - 8.0 * k);
-    chrome::shadow_centered(&own_text("Building", "ItemInfo", n_("Item description")), x + dw / 2.0, y + 13.0 * k, 17.0 * k, ACCENT);
+    let heading = own_text("Building", "ItemInfo", n_("Item description"));
+    chrome::shadow_centered(&heading, x + dw / 2.0, y + 13.0 * k, 17.0 * k, ACCENT);
     // The sell list holds only the pack items worth more than 1 (personal items and the
     // cheapest are not bought); a buy price above the gold is red (0x4bca8c).
     let sellable: Vec<usize> = (0..game.pack.len()).filter(|&k| game.can_sell(game.pack[k])).collect();
@@ -1313,7 +1217,7 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
         view.scroll = 0;
     }
     FILTER_KEYS.with(|f| f.set(reply.keys_taken));
-    next.or_else(|| other_hall_offers(game, f, view, message, dialogs))
+    next.or_else(|| hall_offers(game, f, view, message, dialogs))
 }
 
 /// Sanctuary: spells for sale; a spell bought goes into the hero's book.
@@ -1368,7 +1272,7 @@ fn sanctuary(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut 
             });
         }
     }
-    other_hall_offers(game, f, view, message, dialogs)
+    hall_offers(game, f, view, message, dialogs)
 }
 
 /// The sanctuary's spell list (0x4ba854): each row the spell's small picture, its name and
@@ -1522,7 +1426,8 @@ fn village_window(game: &mut Game, view: &BuildingView, message: &mut Option<Str
     let (btn_w, btn_h) = (btn_w * o, btn_h * o);
     let btn_x = x + (w - btn_w) / 2.0;
     let btn_y = y + h - 10.0 * o - btn_h;
-    let ok = button(btn_x, btn_y, btn_w, btn_h, &own_text("Buttons", "Ok", n_("OK")), true);
+    let label = own_text("Buttons", "Ok", n_("OK"));
+    let ok = button(btn_x, btn_y, btn_w, btn_h, &label, true);
     // The close box and Esc sound as the button does (tools/difftest/AV.md §5).
     let esc = key(KeyCode::Escape);
     if closed || esc {
@@ -1850,8 +1755,8 @@ mod tests {
     #[test]
     fn recruits_spread_over_the_picture_by_their_number() {
         let centre = |i, n| recruit_x(i, n) + 44.0;
-        assert_eq!((centre(0, 2), centre(1, 2)), (430.0, 654.0));
-        assert!(recruit_x(0, 6) >= 250.0 && recruit_x(5, 6) + 88.0 <= 834.0);
+        assert_eq!((centre(0, 2), centre(1, 2)), (428.0, 652.0));
+        assert!(recruit_x(0, 6) >= super::CARD_PANEL_X && recruit_x(5, 6) + 88.0 <= super::CARD_PANEL_X + super::CARD_PANEL_W);
     }
 
     #[test]

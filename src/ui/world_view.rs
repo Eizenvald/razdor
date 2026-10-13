@@ -156,18 +156,29 @@ pub struct MapView {
     was_busy: bool,
     /// What the hover marks on the cell it last worked out ([`MapHoverLook`]).
     hover: Option<MapHoverLook>,
+    /// The building last outlined and when the pointer was last near it: the outline stays
+    /// while the pointer is within a cell of its footprint, and [`OUTLINE_GRACE`] after
+    /// that, so moving over its picture does not make it blink.
+    outlined: Option<(usize, f64)>,
 }
 
-/// The original's animated ring on the hovered cell, drawn below any building sprite.
+/// How long a building stays outlined after the pointer leaves it, in seconds.
+const OUTLINE_GRACE: f64 = 0.3;
+
+/// The hover's marks on the map: the original's animated ring on the hovered cell
+/// ([`cursor::hover_ring`]) and, Razdor's choice (a player's wish), the outline of the
+/// building under the pointer. The original only rings the cell, under the building's
+/// picture.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct MapHoverLook {
     cell: Tile,
     ring: Option<(&'static str, Color)>,
+    building: Option<usize>,
 }
 
 impl Default for MapView {
     fn default() -> Self {
-        MapView { zoom: 1.0, zoom_steps: 0, minimap: false, debug: false, look: None, shows: VecDeque::new(), returning: None, opening: None, spell_fx: VecDeque::new(), preview: None, last_frame_ms: None, back_to: None, centring: None, grab: None, toasts: VecDeque::new(), pointer: Shape::Arrow, pointer_cell: None, was_busy: false, hover: None }
+        MapView { zoom: 1.0, zoom_steps: 0, minimap: false, debug: false, look: None, shows: VecDeque::new(), returning: None, opening: None, spell_fx: VecDeque::new(), preview: None, last_frame_ms: None, back_to: None, centring: None, grab: None, toasts: VecDeque::new(), pointer: Shape::Arrow, pointer_cell: None, was_busy: false, hover: None, outlined: None }
     }
 }
 
@@ -1063,7 +1074,10 @@ fn draw_object(o: &Decoration, art: Option<&DtArt>, cam: &Camera) {
     }
 }
 
-fn draw_building(l: &Location, art: Option<&DtArt>, cam: &Camera) {
+/// The outline of the building under the pointer (Razdor's choice, see [`MapHoverLook`]).
+const BUILDING_OUTLINE: Color = Color::new(1.0, 0.82, 0.42, 0.9);
+
+fn draw_building(l: &Location, art: Option<&DtArt>, cam: &Camera, outlined: bool) {
     let base = cam.to_screen(footprint_base(cam.grid, l));
     let zoom = cam.scale / PX;
     let sprite = art.and_then(|a| a.map_atlas()).and_then(|at| Some((at, at.building(l.picture.0, l.picture.1)?)));
@@ -1072,6 +1086,15 @@ fn draw_building(l: &Location, art: Option<&DtArt>, cam: &Camera) {
     if let Some((atlas, r)) = sprite {
         let at = building_sprite_origin(l, r.w, r.h, cam);
         let params = DrawTextureParams { dest_size: Some(vec2(r.w * zoom, r.h * zoom)), source: Some(r), ..Default::default() };
+        if outlined {
+            // The picture's solid shape in gold, a little out every way, under the picture.
+            let d = (1.5 * zoom).max(1.0);
+            super::chrome::silhouette(|| {
+                for (dx, dy) in [(-d, 0.0), (d, 0.0), (0.0, -d), (0.0, d), (-d, -d), (d, -d), (-d, d), (d, d)] {
+                    draw_texture_ex(&atlas.texture, at.x + dx, at.y + dy, BUILDING_OUTLINE, params.clone());
+                }
+            });
+        }
         draw_texture_ex(&atlas.texture, at.x, at.y, WHITE, params);
     } else {
         let (w, h) = (l.size.0 as f32 * cam.scale, (l.size.1 as f32 * cam.cell_size().y).max(cam.scale * 0.8));
@@ -1084,7 +1107,8 @@ fn draw_building(l: &Location, art: Option<&DtArt>, cam: &Camera) {
             _ => rgb(206, 180, 140),
         };
         draw_rectangle(base.x - w / 2.0, base.y - h, w, h, wall);
-        draw_rectangle_lines(base.x - w / 2.0, base.y - h, w, h, 1.5, rgb(70, 60, 50));
+        let (edge, thick) = if outlined { (BUILDING_OUTLINE, 2.5) } else { (rgb(70, 60, 50), 1.5) };
+        draw_rectangle_lines(base.x - w / 2.0, base.y - h, w, h, thick, edge);
         if !l.kind.is_bridge() {
             let roof = if l.kind == LocationKind::Camp && l.cleared { rgb(60, 56, 50) } else { rgb(170, 64, 48) };
             draw_triangle(vec2(base.x, base.y - h - h * 0.5), vec2(base.x - w / 2.0, base.y - h), vec2(base.x + w / 2.0, base.y - h), roof);
@@ -1362,7 +1386,7 @@ fn draw_world(game: &Game, assets: &Assets, cam: &Camera, preview: Option<&[Tile
     for (_, d) in items.iter().chain(&buildings).chain(&figures) {
         match d {
             Drawable::Object(o) => draw_object(o, art, cam),
-            Drawable::Building(i) => draw_building(&game.world.locations[*i], art, cam),
+            Drawable::Building(i) => draw_building(&game.world.locations[*i], art, cam, hover.is_some_and(|h| h.building == Some(*i))),
             Drawable::Army(i) => draw_army(game, &game.world.armies[*i], assets, art, cam),
             Drawable::Ship => {
                 if let Some(ship) = game.ship {
@@ -1838,16 +1862,19 @@ fn update_pointer(game: &Game, view: &mut MapView, cam: &Camera, on_minimap: boo
         view.pointer_cell = Some(t);
         let h = map_hover(game, t, on_minimap);
         view.pointer = cursor::map_pointer(view.pointer, &h);
-        view.hover = Some(hover_look(t, &h));
+        view.hover = Some(hover_look(game, t, &h));
     }
 }
 
 /// The hover's marks for cell `t`, from its hit test `h`: the ring in the colour of the
 /// original's mark ([`cursor::hover_ring`]: 2 the route end's green, 3 the armies' red) and
 /// the building over it, if any.
-fn hover_look(t: Tile, h: &MapHover) -> MapHoverLook {
+fn hover_look(game: &Game, t: Tile, h: &MapHover) -> MapHoverLook {
     let ring = cursor::hover_ring(h).map(|c| if c == 3 { ("Selection-1", MARK_ARMY) } else { ("Selection-0", MARK_ROUTE_END) });
-    MapHoverLook { cell: t, ring }
+    // A bridge is a piece of the land, nothing to enter: never outlined. Another kind of
+    // building drawn with a bridge's picture is.
+    let building = h.building.as_ref().and_then(|_| game.world.location_at(t));
+    MapHoverLook { cell: t, ring, building }
 }
 
 /// A click on the building the party stands in (`t` one of its cells): he enters it again
@@ -2367,7 +2394,23 @@ pub fn frame(game: &mut Game, assets: &Assets, view: &mut MapView, message: &mut
         }
         _ => None,
     };
-    draw_world(game, assets, &cam, view.preview.as_ref().map(|p| p.1.as_slice()), show.as_ref(), view.hover);
+    // The hovered building is outlined only while the pointer is on it and the map takes
+    // input; the cell's ring stays as the original leaves it.
+    let pointed = !input_blocked() && view.pointer != Shape::Clock && view.hover.is_some_and(|h| cam.tile_under_mouse() == Some(h.cell));
+    let pointed_at = view.hover.and_then(|h| h.building.filter(|_| pointed));
+    let taking = !input_blocked() && view.pointer != Shape::Clock;
+    let now_s = get_time();
+    let mouse_cell = cam.tile_under_mouse();
+    let near = |b: usize| mouse_cell.is_some_and(|(x, y)| game.world.locations[b].cells().any(|(cx, cy)| (cx - x).abs() <= 1 && (cy - y).abs() <= 1));
+    view.outlined = match (pointed_at, view.outlined) {
+        (Some(b), _) => Some((b, now_s)),
+        // Off it but still within a cell of it, and not on another building.
+        (None, Some((b, _))) if taking && view.hover.is_none_or(|h| h.building.is_none()) && near(b) => Some((b, now_s)),
+        (None, Some((b, at))) if taking && now_s - at < OUTLINE_GRACE => Some((b, at)),
+        _ => None,
+    };
+    let hover = view.hover.map(|h| MapHoverLook { building: view.outlined.map(|(b, _)| b), ..h });
+    draw_world(game, assets, &cam, view.preview.as_ref().map(|p| p.1.as_slice()), show.as_ref(), hover);
     cam.draw_fog(game);
     cam.draw_showing(game, view.opening.iter().chain(&view.shows), now);
     if let Some(s) = view.shows.front() {

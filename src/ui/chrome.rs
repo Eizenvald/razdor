@@ -45,7 +45,8 @@ struct Chrome {
     dir: PathBuf,
     /// By path, then by [`Fx`] (its index).
     textures: HashMap<String, [Option<Option<Texture2D>>; 8]>,
-    visual_textures: HashMap<&'static str, ([f32; 4], Texture2D)>,
+    /// By key: the tuning it was made with and the texture (`None`: its file is missing).
+    visual_textures: HashMap<&'static str, ([f32; 4], Option<Texture2D>)>,
     animations: HashMap<String, Option<Vec<Texture2D>>>,
     texts: Option<Option<Ini>>,
 }
@@ -298,14 +299,16 @@ fn visual_texture(key: &'static str, rel: &str, params: [f32; 4], adjust: impl F
         let (_, texture) = state.as_ref()?.visual_textures.get(key).filter(|(saved, _)| *saved == params)?;
         Some(texture.clone())
     }) {
-        return Some(t);
+        return t;
     }
-    let mut decoded = image(rel)?;
-    adjust(&mut decoded);
-    let texture = to_texture(&decoded)?;
+    // A missing or bad file is remembered too, so it is looked for (and reported) once.
+    let texture = image(rel).and_then(|mut decoded| {
+        adjust(&mut decoded);
+        to_texture(&decoded)
+    });
     CHROME.with(|state| {
         state.borrow_mut().as_mut()?.visual_textures.insert(key, (params, texture.clone()));
-        Some(texture)
+        texture
     })
 }
 
@@ -669,6 +672,37 @@ pub fn additive(draw: impl FnOnce()) {
             .clone()
     });
     with_material(material, draw);
+}
+
+const SILHOUETTE_FRAGMENT: &str = r#"#version 100
+varying lowp vec4 color;
+varying lowp vec2 uv;
+uniform sampler2D Texture;
+void main() {
+    gl_FragColor = vec4(color.rgb, color.a * step(0.7, texture2D(Texture, uv).a));
+}"#;
+
+thread_local! {
+    static SILHOUETTE: std::cell::OnceCell<Option<Material>> = const { std::cell::OnceCell::new() };
+}
+
+/// Runs `draw` with every picture drawn as its solid shape in the tint colour (the faint
+/// alpha of a shadow left out), for outlines. Without the material, nothing is drawn.
+pub fn silhouette(draw: impl FnOnce()) {
+    use macroquad::miniquad::{BlendFactor, BlendState, BlendValue, Equation, PipelineParams};
+    let material = SILHOUETTE.with(|m| {
+        m.get_or_init(|| {
+            let blend = BlendState::new(Equation::Add, BlendFactor::Value(BlendValue::SourceAlpha), BlendFactor::OneMinusValue(BlendValue::SourceAlpha));
+            let pipeline_params = PipelineParams { color_blend: Some(blend), ..Default::default() };
+            load_material(ShaderSource::Glsl { vertex: ADD_VERTEX, fragment: SILHOUETTE_FRAGMENT }, MaterialParams { pipeline_params, ..Default::default() })
+                .map_err(|e| razdor::diag!("silhouette material: {e}"))
+                .ok()
+        })
+        .clone()
+    });
+    if let Some(m) = material {
+        with_material(Some(m), draw);
+    }
 }
 
 /// Runs `draw` with multiplying blending: what is below is multiplied by the colour drawn
@@ -1077,7 +1111,7 @@ fn title_bar_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bo
         let w = t.width() * h / t.height();
         tex(&t, Rect::new(r.x + k, r.y + (r.h - h) / 2.0, w, h), tint);
         if let Some(t2) = win_fx("Corner-Right", Fx::KeyBlack) {
-            let right = r.x + r.w - w - k;
+            let right = r.x + r.w - w - k - if closable { r.h + 4.0 * k } else { 0.0 };
             tex(&t2, Rect::new(right, r.y + (r.h - h) / 2.0, w, h), tint);
         }
     }

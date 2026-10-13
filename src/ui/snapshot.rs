@@ -286,8 +286,14 @@ fn try_stage(app: &mut App, scene: &str) -> Result<(), String> {
             // The map's opening windows are not shown over the building.
             game.drain_events();
             let mut view = BuildingView::new(tab);
-            // `…:sanctuary:<row>` (or any tab): that row of its list picked.
-            view.pick = parts.next().and_then(|p| p.parse().ok());
+            // `…:sanctuary:<row>` (or any tab): that row of its list picked; the main hall's
+            // list is its quests and rumours.
+            let row = parts.next().and_then(|p| p.parse().ok());
+            if tab == razdor::rules::town::Tab::MainHall {
+                view.hall_pick = row;
+            } else {
+                view.pick = row;
+            }
             Screen::Building(view)
         }
         "army" => {

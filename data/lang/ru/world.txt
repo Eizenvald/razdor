@@ -114,10 +114,6 @@ Lv {level} = Ур. {level}
 # Building window: main hall
 Quests and rumours: = Предлагаемые задания и слухи:
 Hear rumour = Выслушать слух
-Nothing is on offer here. = Здесь ничего не предлагают.
-No quests in the demo. = В демо нет заданий.
-rumour = слух
-quest = задание
 Take quest = Взять задание
 
 # Building window: barracks
@@ -145,6 +141,7 @@ Back in your army. = Снова в вашей армии.
 Units on guard draw no wage and heal {pct}% a day. = Стража не получает жалованья и исцеляется на {pct}% в день.
 
 # Building window: market and sanctuary
+Item description = Описание предмета
 Name = Название
 Price = Цена
 warriors only = только для воинов
