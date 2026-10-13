@@ -38,7 +38,7 @@ did not run — run `--bins` separately.
 
 Known slow-machine failure: `rules::ai::real_maps::thirty_days_on_every_map` has a time
 budget per map (`RELEASE_BUDGET_SECS`); on slow cores scale it with
-`RAZDOR_PERF_BUDGET_SCALE=1.5`.
+`RAZDOR_PERF_BUDGET_SCALE=2` (РК6 takes about 8 s on E-cores).
 
 ## Offscreen runs and snapshots
 
