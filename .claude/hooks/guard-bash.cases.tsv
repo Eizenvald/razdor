@@ -121,3 +121,26 @@ allow	evil	git add src/ok.rs
 allow	evil	git commit -m ok
 allow	evil	git st
 allow	evil	git push origin main
+# the third review: the push target as git's config decides it; more parser differentials
+block	upstream	git push
+block	upstream	git push origin main
+allow	upstream	git push origin main:main
+block	remotepush	git push
+block	remotepush	git push origin main
+block	matching	git push
+block	clean	git push origin main#x; git push origin dt-feat
+allow	clean	git push origin main # and later dt-feat
+block	clean	{ git push origin dt-feat; }
+block	clean	if true; then git push origin dt-feat; fi
+block	clean	! git push origin dt-feat
+block	clean	git push origin dt-fea{t,}
+block	clean	git push origin dt-fea?
+block	clean	git push origin $'dt-feat'
+block	clean	g\it pu\sh origin dt-feat
+block	clean	git push origin dt-feat&>/dev/null
+block	clean	(cd . && git push origin dt-feat)
+block	clean	f() { git push origin dt-feat; }; f
+block	clean	rm -rf {target,docs}
+allow	clean	cargo clean --profile dev
+allow	clean	cargo clean
+block	clean	rm -rf target/debug

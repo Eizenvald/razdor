@@ -17,6 +17,15 @@ fixture clean main src/ok.rs
 fixture dirty main data/x.lit
 fixture feat dt-feat src/ok.rs
 git -C "$tmp/clean" config alias.pp push
+# Pushes whose target the config decides.
+fixture upstream main src/ok.rs
+git -C "$tmp/upstream" config push.default upstream
+git -C "$tmp/upstream" config branch.main.remote origin
+git -C "$tmp/upstream" config branch.main.merge refs/heads/dt-feat
+fixture remotepush main src/ok.rs
+git -C "$tmp/remotepush" config remote.origin.push refs/heads/main:refs/heads/dt-feat
+fixture matching main src/ok.rs
+git -C "$tmp/matching" config push.default matching
 # A repo whose config and attributes would run code if the hook's git ran them.
 fixture evil main src/ok.rs
 git -C "$tmp/evil" config core.fsmonitor "touch $tmp/PWNED-fsmonitor; false"

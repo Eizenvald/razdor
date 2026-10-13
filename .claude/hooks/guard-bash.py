@@ -28,7 +28,9 @@ or rm from another language (python -c, perl -e), a script file run with `sh fil
 the owner's interactive shell aliases, and plumbing such as `git commit-tree`.
 
 The hook runs only read-only git commands, never anything taken from the command text as code,
-and runs them hardened: no system or global config, fsmonitor and hooks off, no optional locks,
+and runs them hardened: no system config, fsmonitor and hooks forced off on the command line
+(over the repo's and the owner's global config, which is read: push.default and aliases live
+there and decide what a push does), no optional locks,
 no external diff or textconv, and only listings that never run filters (ls-files, diff --cached).
 
 Cases: guard-bash.cases.tsv, run by test-guard.sh.
@@ -51,6 +53,8 @@ CARGO_PINNED = {"build", "b", "test", "t", "run", "r", "clippy", "check", "c", "
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "fish"}
 # Words that make an unreadable command dangerous enough to refuse.
 DANGER = re.compile(r"\b(git|rm|find|xargs|unlink|shred)\b|--no-verify|dt-feat|--force|\+[\w/]+:")
+KEYWORDS = {"{", "}", "!", "if", "then", "else", "elif", "fi", "do", "done", "while", "until", "time", "coproc"}
+BRACES = re.compile(r"\{[^}]*(,|\.\.)[^}]*\}")
 ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 OPCHARS = set(";&|()\n")
 GIT_TIMEOUT = 3
@@ -118,6 +122,40 @@ def substitutions(text):
     return out
 
 
+def strip_comments(text):
+    """Drops `#` comments as bash reads them: only a `#` that starts a word, outside quotes
+    (shlex would also cut `a#b`, hiding what follows on the line)."""
+    out, i, n, state = [], 0, len(text), "normal"
+    while i < n:
+        c = text[i]
+        if state == "single":
+            if c == "'":
+                state = "normal"
+        elif state == "double":
+            if c == "\\":
+                out.append(text[i:i + 2])
+                i += 2
+                continue
+            if c == '"':
+                state = "normal"
+        else:
+            if c == "\\":
+                out.append(text[i:i + 2])
+                i += 2
+                continue
+            if c == "'":
+                state = "single"
+            elif c == '"':
+                state = "double"
+            elif c == "#" and (i == 0 or text[i - 1] in " \t\n;&|()"):
+                j = text.find("\n", i)
+                i = n if j < 0 else j
+                continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 HEREDOC = re.compile(r"(?<!<)<<(?!<)-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 
 
@@ -144,7 +182,7 @@ def segments(text):
     lex = shlex.shlex(text.replace("\\\n", " "), posix=True, punctuation_chars=";&|()\n")
     lex.whitespace = " \t\r"
     lex.whitespace_split = True
-    lex.commenters = "#"
+    lex.commenters = ""
     seg, segs = [], []
     try:
         for tok in lex:
@@ -200,6 +238,8 @@ def unwrap(words, nested):
                     return [], env, pinned, xvfb
                 elif flag in ("-u", "-C", "--unset", "--chdir") and w:
                     w = w[1:]
+        elif w[0] in KEYWORDS:
+            w = w[1:]
         elif head == "taskset":
             w = w[1:]
             spec = None
@@ -272,7 +312,7 @@ def git_out(args, cwd):
     if cwd is None:
         raise Unknown("the working folder")
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null", GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", GIT_PAGER="cat", PAGER="cat")
+    env.update(GIT_CONFIG_NOSYSTEM="1", GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", GIT_PAGER="cat", PAGER="cat")
     hard = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "core.untrackedCache=false", "-c", "diff.external=", "--no-pager"]
     try:
         r = subprocess.run(["git", *hard, *args], cwd=cwd, env=env, capture_output=True, text=True, timeout=GIT_TIMEOUT, stdin=subprocess.DEVNULL)
@@ -435,21 +475,31 @@ def check_push(args, cwd):
     if cwd is None:
         raise Unknown("a push from an unknown repository")
     refspecs = pos[1:]
+    cur = current_branch(cwd)
+    default = git_out(["config", "--get", "push.default"], cwd).strip() or "simple"
+    remote = pos[0] if pos else (git_out(["config", "--get", f"branch.{cur}.pushRemote"], cwd).strip() or git_out(["config", "--get", "remote.pushDefault"], cwd).strip() or git_out(["config", "--get", f"branch.{cur}.remote"], cwd).strip() or "origin")
+    mapped = "$" not in remote and git_out(["config", "--get-all", f"remote.{remote}.push"], cwd).strip()
+    merge = git_out(["config", "--get", f"branch.{cur}.merge"], cwd).strip() if cur else ""
+    upstream = merge[len("refs/heads/"):] if merge.startswith("refs/heads/") else merge
     if not refspecs:
-        default = git_out(["config", "--get", "push.default"], cwd).strip()
-        remote = pos[0] if pos else git_out(["config", "--get", f"branch.{current_branch(cwd)}.remote"], cwd).strip() or "origin"
-        if default == "matching" or "$" in remote or git_out(["config", "--get-all", f"remote.{remote}.push"], cwd).strip():
+        if not cur or default in ("matching", "nothing") or mapped or "$" in remote:
             raise Unknown("a push whose branches come from the config")
-        dests = [current_branch(cwd)]
+        dests = [cur] + ([upstream] if upstream and default in ("upstream", "tracking", "simple") else [])
     else:
+        if mapped:
+            raise Unknown(f"remote.{remote}.push maps the branches")
         dests = []
         for spec in refspecs:
             if spec.startswith("+"):
                 raise Block(f"git push {spec}: a '+' refspec is a force push.")
             if "$" in spec or "`" in spec or "*" in spec:
                 raise Unknown(f"the refspec {spec}")
+            if any(ch in spec for ch in "?[{"):
+                raise Unknown(f"the refspec {spec}")
             src, _, dst = spec.partition(":")
             dests.append(resolve_dest(dst if ":" in spec else src, cwd))
+            if ":" not in spec and upstream and resolve_dest(src, cwd) == cur and default in ("upstream", "tracking"):
+                dests.append(upstream)
     for d in dests:
         if d in FROZEN:
             raise Block("dt-feat is frozen: nothing is pushed to it. Work goes to main (parity fixes also cherry-picked to dt-original).")
@@ -582,6 +632,8 @@ def check_segment(words, cwd, exported, depth):
         display = allenv.get("DISPLAY")
         if not (xvfb or allenv.get("RAZDOR_ALLOW_WINDOW") == "1" or (display and display not in (":0", ":0.0", os.environ.get("DISPLAY", ":0")))):
             raise Block("This starts Razdor in a window on the owner's desktop. Run it off-screen under xvfb-run (see the offscreen-snapshot skill), or add RAZDOR_ALLOW_WINDOW=1 only when the owner asked for a visible run.")
+    if head in ("git", "rm", "find") and any(BRACES.search(a) for a in argv[1:]):
+        raise Unknown("brace expansion in the arguments")
     if head == "git":
         check_git(argv, cwd, allenv, depth)
     elif head == "rm":
@@ -596,6 +648,7 @@ def check_text(text, cwd, depth=0):
     if depth > 8:
         raise Unknown("nesting too deep")
     body, expanding = split_heredocs(text)
+    body = strip_comments(body)
     for inner in substitutions(body) + [s for b in expanding for s in substitutions(b)]:
         check_text(inner, cwd, depth + 1)
     exported = {}
