@@ -130,6 +130,9 @@ export RAZDOR_DT_DIR="/path/to/Discord Times"   # the folder with DiscordTimes.e
 cargo test                                      # also checks the readers against your files
 ```
 
+Тесты скорости ИИ на картах рассчитаны на быстрые ядра; на медленных задайте множитель
+бюджета, например `RAZDOR_PERF_BUDGET_SCALE=2`.
+
 Установленная игра ищется по порядку: `RAZDOR_DT_DIR` (читается также из файла `.env` в
 текущей папке или рядом с программой, `RAZDOR_DT_DIR="/path/to/Discord Times"`); собственная
 папка программы, так что `Razdor.exe` (Windows), `razdor` (Linux) или `razdor-macos` (macOS),
