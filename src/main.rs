@@ -134,10 +134,15 @@ async fn main() {
     let quit_after = quit_after();
     let mut frames = 0u64;
     // RAZDOR_PROFILE=1: frames whose work takes over 40 ms are logged with their screen.
-    let profile = std::env::var_os("RAZDOR_PROFILE").is_some();
+    let profile = razdor::diag::profiling();
+    // With RAZDOR_PROFILE, the frames after a window opens are logged whatever they take.
+    let mut opened = 0u32;
     loop {
         let started = std::time::Instant::now();
         let before = app.screen_name();
+        if ui::snapshot::open_later(&mut app, frames) {
+            opened = 6;
+        }
         app.frame();
         app.draw_fps();
         // The original draws its pointer last, over everything (0x474a81).
@@ -164,7 +169,8 @@ async fn main() {
             // The whole frame: the game's work, then drawing and the GPU (textures and font
             // atlases go up there), vsync included (~16 ms). Over 100 ms is a visible hitch.
             let total = started.elapsed();
-            if total.as_millis() > 100 {
+            if total.as_millis() > 100 || opened > 0 {
+                opened = opened.saturating_sub(1);
                 let (w, r) = (work.as_secs_f32() * 1000.0, (total - work).as_secs_f32() * 1000.0);
                 razdor::diag!("slow frame: {:.0} ms = work {w:.0} + render {r:.0} ({before} -> {})", w + r, app.screen_name());
             }

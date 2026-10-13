@@ -325,9 +325,55 @@ pub fn decode(bytes: &[u8]) -> Result<(SaveMeta, Game), SaveError> {
 
 /// Only the meta of a save file (for the load screen).
 pub fn read_meta(path: &Path) -> Result<SaveMeta, SaveError> {
+    let stamp = file_stamp(path)?;
+    if let Some(meta) = cached_meta(path, stamp) {
+        return Ok(meta);
+    }
+    let meta = read_meta_uncached(path)?;
+    remember_meta(path, stamp, &meta);
+    Ok(meta)
+}
+
+/// The meta read from the file itself: the whole file unpacked, the meta parsed out of it
+/// (bzip2 has no way to unpack the first bytes alone: most of the load window's time).
+fn read_meta_uncached(path: &Path) -> Result<SaveMeta, SaveError> {
     let json = unpack(&std::fs::read(path)?)?;
     let m: MetaIn = serde_json::from_slice(&json).map_err(|e| SaveError::Corrupt(e.to_string()))?;
     Ok(m.meta)
+}
+
+/// What tells a save file's versions apart: its length and its time of writing.
+type FileStamp = (u64, Option<std::time::SystemTime>);
+
+fn file_stamp(path: &Path) -> std::io::Result<FileStamp> {
+    let m = std::fs::metadata(path)?;
+    Ok((m.len(), m.modified().ok()))
+}
+
+/// The metas read so far, by file, with the stamp of the file they were read from *(Razdor's)*:
+/// the load window, the autosaves and the quick saves list the folder again and again, and
+/// unpacking every save each time made the window open late (a player's report).
+static META_CACHE: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, (FileStamp, SaveMeta)>>> =
+    std::sync::LazyLock::new(Default::default);
+
+fn cached_meta(path: &Path, stamp: FileStamp) -> Option<SaveMeta> {
+    let cache = META_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    cache.get(path).filter(|(s, _)| *s == stamp).map(|(_, m)| m.clone())
+}
+
+fn remember_meta(path: &Path, stamp: FileStamp, meta: &SaveMeta) {
+    META_CACHE.lock().unwrap_or_else(|e| e.into_inner()).insert(path.to_path_buf(), (stamp, meta.clone()));
+}
+
+/// Reads the metas of the saves of the install's folder ([`games_dir`]) on a thread of its
+/// own, so the load window finds them read when it opens.
+pub fn warm_meta_cache() {
+    let _ = std::thread::Builder::new().name("save metas".into()).spawn(move || {
+        let Some(dir) = games_dir() else { return };
+        for kind in [SaveKind::Auto, SaveKind::Manual] {
+            let _ = by_time(&dir, kind);
+        }
+    });
 }
 
 /// The player's data folder for a kind of save.
@@ -402,6 +448,9 @@ fn put(path: &Path, kind: SaveKind, name: &str, game: &Game) -> Result<PathBuf, 
     let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, bytes)?;
     std::fs::rename(&tmp, path)?;
+    if let Ok(stamp) = file_stamp(path) {
+        remember_meta(path, stamp, &meta);
+    }
     Ok(path.to_path_buf())
 }
 
@@ -463,19 +512,40 @@ fn by_time(dir: &Path, kind: SaveKind) -> Vec<SaveEntry> {
     let folder = kind_dir(dir, kind);
     let Ok(read) = std::fs::read_dir(&folder) else { return Vec::new() };
     let pins = pins(&folder);
-    let mut v: Vec<SaveEntry> = read
+    let files: Vec<(PathBuf, FileStamp)> = read
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == EXTENSION))
-        .filter_map(|path| {
+        .filter_map(|p| Some((file_stamp(&p).ok()?, p)))
+        .map(|(s, p)| (p, s))
+        .collect();
+    // The files not read before are unpacked on all the cores at once.
+    let fresh: Vec<&(PathBuf, FileStamp)> = files.iter().filter(|(p, s)| cached_meta(p, *s).is_none()).collect();
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).clamp(1, 8);
+    if fresh.len() > 1 && threads > 1 {
+        std::thread::scope(|scope| {
+            for chunk in fresh.chunks(fresh.len().div_ceil(threads)) {
+                scope.spawn(move || {
+                    for (p, s) in chunk {
+                        if let Ok(meta) = read_meta_uncached(p) {
+                            remember_meta(p, *s, &meta);
+                        }
+                    }
+                });
+            }
+        });
+    }
+    let mut v: Vec<(SaveEntry, FileStamp)> = files
+        .into_iter()
+        .filter_map(|(path, stamp)| {
+            let meta = cached_meta(&path, stamp).map_or_else(|| read_meta(&path).ok(), Some)?;
             let pinned = file_name(&path).is_some_and(|n| pins.contains(&n));
-            Some(SaveEntry { meta: read_meta(&path).ok()?, path, pinned })
+            Some((SaveEntry { meta, path, pinned }, stamp))
         })
         .collect();
     // Within a second, the file written last first (a reused autosave keeps an old name).
-    let written = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
-    v.sort_by(|a, b| b.meta.saved_at.cmp(&a.meta.saved_at).then_with(|| written(&b.path).cmp(&written(&a.path))).then_with(|| b.path.cmp(&a.path)));
-    v
+    v.sort_by(|(a, sa), (b, sb)| b.meta.saved_at.cmp(&a.meta.saved_at).then_with(|| sb.1.cmp(&sa.1)).then_with(|| b.path.cmp(&a.path)));
+    v.into_iter().map(|(e, _)| e).collect()
 }
 
 /// The list of pinned saves of a kind's folder: one file name per line.
@@ -822,6 +892,27 @@ pub(crate) mod tests {
         std::fs::write(dir.join("manual").join("junk.rzsave"), b"not a save").unwrap();
         assert_eq!(list(&dir, SaveKind::Manual).len(), 2, "unreadable files are skipped");
         assert!(matches!(load(&dir.join("manual").join("junk.rzsave"), demo(), None), Err(SaveError::Corrupt(_))));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_listed_metas_follow_the_files() {
+        let dir = temp_dir("meta-cache");
+        let mut g = Game::new(demo(), HeroClass::Knight);
+        let mut paths = Vec::new();
+        for k in 0..12 {
+            paths.push(write(&dir, SaveKind::Manual, &format!("Save {k}"), &g).unwrap());
+        }
+        let names = || list(&dir, SaveKind::Manual).into_iter().map(|e| e.meta.name).collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(names().len(), 12);
+        // Read once, the metas are remembered; a file changed outside Razdor is read again.
+        META_CACHE.lock().unwrap().retain(|p, _| !p.starts_with(&dir));
+        assert_eq!(names().len(), 12, "read on several threads at once");
+        g.gold = 7;
+        let other = write(&dir, SaveKind::Manual, "Other name", &g).unwrap();
+        std::fs::copy(&other, &paths[0]).unwrap();
+        assert_eq!(read_meta(&paths[0]).unwrap().name, "Other name");
+        assert!(!names().contains("Save 0"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -47,6 +47,9 @@ struct Chrome {
     textures: HashMap<String, [Option<Option<Texture2D>>; 8]>,
     /// By key: the tuning it was made with and the texture (`None`: its file is missing).
     visual_textures: HashMap<&'static str, ([f32; 4], Option<Texture2D>)>,
+    /// The pictures of [`visual_texture`] as decoded, by path: the light and the brown paper
+    /// are one file, and a new tuning makes its texture again.
+    visual_images: HashMap<String, Option<Image>>,
     animations: HashMap<String, Option<Vec<Texture2D>>>,
     texts: Option<Option<Ini>>,
 }
@@ -57,8 +60,39 @@ thread_local! {
 
 /// Use the art of the install in `dir` from now on.
 pub fn set_install(dir: PathBuf) {
-    CHROME.with(|c| *c.borrow_mut() = Some(Chrome { dir, textures: HashMap::new(), visual_textures: HashMap::new(), animations: HashMap::new(), texts: None }));
+    gfx::prefetch(dir.clone(), WINDOWS_AHEAD.iter().map(|n| format!("Graphics/{n}")).collect());
+    CHROME.with(|c| {
+        *c.borrow_mut() = Some(Chrome { dir, textures: HashMap::new(), visual_textures: HashMap::new(), visual_images: HashMap::new(), animations: HashMap::new(), texts: None })
+    });
 }
+
+/// The pictures the windows decode when they first open, the slow ones (over 2 ms each with
+/// `RAZDOR_PROFILE`), decoded ahead at the start ([`gfx::prefetch`]): the paper (army,
+/// building, journal), the army window's frames and its portrait and icon sheets, the load
+/// window's book, the building window's tabs.
+const WINDOWS_AHEAD: &[&str] = &[
+    "Windows/Win-paper.lit",
+    "Objects/Persones.ugs",
+    "Windows/UnitFrame.lit",
+    "Windows/Inventory.lit",
+    "Windows/UpgradeTree.lit",
+    "Objects/Icons.ugs",
+    "Objects/Items.ugs",
+    "Windows/S_Save.lit",
+    "Windows/HintFrame.lit",
+    "Windows/TB-1_RUS.lit",
+    "Windows/TB-2_RUS.lit",
+    "Windows/TB-3_RUS.lit",
+    "Windows/TB-4_RUS.lit",
+    "Windows/TB-5_RUS.lit",
+    "Windows/TB-6_RUS.lit",
+    "Windows/TBd1_RUS.lit",
+    "Windows/TBd2_RUS.lit",
+    "Windows/TBd3_RUS.lit",
+    "Windows/TBd4_RUS.lit",
+    "Windows/TBd5_RUS.lit",
+    "Windows/TBd6_RUS.lit",
+];
 
 // ------------------------------------------------------------------------------------------
 // Pixel transforms (pure)
@@ -302,7 +336,13 @@ fn visual_texture(key: &'static str, rel: &str, params: [f32; 4], adjust: impl F
         return t;
     }
     // A missing or bad file is remembered too, so it is looked for (and reported) once.
-    let texture = image(rel).and_then(|mut decoded| {
+    let known = CHROME.with(|state| state.borrow().as_ref().and_then(|c| c.visual_images.get(rel).cloned()));
+    let decoded = known.unwrap_or_else(|| {
+        let img = image(rel);
+        CHROME.with(|state| state.borrow_mut().as_mut().map(|c| c.visual_images.insert(rel.to_string(), img.clone())));
+        img
+    });
+    let texture = decoded.and_then(|mut decoded| {
         adjust(&mut decoded);
         to_texture(&decoded)
     });

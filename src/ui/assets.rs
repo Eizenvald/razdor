@@ -198,6 +198,7 @@ impl Assets {
         if let Some(d) = &dt {
             super::chrome::set_install(d.install.dir.clone());
             razdor::rules::save::set_install(&d.install.dir);
+            razdor::rules::save::warm_meta_cache();
         }
         Assets { demo: content.clone(), content, sprites, item_sprites, dt }
     }

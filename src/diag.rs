@@ -69,6 +69,26 @@ pub fn log(msg: &str) {
     }
 }
 
+/// `RAZDOR_PROFILE` is set: slow frames and slow loads are logged.
+pub fn profiling() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("RAZDOR_PROFILE").is_some())
+}
+
+/// Runs `f`; with [`profiling`] on, logs `what` when it took over 2 ms.
+pub fn timed<T>(what: impl FnOnce() -> String, f: impl FnOnce() -> T) -> T {
+    if !profiling() {
+        return f();
+    }
+    let started = Instant::now();
+    let r = f();
+    let ms = started.elapsed().as_secs_f64() * 1000.0;
+    if ms > 2.0 {
+        log(&format!("slow load: {} {ms:.1} ms", what()));
+    }
+    r
+}
+
 /// A step of the start or of the game: if the log ends here, this is where it stopped.
 pub fn step(what: &str) {
     log(&format!("-- {what}"));

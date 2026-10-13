@@ -91,6 +91,48 @@ fn stage_replay(app: &mut App, step: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
+/// `RAZDOR_SCENE_OPEN=<frame>:<window>[,<frame>:<window>…]`: at that frame the window
+/// opens over the scene, as its button opens it (`load`, `army`, `spells`, `journal`,
+/// `menu`, `building:<n>`; `map` closes it), for the frame timer (`RAZDOR_PROFILE`) to time
+/// its opening. Returns true at such a frame.
+pub fn open_later(app: &mut App, frame: u64) -> bool {
+    let Ok(specs) = std::env::var("RAZDOR_SCENE_OPEN") else { return false };
+    let Some((spec, what)) = specs.split(',').find_map(|spec| {
+        let (at, what) = spec.split_once(':')?;
+        (at.trim().parse::<u64>().ok() == Some(frame)).then_some((spec, what))
+    }) else {
+        return false;
+    };
+    let started = std::time::Instant::now();
+    let mut parts = what.split(':');
+    let next = match parts.next().unwrap_or_default() {
+        "load" => Some(Screen::Load(LoadView::new(if app.game.is_some() { Back::Map } else { Back::Title }))),
+        "army" => Some(Screen::Squad { selected: Default::default(), scroll: 0, back: None }),
+        "spells" => Some(Screen::Spellbook { selected: 0 }),
+        "journal" => Some(Screen::Journal(JournalView::default())),
+        "menu" => Some(Screen::Menu(false)),
+        "map" => Some(Screen::WorldMap),
+        "building" => app.game.as_mut().and_then(|game| {
+            let l: usize = parts.next()?.parse().ok()?;
+            let tab = first_tab(game.world.locations.get(l)?, &game.content)?;
+            game.location = Some(l);
+            Some(Screen::Building(BuildingView::new(tab)))
+        }),
+        _ => None,
+    };
+    match next {
+        Some(next) => {
+            app.screen = next;
+            razdor::diag!("opened {what}: {:.1} ms to set up", started.elapsed().as_secs_f64() * 1000.0);
+            true
+        }
+        None => {
+            razdor::diag!("RAZDOR_SCENE_OPEN={spec}: cannot open that here");
+            false
+        }
+    }
+}
+
 /// Sets up the scene of `RAZDOR_SCENE`, if any; a scene that cannot be set up is reported.
 pub fn stage(app: &mut App) {
     super::widgets::set_pointer(pointer());
