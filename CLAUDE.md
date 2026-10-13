@@ -82,6 +82,7 @@ are in `README.md` (Russian).
 
 - "note it": add to `docs/PLAYTEST_NOTES.md` only; don't fix yet.
 - "release" / "make a release": the `release` skill.
+- "check reports" / "check discord": the `discord-reports` skill (read-only bot via `tools/discord-mcp/`).
 - "bring back X" / "as before": restore that one aspect on top of the current work; never revert the rest.
 - "minor version": bump the middle number (0.4.17 → 0.5.0); otherwise bump the last.
 - A Discord link, screenshot, video or save from a player: the `player-report` skill.
