@@ -1,12 +1,12 @@
 # The release pipeline: pushing a tag vX.Y.Z builds razdor (Linux) and Razdor.exe (Windows)
 # with scripts/dist.sh, razdor-macos (macOS, universal) with scripts/dist-macos.sh on a Mac,
-# and publishes them as the GitHub release vX.Y.Z, with that version's section of
-# CHANGELOG.md and the programs' SHA-256 as its notes. The game's update window
+# and publishes them as the GitHub release vX.Y.Z, with that version's changelog file
+# (changelog/X.Y.Z.md) and the programs' SHA-256 as its notes. The game's update window
 # (src/update.rs) shows the notes up to their first `## ` heading: keep the pipeline's own
 # part (downloads, SHA-256) under such headings, after the changelog section.
 #
-#   1. Set `version` in Cargo.toml and turn "Не выпущено" in CHANGELOG.md into
-#      "## X.Y.Z — date"; commit.
+#   1. Set `version` in Cargo.toml, move changelog/unreleased.md into changelog/X.Y.Z.md
+#      under "## X.Y.Z — date", run scripts/changelog.sh (it builds CHANGELOG.md); commit.
 #   2. git tag vX.Y.Z && git push origin vX.Y.Z
 #
 # Run by hand (Actions → Release → Run workflow), it builds the programs of that commit as
@@ -61,7 +61,8 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           grep -qx "version = \"$version\"" Cargo.toml || { echo "Cargo.toml is not version $version"; exit 1; }
-          grep -q "^## $version " CHANGELOG.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+          grep -q "^## $version " "changelog/$version.md" || { echo "changelog/$version.md has no section for $version"; exit 1; }
+          scripts/changelog.sh --check
 
       - name: Libraries for sound (ALSA) and gamepads (udev)
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev
@@ -104,11 +105,11 @@ jobs:
             dist/razdor-macos
             dist/SHA256SUMS
 
-      - name: Release notes from CHANGELOG.md
+      - name: Release notes from changelog/X.Y.Z.md
         if: github.ref_type == 'tag'
         run: |
           version="${GITHUB_REF_NAME#v}"
-          awk -v v="$version" '$0 ~ "^## "v" " {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
+          awk -v v="$version" '$0 ~ "^## "v" " {on=1; next} /^## / {on=0} on' "changelog/$version.md" > notes.md
           {
             echo
             echo "## Загрузка"
