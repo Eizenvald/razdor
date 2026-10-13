@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Read-only MCP server for Razdor's player reports on Discord.
+"""MCP server for Razdor's player reports on Discord.
 
 Speaks MCP (JSON-RPC 2.0, one message per line) on stdin/stdout, standard library only.
-It reads one channel or thread with a bot token and never writes to Discord: every Discord
-call is a GET. The only things it writes are local: downloaded attachments and a cursor file
-remembering the last message handled.
+It reads one channel or thread with a bot token. Every Discord call is a GET except one:
+`reports_post`, which writes a message to that same channel only when DISCORD_ALLOW_POST=1
+and the call passes confirm=true (without it, it returns a preview). Its mentions are limited
+to users recorded as reporters; @everyone, @here and roles never ping. Locally it writes
+downloaded attachments and a state file: the cursor and which Discord users reported which
+GitHub issue (kept off GitHub, so issues carry no Discord ids).
 
 Settings come from the environment or from the repo's `.env` (KEY=VALUE, quotes allowed):
 
@@ -13,6 +16,7 @@ Settings come from the environment or from the repo's `.env` (KEY=VALUE, quotes 
                            https://discord.com/channels/<guild>/<channel>[/<message>]
   DISCORD_DOWNLOAD_DIR     where attachments go (default ~/.cache/razdor-discord/files)
   DISCORD_STATE_FILE       the cursor (default ~/.cache/razdor-discord/state.json)
+  DISCORD_ALLOW_POST       1 to let reports_post send (the bot then needs Send Messages)
 
 Attachments are untrusted files from strangers: each message gets its own folder, names are
 reduced to safe characters, and nothing downloaded is ever opened or run by this server.
@@ -70,15 +74,20 @@ def channel_id():
     raise Fail("DISCORD_REPORTS_CHANNEL is not set (an id or a discord.com/channels/... link)")
 
 
-def get(path, params=None):
+def get(path, params=None, body=None):
     token = ENV.get("DISCORD_BOT_TOKEN")
     if not token:
         raise Fail("DISCORD_BOT_TOKEN is not set")
     url = API + path + ("?" + urllib.parse.urlencode(params) if params else "")
-    req = urllib.request.Request(url, headers={
+    headers = {
         "Authorization": "Bot " + token,
         "User-Agent": "DiscordBot (https://github.com/indicozy/razdor, 0.1) razdor-reports",
-    })
+    }
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode()
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST" if body is not None else "GET")
     for _ in range(3):
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
@@ -232,9 +241,88 @@ def mark_read(message_id):
     return {"channel": cid, "cursor": state.get(cid), "previous": old}
 
 
+def link_issue(issue, message_ids):
+    cid = channel_id()
+    issue = str(int(issue))
+    state = read_state()
+    reporters = state.setdefault("reporters", {})
+    users = state.setdefault("users", {})
+    ids = reporters.setdefault(issue, [])
+    for mid in message_ids:
+        if not str(mid).isdigit():
+            raise Fail(f"{mid}: message ids are numbers")
+        m = get(f"/channels/{cid}/messages/{mid}")
+        a = m.get("author") or {}
+        if a.get("bot") or not a.get("id"):
+            continue
+        users[a["id"]] = a.get("global_name") or a.get("username")
+        if a["id"] not in ids:
+            ids.append(a["id"])
+    write_state(state)
+    return {"issue": issue, "reporters": [{"id": u, "name": users.get(u)} for u in ids]}
+
+
+def reporters_of(issues):
+    state = read_state()
+    users = state.get("users", {})
+    out = {}
+    for i in issues:
+        ids = state.get("reporters", {}).get(str(int(i)), [])
+        out[str(int(i))] = [{"id": u, "name": users.get(u), "mention": f"<@{u}>"} for u in ids]
+    return out
+
+
+def chunks(text, size=1900):
+    parts, cur = [], ""
+    for line in text.split("\n"):
+        while len(line) > size:
+            if cur:
+                parts.append(cur)
+                cur = ""
+            parts.append(line[:size])
+            line = line[size:]
+        if len(cur) + len(line) + 1 > size:
+            parts.append(cur)
+            cur = line
+        else:
+            cur = f"{cur}\n{line}" if cur else line
+    if cur:
+        parts.append(cur)
+    return parts
+
+
+def post(text, reply_to=None, confirm=False):
+    cid = channel_id()
+    text = (text or "").strip()
+    if not text:
+        raise Fail("empty message")
+    known = {u for ids in read_state().get("reporters", {}).values() for u in ids}
+    mentioned = re.findall(r"<@!?(\d+)>", text)
+    pinged = sorted({u for u in mentioned if u in known})
+    unknown = sorted({u for u in mentioned if u not in known})
+    parts = chunks(text)
+    preview = {"channel": cid, "parts": parts, "pings": pinged,
+               "not_pinged": unknown, "reply_to": reply_to}
+    if not confirm:
+        preview["note"] = "Preview only. Show it to the owner; call again with confirm=true after they approve."
+        return preview
+    if ENV.get("DISCORD_ALLOW_POST") != "1":
+        raise Fail("posting is off: set DISCORD_ALLOW_POST=1 in .env (and give the bot Send Messages)")
+    if reply_to is not None and not str(reply_to).isdigit():
+        raise Fail("reply_to must be a message id")
+    sent = []
+    for i, part in enumerate(parts):
+        body = {"content": part, "allowed_mentions": {"parse": [], "users": pinged[:100]}}
+        if i == 0 and reply_to:
+            body["message_reference"] = {"message_id": str(reply_to), "fail_if_not_exists": False}
+        m = get(f"/channels/{cid}/messages", body=body)
+        sent.append({"id": m["id"], "link": f"https://discord.com/channels/{guild_of(cid)}/{cid}/{m['id']}"})
+    return {"sent": sent, "pings": pinged}
+
+
 def status():
     state = read_state()
-    out = {"token_set": bool(ENV.get("DISCORD_BOT_TOKEN")), "downloads": str(DOWNLOADS), "state_file": str(STATE)}
+    out = {"token_set": bool(ENV.get("DISCORD_BOT_TOKEN")), "posting": ENV.get("DISCORD_ALLOW_POST") == "1", "downloads": str(DOWNLOADS), "state_file": str(STATE)}
     try:
         cid = channel_id()
         ch = get(f"/channels/{cid}")
@@ -260,6 +348,18 @@ TOOLS = [
     ("reports_download_attachments", "Download a message's attachments (screenshots, videos, saves) to a folder of their own "
      "and return the paths. Fetches fresh links, so it works after the old CDN links expired.",
      {"message_id": ID}, lambda a: download(a["message_id"])),
+    ("reports_link_issue", "Record (locally) that these messages' authors reported GitHub issue N, for crediting them "
+     "when it ships. Call it when filing or commenting on an issue.",
+     {"issue": {"type": "integer"}, "message_ids": {"type": "array", "items": ID}},
+     lambda a: link_issue(a["issue"], a["message_ids"])),
+    ("reports_reporters", "The Discord users recorded for these issues, with their <@id> mention text.",
+     {"issues": {"type": "array", "items": {"type": "integer"}}},
+     lambda a: reporters_of(a["issues"])),
+    ("reports_post", "Post a message to the reports channel (split at 2000 chars). Without confirm=true it only returns "
+     "a preview: show that to the owner first. Pings only recorded reporters; never @everyone/@here/roles. "
+     "Needs DISCORD_ALLOW_POST=1.",
+     {"text": {"type": "string"}, "reply_to": ID, "confirm": {"type": "boolean"}},
+     lambda a: post(a["text"], a.get("reply_to"), bool(a.get("confirm")))),
     ("reports_mark_read", "Move the local cursor forward to this message once it is handled. Local only: nothing is written to Discord.",
      {"message_id": ID}, lambda a: mark_read(a["message_id"])),
 ]
@@ -268,7 +368,7 @@ TOOLS = [
 def tool_list():
     return [{"name": n, "description": d,
              "inputSchema": {"type": "object", "properties": p,
-                             "required": [k for k in p if k == "message_id"]}}
+                             "required": [k for k in p if k in ("message_id", "issue", "message_ids", "issues", "text")]}}
             for n, d, p, _ in TOOLS]
 
 

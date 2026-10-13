@@ -6,7 +6,9 @@ description: Use when the owner asks to go through the Discord reports thread - 
 # Discord reports → GitHub issues → fixes
 
 The `discord-reports` MCP server reads one channel or thread (`DISCORD_REPORTS_CHANNEL` in
-`.env`) with a read-only bot. It never posts to Discord. Its cursor (last message handled) is a
+`.env`) with a bot. It posts only through `reports_post` (a preview first; sending needs the
+owner's approval and `DISCORD_ALLOW_POST=1`) — in this skill it posts nothing; the release
+announcement is the `release` skill's step 9. The cursor and the issue → reporter map are a
 local file.
 
 ## 1. Read
@@ -40,6 +42,8 @@ Every issue also gets `from-discord`. Deciding parity needs the original: `parit
 
 - Search first: `gh issue list --search "<keywords>" --state all`. A duplicate gets a comment
   with the new message link instead of a new issue.
+- Every new issue or duplicate comment: `reports_link_issue(issue, message_ids)` so the
+  reporters are credited when it ships (their Discord ids stay local, never in the issue).
 - Title: short, what's wrong ("Load window lags with many saves").
 - Body: **Report** (a paraphrase in English — no usernames, no quoted chat), **Source** (the
   message links), **Map / version** if known, **Original** (what the original does, with

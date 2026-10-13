@@ -40,5 +40,13 @@ update window shows those notes up to their first `## ` heading.
    Regenerate `CHANGELOG.md`, commit `Changelog: X.Y.Z's commit and the SHA-256 of its release`,
    push `main`.
 8. Tell the owner: the version, the release link, what is in it (plain words), test results.
+9. Discord announcement (if the `discord-reports` MCP server is connected):
+   - Issues shipped: `gh issue list --state closed --label from-discord --search "closed:>=<previous release date>"`
+     (or the `Fixes #N` in this release's commits). `reports_reporters` gives their reporters.
+   - Write a short Russian post in plain player words: «Вышел Раздор X.Y.Z» + the release link,
+     the changelog lines, and after each line that came from a report «спасибо <@id>» (each
+     reporter once per line). No internals, no issue numbers needed.
+   - `reports_post` without `confirm` → show the preview (text and who gets pinged) to the owner;
+     post with `confirm=true` only after they approve. Posting needs `DISCORD_ALLOW_POST=1`.
 
 Release notes are public at once: no personal data, nothing from the game.
