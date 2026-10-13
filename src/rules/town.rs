@@ -47,6 +47,8 @@ pub enum ServiceError {
     Hero,
     /// A named character cannot be left in a garrison.
     Named,
+    /// A fallen unit cannot be left in a garrison (Razdor's rule; the original takes it).
+    Dead,
     /// An unpaid garrison unit costs this much gold to take back.
     Unpaid(i32),
     AlreadyKnown,
@@ -249,8 +251,9 @@ impl Game {
 
     /// Leaves squad member `i` in the garrison of the castle or fort here, at `cell` (an empty
     /// one; `None`: its own or the first free). The hero and named units are refused
-    /// (0x4c6f50); a corpse can be left. The whole record moves, paid mark and last pay
-    /// included; a garrison is never paid, and it heals `GarrisonAutoHeal`% every midnight.
+    /// (0x4c6f50). A fallen unit is refused too: the original takes a corpse (economy.md §2),
+    /// Razdor does not, at the players' request. The whole record moves, paid mark and last
+    /// pay included; a garrison is never paid, and it heals `GarrisonAutoHeal`% every midnight.
     pub fn leave_in_garrison(&mut self, i: usize, cell: Option<Slot>) -> Result<(), ServiceError> {
         if !self.offers(Tab::Garrison) {
             return Err(ServiceError::NotHere);
@@ -261,6 +264,9 @@ impl Game {
         let u = self.squad.get(i).ok_or(ServiceError::NoSuchUnit)?;
         if u.named > 0 {
             return Err(ServiceError::Named);
+        }
+        if !u.alive() {
+            return Err(ServiceError::Dead);
         }
         let l = self.location.ok_or(ServiceError::NotHere)?;
         let taken: Vec<Slot> = self.world.locations[l].stationed.iter().map(|s| s.unit.slot).collect();
@@ -316,7 +322,8 @@ impl Game {
     /// Swaps squad member `i` with garrison unit `j` (0x4c653c, 0x4c6f50): the two records
     /// change places, each taking the other's cell, with no price and no question, so an
     /// unpaid garrison unit comes in unpaid; it is also the only way into a full army. The
-    /// army's unit must not be the hero or a named unit. Only when the garrison unit was
+    /// army's unit must not be the hero, a named unit or (Razdor's rule, as for
+    /// [`Game::leave_in_garrison`]) a fallen one. Only when the garrison unit was
     /// selected first does it get its last pay now, and only if it is paid (the original's
     /// two click handlers differ).
     pub fn swap_with_garrison(&mut self, i: usize, j: usize, garrison_first: bool) -> Result<(), ServiceError> {
@@ -330,6 +337,9 @@ impl Game {
         let u = self.squad.get(i).ok_or(ServiceError::NoSuchUnit)?;
         if u.named > 0 {
             return Err(ServiceError::Named);
+        }
+        if !u.alive() {
+            return Err(ServiceError::Dead);
         }
         let g = &mut self.world.locations[l].stationed;
         if j >= g.len() {
@@ -1403,13 +1413,11 @@ mod tests {
     #[test]
     fn a_swap_with_the_garrison_is_free_and_named_units_and_corpses() {
         let mut g = in_own_castle();
-        g.squad[2].hp = 0; // a corpse can be left
         g.leave_in_garrison(2, None).unwrap();
         g.squad[1].named = 1;
         assert_eq!(g.leave_in_garrison(1, None), Err(ServiceError::Named), "named units stay");
         g.squad[1].named = 0;
         let l = g.location.unwrap();
-        g.world.locations[l].stationed[0].unit.hp = 40;
         let guard = &mut g.world.locations[l].stationed[0].unit;
         (guard.unpaid, guard.last_paid) = (true, 5);
         let (army_cell, guard_cell) = (g.squad[1].slot, g.garrison_here()[0].unit.slot);
@@ -1428,6 +1436,32 @@ mod tests {
         g.swap_with_garrison(1, 0, false).unwrap();
         g.swap_with_garrison(1, 0, true).unwrap();
         assert_eq!(g.squad[1].last_paid, 7, "unpaid: not refreshed");
+    }
+
+    /// Razdor's rule, at the players' request: a fallen unit of the army goes into no
+    /// garrison, neither left there nor swapped in (the original takes it, economy.md §2).
+    /// A corpse already in a garrison (an older save) still comes back, alone or by a swap.
+    #[test]
+    fn a_fallen_unit_is_not_left_in_a_garrison() {
+        let mut g = in_own_castle();
+        g.squad[2].hp = 0;
+        assert_eq!(g.leave_in_garrison(2, None), Err(ServiceError::Dead));
+        assert_eq!((g.squad.len(), g.garrison_here().len()), (3, 0), "nothing moved");
+        g.leave_in_garrison(1, None).unwrap();
+        let army = g.squad.len();
+        assert_eq!(g.swap_with_garrison(1, 0, false), Err(ServiceError::Dead), "the corpse selected first");
+        assert_eq!(g.swap_with_garrison(1, 0, true), Err(ServiceError::Dead), "the guard selected first");
+        assert!(g.garrison_here()[0].unit.alive() && !g.squad[1].alive() && g.squad.len() == army);
+        // A corpse already in the garrison: it can be swapped out with a living unit, and taken.
+        let l = g.location.unwrap();
+        g.world.locations[l].stationed[0].unit.hp = 0;
+        g.squad[1].hp = 20;
+        g.swap_with_garrison(1, 0, false).unwrap();
+        assert!(!g.squad[1].alive() && g.garrison_here()[0].unit.alive());
+        g.squad[1].hp = 20;
+        g.world.locations[l].stationed[0].unit.hp = 0;
+        g.take_from_garrison(0, None, false).unwrap();
+        assert_eq!((g.squad.len(), g.garrison_here().len()), (army + 1, 0));
     }
 
     #[test]

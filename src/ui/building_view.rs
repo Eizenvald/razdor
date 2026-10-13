@@ -177,6 +177,7 @@ pub fn service_error(e: ServiceError) -> String {
         ServiceError::AlreadyKnown => tr("Already in your book.").into(),
         ServiceError::BookFull => tr("No room in the book.").into(),
         ServiceError::Named => tr("A named hero stays with the army.").into(),
+        ServiceError::Dead => tr("A fallen unit cannot be left in a garrison!").into(),
         ServiceError::Unpaid(price) => trf!("Unpaid: {price} gold to take back.", price),
         ServiceError::NoSuchUnit => tr("Nobody there.").into(),
     }
@@ -880,10 +881,15 @@ fn garrison(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
     // garrison's grid says so (0x4c6964, `[Army]` line 9); with a garrison unit selected the
     // hero or a named character under the pointer cannot change places with it (0x4c612c,
     // line 11).
+    // Razdor's rule: a fallen unit of the army does not go in either (the original takes it);
+    // its line is Razdor's own (no `[Army]` line, hence 0).
     let unique = |i: usize| i == 0 || squad.get(i).is_some_and(|u| u.named > 0);
+    let fallen = |i: usize| i > 0 && squad.get(i).is_some_and(|u| u.named == 0 && !u.alive());
     let refusal = match (sel, top, bottom) {
         (Some((false, n)), Some(_), _) if unique(n) => Some((9, n_("A unique character cannot be moved into a garrison!"))),
         (Some((true, _)), _, Some(Hit::Unit(i))) if unique(i) => Some((11, n_("You cannot change places with the selected character!"))),
+        (Some((false, n)), Some(_), _) if fallen(n) => Some((0, n_("A fallen unit cannot be left in a garrison!"))),
+        (Some((true, _)), _, Some(Hit::Unit(i))) if fallen(i) => Some((0, n_("A fallen unit cannot be left in a garrison!"))),
         _ => None,
     };
     let pointed = match (top, bottom) {
@@ -896,7 +902,7 @@ fn garrison(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
     };
     // The refusal and the army window's hint lines (0x4c2f54) go on the strip, not the tooltip.
     let hint = if let Some((line, ours)) = refusal {
-        Some(chrome::ui_line("Army", line).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru).unwrap_or_else(|| tr(ours).to_string()))
+        Some(chrome::ui_line("Army", line).filter(|_| line > 0 && razdor::i18n::lang() == razdor::i18n::Lang::Ru).unwrap_or_else(|| tr(ours).to_string()))
     } else if let Some(pointed) = pointed {
         match sel {
             Some(selected) if selected == pointed => super::items_view::army_line(0, &unit_name(selected)),
@@ -983,8 +989,9 @@ fn garrison(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
             }
         };
         // The hero and named units are refused without a word and the selection stays, as in
-        // the original (0x4c667e, 0x4c70d6, 0x4c7233 jump past the deselection).
-        let refused = matches!(result, Some(Err(ServiceError::Hero | ServiceError::Named)));
+        // the original (0x4c667e, 0x4c70d6, 0x4c7233 jump past the deselection); a fallen one
+        // (Razdor's rule) the same way, the strip saying why.
+        let refused = matches!(result, Some(Err(ServiceError::Hero | ServiceError::Named | ServiceError::Dead)));
         if done && !refused {
             view.garrison_sel = None;
         }
