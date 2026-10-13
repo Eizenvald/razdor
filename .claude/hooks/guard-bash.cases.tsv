@@ -1,0 +1,74 @@
+# expect	repo	command   (repo: clean = staged src/ok.rs on main, dirty = staged data/x.lit, feat = on dt-feat; \n = newline)
+allow	clean	CARGO_BUILD_JOBS=4 taskset -c 16-19 cargo test --release
+allow	clean	taskset -c 16-19 cargo build --release --no-default-features
+allow	clean	RAZDOR_DT_DIR=/x CARGO_BUILD_JOBS=4 taskset -c 16,17,18,19 cargo clippy --all-targets
+allow	clean	taskset --cpu-list 16-17 cargo check
+allow	clean	cargo fmt
+allow	clean	cargo --version
+allow	clean	cargo tree -d
+block	clean	cargo test
+block	clean	cargo build --release
+block	clean	CARGO_BUILD_JOBS=4 cargo clippy
+block	clean	taskset -c 0-15 cargo test
+block	clean	taskset -c 8-19 cargo build
+block	clean	cd src && cargo test --lib
+block	clean	bash -c "cargo test"
+block	clean	eval cargo build
+block	clean	echo hi; cargo t
+allow	clean	echo "cargo test is how you run it"
+allow	clean	git commit -m "run cargo test and git push --force to dt-feat"
+block	clean	taskset -c 16-19 cargo run --release
+allow	clean	RAZDOR_ALLOW_WINDOW=1 taskset -c 16-19 cargo run --release
+allow	clean	taskset -c 16-19 cargo run --example lit_dump
+block	clean	./target/release/razdor
+block	clean	./target/release/razdor > /tmp/claude-1000/x.log 2>&1
+block	clean	nohup ./target/release/razdor &
+allow	clean	RAZDOR_ALLOW_WINDOW=1 ./target/release/razdor
+allow	clean	RAZDOR_SCENE=title RAZDOR_SNAPSHOT=/tmp/claude-1000/s.png xvfb-run -a -s "-screen 0 1280x800x24" target/release/razdor
+allow	clean	DISPLAY=:99 RAZDOR_SCENE=title target/release/razdor
+allow	clean	Xvfb :99 & export DISPLAY=:99; target/release/razdor
+block	clean	wine "Discord Times/Razdor.exe"
+allow	clean	ls target/release/razdor
+allow	clean	file dist/Razdor.exe
+allow	clean	perf record -g -- xvfb-run -a target/release/razdor
+block	clean	perf record -F 999 -g target/release/razdor
+allow	clean	git add src/ok.rs
+block	clean	git add data/x.lit
+block	clean	git add "saves/backrok.rzsave"
+block	clean	git add -f Rus_Units.ini
+block	clean	git add docs/_Global.ini
+allow	clean	git commit -m "Razdor 0.4.17"
+block	dirty	git commit -m "add art"
+block	dirty	git commit -qam "Razdor 0.4.17"
+block	clean	git commit --no-verify -m x
+block	clean	git commit -n -m x
+allow	clean	T=$(gh auth token -u indicozy) && git push -q "https://x-access-token:$T@github.com/indicozy/razdor.git" main
+allow	clean	git push origin main
+allow	clean	git push origin v0.4.17
+allow	clean	git push
+allow	clean	git push origin dt-original
+block	clean	git push origin dt-feat
+block	clean	git push origin main:dt-feat
+block	clean	git push origin HEAD:refs/heads/dt-feat
+block	clean	git push origin :dt-feat
+block	feat	git push
+block	feat	git push origin HEAD
+block	clean	git push --force origin main
+block	clean	git push -f origin main
+block	clean	git push origin +main
+block	clean	git push --force-with-lease origin main
+block	clean	git push --no-verify origin main
+block	clean	git -C . push origin dt-feat
+block	clean	bash -c 'git push origin dt-feat'
+allow	clean	echo "git push origin dt-feat"
+allow	clean	git log --oneline dt-feat..main
+allow	clean	rm -rf /tmp/claude-1000/scratch/wt
+allow	clean	rm -rf /mnt/ai_models/razdor-scratch/loadlag/old
+allow	clean	rm notes.txt
+block	clean	rm -rf target
+block	clean	rm -r docs/notes
+block	clean	rm -rf /mnt/ai_models/razdor-verify
+block	clean	rm -rf $HOME/x
+block	clean	rm -rf /tmp/claude-1000/../../home/indicozy
+allow	clean	python3 - <<'EOF'\nimport os\nprint("rm -rf / and cargo test and git push --force")\nEOF\necho done
+block	clean	python3 - <<'EOF'\nprint(1)\nEOF\ncargo test
