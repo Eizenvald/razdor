@@ -385,6 +385,16 @@ fn window(title: &str, w: f32, h: f32) -> (Rect, bool) {
     chrome::window(r, title, chrome::Skin::Marble, true)
 }
 
+/// A window over the map, centred over the view above the bottom bar, as the original's map
+/// windows are (over its 1024×682 view), its foot never on the bar.
+fn map_window(title: &str, w: f32, h: f32) -> (Rect, bool) {
+    let k = chrome::k();
+    let (w, h) = (w * k, h * k);
+    let view = screen_height() - chrome::bar_height();
+    let r = Rect::new((screen_width() - w) / 2.0, ((view - h) / 2.0).max(0.0), w, h);
+    chrome::window(r, title, chrome::Skin::Marble, true)
+}
+
 /// "Информация об авторах": the splash of scattered drawings with the credits rolling up
 /// over it (`started` is when the window opened). A click or Esc closes it.
 pub fn authors(started: f64) -> bool {
@@ -501,7 +511,7 @@ pub fn wide_row(audio: &super::audio::Settings, install: bool) -> bool {
 /// closed.
 pub fn options(audio: &mut super::audio::Settings, install_wide: bool) -> bool {
     backdrop();
-    options_window(audio, install_wide)
+    options_window(audio, install_wide, false)
 }
 
 thread_local! {
@@ -516,9 +526,17 @@ pub fn open_advanced() {
 
 /// Razdor's advanced settings (the settings window's "Advanced…"): rules where Razdor can
 /// differ from the original. Returns true when closed.
-fn advanced_window(audio: &mut super::audio::Settings) -> bool {
-    let (inner, closed) = window(tr("Advanced settings"), 594.0, 570.0);
+fn advanced_window(audio: &mut super::audio::Settings, over_map: bool) -> bool {
+    // Razdor's own window, taller than the original's: centred (over the map, above the bar),
+    // not hung from the menu's 190, where its foot reached the screen's bottom edge.
     let k = chrome::k();
+    let (inner, closed) = if over_map {
+        map_window(tr("Advanced settings"), 594.0, 570.0)
+    } else {
+        let (w, h) = (594.0 * k, 570.0 * k);
+        let r = Rect::new((screen_width() - w) / 2.0, ((screen_height() - h) / 2.0).max(0.0), w, h);
+        chrome::window(r, tr("Advanced settings"), chrome::Skin::Marble, true)
+    };
     let y = inner.y + 30.0 * k;
     chrome::shadow_text(tr("Stepping onto a friendly army"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
     let br = Rect::new(inner.x + inner.w - 24.0 * k - 170.0 * k, y, 170.0 * k, 28.0 * k);
@@ -608,16 +626,17 @@ fn advanced_window(audio: &mut super::audio::Settings) -> bool {
     closed || key(KeyCode::Escape) || key(KeyCode::Enter) || (over_ok && clicked())
 }
 
-/// The settings window alone (over the main menu, or over the map from the bar's gears).
-pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool) -> bool {
+/// The settings window alone (over the main menu, or `over_map` from the bar's gears: then
+/// above the bar, not over it).
+pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool, over_map: bool) -> bool {
     if ADVANCED.with(|a| a.get()) {
-        if advanced_window(audio) {
+        if advanced_window(audio, over_map) {
             ADVANCED.with(|a| a.set(false));
         }
         return false;
     }
     let title = own("Options", "Title", n_("Sound, graphics and gameplay settings"));
-    let (inner, closed) = window(&title, 594.0, 542.0);
+    let (inner, closed) = if over_map { map_window(&title, 594.0, 542.0) } else { window(&title, 594.0, 542.0) };
     let k = chrome::k();
     let rows = [
         (own("Options", "OptionSld0", n_("Background music volume")), audio.music_volume, true),

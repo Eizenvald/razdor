@@ -828,7 +828,7 @@ impl App {
             },
             (Screen::Settings, Some(game)) => {
                 world_view::backdrop_lit(game, &self.assets, Some(game_bar::BarButton::Settings));
-                main_menu::options_window(&mut self.audio.settings, install_wide).then_some(Screen::WorldMap)
+                main_menu::options_window(&mut self.audio.settings, install_wide, true).then_some(Screen::WorldMap)
             }
             (Screen::Save(view), Some(game)) => saves::save_screen(game, &self.assets, view, &mut self.message),
             (Screen::Load(view), game) => saves::load_screen(game.as_ref(), &self.assets, view, &mut self.pending_load, &self.load_error),
