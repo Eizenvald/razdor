@@ -365,15 +365,177 @@ fn remember_meta(path: &Path, stamp: FileStamp, meta: &SaveMeta) {
     META_CACHE.lock().unwrap_or_else(|e| e.into_inner()).insert(path.to_path_buf(), (stamp, meta.clone()));
 }
 
-/// Reads the metas of the saves of the install's folder ([`games_dir`]) on a thread of its
-/// own, so the load window finds them read when it opens.
+/// The files whose meta could not be read (not a save, or a damaged one), with the stamp
+/// they had: listed files left out until they change.
+static META_FAILED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, FileStamp>>> =
+    std::sync::LazyLock::new(Default::default);
+
+fn failed_meta(path: &Path, stamp: FileStamp) -> bool {
+    META_FAILED.lock().unwrap_or_else(|e| e.into_inner()).get(path) == Some(&stamp)
+}
+
+/// Reads the meta of a file into the cache (or notes it unreadable).
+fn read_into_cache(path: &Path, stamp: FileStamp) {
+    if cached_meta(path, stamp).is_some() || failed_meta(path, stamp) {
+        return;
+    }
+    match read_meta_uncached(path) {
+        Ok(meta) => remember_meta(path, stamp, &meta),
+        Err(_) => {
+            META_FAILED.lock().unwrap_or_else(|e| e.into_inner()).insert(path.to_path_buf(), stamp);
+        }
+    }
+}
+
+/// The files waiting for their metas to be read by the [`META_READERS`], first first.
+type MetaQueue = (std::sync::Mutex<std::collections::VecDeque<(PathBuf, FileStamp)>>, std::sync::Condvar);
+
+static META_QUEUE: std::sync::LazyLock<MetaQueue> =
+    std::sync::LazyLock::new(|| {
+        let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).clamp(1, META_READERS);
+        for k in 0..threads {
+            let _ = std::thread::Builder::new().name(format!("save metas {k}")).spawn(meta_reader);
+        }
+        Default::default()
+    });
+
+/// The threads reading the metas of listed saves at most.
+const META_READERS: usize = 4;
+
+fn meta_reader() {
+    let (queue, ready) = &*META_QUEUE;
+    loop {
+        let next = {
+            let mut q = queue.lock().unwrap_or_else(|e| e.into_inner());
+            loop {
+                match q.pop_front() {
+                    Some(job) => break job,
+                    None => q = ready.wait(q).unwrap_or_else(|e| e.into_inner()),
+                }
+            }
+        };
+        read_into_cache(&next.0, next.1);
+    }
+}
+
+/// Asks the reader threads for the metas of `files`, these first (before anything asked
+/// earlier); files read already are skipped. Never waits.
+fn request_metas<'a>(files: impl IntoIterator<Item = &'a (PathBuf, FileStamp)>) {
+    let mut first: Vec<(PathBuf, FileStamp)> = files.into_iter().filter(|(p, s)| cached_meta(p, *s).is_none() && !failed_meta(p, *s)).cloned().collect();
+    if first.is_empty() {
+        return;
+    }
+    let (queue, ready) = &*META_QUEUE;
+    let mut q = queue.lock().unwrap_or_else(|e| e.into_inner());
+    q.retain(|job| !first.contains(job));
+    for job in first.drain(..).rev() {
+        q.push_front(job);
+    }
+    ready.notify_all();
+}
+
+/// Has the metas of the saves of the install's folder ([`games_dir`]) read on the reader
+/// threads, so the load window finds them read when it opens.
 pub fn warm_meta_cache() {
-    let _ = std::thread::Builder::new().name("save metas".into()).spawn(move || {
+    let _ = std::thread::Builder::new().name("save list".into()).spawn(move || {
         let Some(dir) = games_dir() else { return };
-        for kind in [SaveKind::Auto, SaveKind::Manual] {
-            let _ = by_time(&dir, kind);
+        // The autosaves last, so first: the load window opens on them the first time.
+        for kind in [SaveKind::Manual, SaveKind::Auto] {
+            request_metas(files_of(&dir, kind).iter());
         }
     });
+}
+
+/// A save file as the load window lists it before its meta is read *(Razdor's)*: the folder is
+/// listed at once and the metas come in from the reader threads, the rows on screen first
+/// ([`ListedSave::fill`]).
+#[derive(Clone, Debug)]
+pub struct ListedSave {
+    pub path: PathBuf,
+    stamp: FileStamp,
+    /// When the file was written, seconds since 1970 (what the row shows until its meta comes).
+    pub written: u64,
+    pub pinned: bool,
+    /// `None` while the meta is being read.
+    pub meta: Option<SaveMeta>,
+}
+
+/// What [`ListedSave::fill`] found.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MetaState {
+    Ready,
+    Waiting,
+    /// Not a save, or a damaged one: the row goes.
+    Unreadable,
+}
+
+impl ListedSave {
+    /// Takes the meta from the cache when the readers have read it.
+    pub fn fill(&mut self) -> MetaState {
+        if self.meta.is_some() {
+            return MetaState::Ready;
+        }
+        if let Some(m) = cached_meta(&self.path, self.stamp) {
+            self.meta = Some(m);
+            return MetaState::Ready;
+        }
+        if failed_meta(&self.path, self.stamp) {
+            MetaState::Unreadable
+        } else {
+            MetaState::Waiting
+        }
+    }
+}
+
+/// The save files of one kind without reading them: pinned first, then the file written last
+/// first. The metas known already are filled in; the others are asked of the reader threads
+/// ([`want_metas`]).
+pub fn list_files(dir: &Path, kind: SaveKind) -> Vec<ListedSave> {
+    let folder = kind_dir(dir, kind);
+    let pins = pins(&folder);
+    let mut v: Vec<ListedSave> = files_of(dir, kind)
+        .into_iter()
+        .filter(|(p, s)| !failed_meta(p, *s))
+        .map(|(path, stamp)| {
+            let written = stamp.1.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
+            let pinned = file_name(&path).is_some_and(|n| pins.contains(&n));
+            let meta = cached_meta(&path, stamp);
+            ListedSave { path, stamp, written, pinned, meta }
+        })
+        .collect();
+    v.sort_by_key(|e| !e.pinned);
+    v
+}
+
+/// Puts listed saves whose metas are all read in the order of [`list`]: pinned first, then
+/// by the time saved (a copied file's own time may differ), the file written last first
+/// within a second. Rows still waiting keep their place after the others.
+pub fn sort_listed(saves: &mut [ListedSave]) {
+    saves.sort_by(|a, b| {
+        let at = |e: &ListedSave| e.meta.as_ref().map_or(e.written, |m| m.saved_at);
+        b.pinned.cmp(&a.pinned).then_with(|| at(b).cmp(&at(a))).then_with(|| b.stamp.1.cmp(&a.stamp.1)).then_with(|| b.path.cmp(&a.path))
+    });
+}
+
+/// Asks the reader threads for the metas of `saves` not read yet, in their order.
+pub fn want_metas<'a>(saves: impl IntoIterator<Item = &'a ListedSave>) {
+    let files: Vec<(PathBuf, FileStamp)> = saves.into_iter().filter(|e| e.meta.is_none()).map(|e| (e.path.clone(), e.stamp)).collect();
+    request_metas(files.iter());
+}
+
+/// The save files of one kind with their stamps, the file written last first (by name when
+/// two were written at once).
+fn files_of(dir: &Path, kind: SaveKind) -> Vec<(PathBuf, FileStamp)> {
+    let Ok(read) = std::fs::read_dir(kind_dir(dir, kind)) else { return Vec::new() };
+    let mut files: Vec<(PathBuf, FileStamp)> = read
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == EXTENSION))
+        .filter_map(|p| Some((file_stamp(&p).ok()?, p)))
+        .map(|(s, p)| (p, s))
+        .collect();
+    files.sort_by(|(a, sa), (b, sb)| sb.1.cmp(&sa.1).then_with(|| b.cmp(a)));
+    files
 }
 
 /// The player's data folder for a kind of save.
@@ -913,6 +1075,69 @@ pub(crate) mod tests {
         std::fs::copy(&other, &paths[0]).unwrap();
         assert_eq!(read_meta(&paths[0]).unwrap().name, "Other name");
         assert!(!names().contains("Save 0"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Fills `v` until no meta is waiting (the readers are threads), or fails after 10 s.
+    fn fill_all(v: &mut Vec<ListedSave>) {
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let states: Vec<MetaState> = v.iter_mut().map(ListedSave::fill).collect();
+            let mut k = 0;
+            v.retain(|_| {
+                k += 1;
+                states[k - 1] != MetaState::Unreadable
+            });
+            if !states.contains(&MetaState::Waiting) {
+                return;
+            }
+            assert!(std::time::Instant::now() < until, "the metas never came");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn the_load_list_comes_at_once_and_its_metas_after() {
+        let dir = temp_dir("listed");
+        let mut g = Game::new(demo(), HeroClass::Knight);
+        let mut paths = Vec::new();
+        for k in 0..6 {
+            paths.push(write(&dir, SaveKind::Manual, &format!("Save {k}"), &g).unwrap());
+            // Apart in time, so the order is the order of writing.
+            std::thread::sleep(std::time::Duration::from_millis(15));
+        }
+        set_pinned(&paths[1], true).unwrap();
+        std::fs::write(kind_dir(&dir, SaveKind::Manual).join(format!("junk.{EXTENSION}")), b"not a save").unwrap();
+        // Nothing read yet: every row waits, in its place (pinned first, then newest first).
+        META_CACHE.lock().unwrap().retain(|p, _| !p.starts_with(&dir));
+        let mut v = list_files(&dir, SaveKind::Manual);
+        let order: Vec<PathBuf> = v.iter().map(|e| e.path.clone()).collect();
+        assert_eq!(v.len(), 7, "the damaged file is listed until read");
+        assert!(v.iter().all(|e| e.meta.is_none() && e.written > 0));
+        assert_eq!(v[0].path, paths[1], "pinned first");
+        assert!(v[1].path.ends_with(format!("junk.{EXTENSION}")), "then the newest file");
+        assert_eq!(v[2].path, paths[5]);
+        want_metas(v.iter().rev());
+        fill_all(&mut v);
+        let names: Vec<&str> = v.iter().map(|e| e.meta.as_ref().unwrap().name.as_str()).collect();
+        assert_eq!(names, ["Save 1", "Save 5", "Save 4", "Save 3", "Save 2", "Save 0"], "the rows stay in place, the damaged one gone");
+        assert_eq!(v.iter().map(|e| &e.path).collect::<Vec<_>>(), order.iter().filter(|p| !p.ends_with(format!("junk.{EXTENSION}"))).collect::<Vec<_>>());
+        // Listed again, the metas known come with the list; the damaged file stays out.
+        let again = list_files(&dir, SaveKind::Manual);
+        assert_eq!(again.len(), 6);
+        assert!(again.iter().all(|e| e.meta.is_some()));
+        // A save written over and one deleted: the list follows the files.
+        g.gold = 7;
+        let other = write(&dir, SaveKind::Manual, "Other name", &g).unwrap();
+        std::fs::copy(&other, &paths[0]).unwrap();
+        delete(&paths[2]).unwrap();
+        let mut v = list_files(&dir, SaveKind::Manual);
+        want_metas(v.iter());
+        fill_all(&mut v);
+        let names: std::collections::BTreeSet<String> = v.iter().map(|e| e.meta.as_ref().unwrap().name.clone()).collect();
+        assert_eq!(v.len(), 6);
+        assert_eq!(names.len(), 5, "the copy and its source share a name");
+        assert!(names.contains("Other name") && !names.contains("Save 0") && !names.contains("Save 2"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

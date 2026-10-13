@@ -12,7 +12,7 @@ use macroquad::prelude::*;
 use razdor::i18n::{n_, tr};
 use razdor::rules::content::Content;
 use razdor::rules::game::{Foe, Game};
-use razdor::rules::save::{self, SaveEntry, SaveKind};
+use razdor::rules::save::{self, ListedSave, MetaState, SaveKind};
 
 use super::assets::Assets;
 use super::battle_view::BattleView;
@@ -47,7 +47,11 @@ impl Back {
 
 pub struct SaveView {
     pub name: String,
-    pub entries: Vec<SaveEntry>,
+    pub entries: Vec<ListedSave>,
+    /// The first row shown when the missing metas were last asked for.
+    asked: Option<usize>,
+    /// Every meta came and the rows were put in their final order.
+    settled: bool,
     /// The first row shown (the wheel scrolls the list).
     pub scroll: usize,
     /// Why the last save was refused (shown in the window).
@@ -58,7 +62,7 @@ pub struct SaveView {
 impl SaveView {
     pub fn new(game: &Game, back: Back) -> SaveView {
         let name = format!("{} {}", game.world.title.trim(), save::date_name(&game.clock));
-        SaveView { name, entries: save::games_dir().map_or_else(Vec::new, |d| save::list(&d, SaveKind::Manual)), scroll: 0, error: None, back }
+        SaveView { name, entries: listed(SaveKind::Manual), asked: None, settled: false, scroll: 0, error: None, back }
     }
 }
 
@@ -66,7 +70,11 @@ pub struct LoadView {
     /// "Clear all" asked about (Razdor's): every save of the tab but the pinned ones.
     pub confirm_clear: bool,
     pub tab: SaveKind,
-    pub entries: Vec<SaveEntry>,
+    pub entries: Vec<ListedSave>,
+    /// The first row shown when the missing metas were last asked for.
+    asked: Option<usize>,
+    /// Every meta came and the rows were put in their final order.
+    settled: bool,
     pub selected: usize,
     pub scroll: usize,
     pub back: Back,
@@ -83,7 +91,7 @@ impl LoadView {
     pub fn new(back: Back) -> LoadView {
         let first = LAST_TAB.with(|t| t.get());
         let other = if first == SaveKind::Auto { SaveKind::Manual } else { SaveKind::Auto };
-        let mut v = LoadView { confirm_clear: false, tab: first, entries: Vec::new(), selected: 0, scroll: 0, back };
+        let mut v = LoadView { confirm_clear: false, tab: first, entries: Vec::new(), asked: None, settled: false, selected: 0, scroll: 0, back };
         v.refresh();
         if v.entries.is_empty() {
             v.tab = other;
@@ -97,9 +105,61 @@ impl LoadView {
     }
 
     pub fn refresh(&mut self) {
-        self.entries = save::games_dir().map_or_else(Vec::new, |d| save::list(&d, self.tab));
+        self.entries = listed(self.tab);
+        self.asked = None;
+        self.settled = false;
         self.selected = 0;
         self.scroll = 0;
+    }
+}
+
+/// The save files of a kind, listed without being read (their metas come in later:
+/// [`fill_metas`]), so the window opens at once however many there are *(Razdor's)*.
+fn listed(kind: SaveKind) -> Vec<ListedSave> {
+    save::games_dir().map_or_else(Vec::new, |d| save::list_files(&d, kind))
+}
+
+/// Takes in the metas read since the last frame and drops the files that are no saves
+/// (`selected` follows its row); when the rows shown changed, asks for theirs first, then
+/// the rest. `first`: the list's first row shown. Once every meta is in, the rows take the
+/// order of the times saved ([`save::sort_listed`]), once (`settled`); with the metas read
+/// ahead at the start, that is before the window is first drawn.
+fn fill_metas(entries: &mut Vec<ListedSave>, asked: &mut Option<usize>, settled: &mut bool, first: usize, mut selected: Option<&mut usize>) {
+    if *settled {
+        return;
+    }
+    let mut gone = Vec::new();
+    let mut waiting = false;
+    for (i, e) in entries.iter_mut().enumerate() {
+        match e.fill() {
+            MetaState::Ready => {}
+            MetaState::Waiting => waiting = true,
+            MetaState::Unreadable => gone.push(i),
+        }
+    }
+    if !gone.is_empty() {
+        for &i in gone.iter().rev() {
+            entries.remove(i);
+        }
+        if let Some(sel) = selected.as_deref_mut() {
+            let before = gone.iter().filter(|&&i| i < *sel).count();
+            *sel = sel.saturating_sub(before).min(entries.len().saturating_sub(1));
+        }
+    }
+    if !waiting {
+        *settled = true;
+        // A row picked stays picked; the first row (nothing picked yet) stays the first.
+        let chosen = selected.as_deref().filter(|&&s| s > 0).and_then(|&s| entries.get(s)).map(|e| e.path.clone());
+        save::sort_listed(entries);
+        if let (Some(sel), Some(path)) = (selected, chosen) {
+            *sel = entries.iter().position(|e| e.path == path).unwrap_or(0);
+        }
+        return;
+    }
+    if *asked != Some(first) {
+        *asked = Some(first);
+        let shown = first.min(entries.len())..(first + Book::ROWS).min(entries.len());
+        save::want_metas(entries[shown.clone()].iter().chain(entries[shown.end..].iter()).chain(entries[..shown.start].iter()));
     }
 }
 
@@ -186,14 +246,18 @@ struct Row {
     scenario: String,
     time: String,
     pinned: bool,
+    /// The save's meta is still being read: the file's time only, dimmed.
+    waiting: bool,
 }
 
-fn row_of(e: &SaveEntry) -> Row {
-    let m = &e.meta;
+fn row_of(e: &ListedSave) -> Row {
+    let Some(m) = &e.meta else {
+        return Row { name: "…".to_string(), scenario: String::new(), time: razdor::trf!("Time: {date}", date = saved_label(e.written)), pinned: e.pinned, waiting: true };
+    };
     let name = if m.name == save::QUICK_SAVE { tr(save::QUICK_SAVE).to_string() } else { m.name.clone() };
     // A game in which the cheat console worked says so after its scenario.
     let scenario = if m.cheats { razdor::trf!("{title} (cheats)", title = m.title) } else { m.title.clone() };
-    Row { name, scenario, time: razdor::trf!("Time: {date}", date = saved_label(m.saved_at)), pinned: e.pinned }
+    Row { name, scenario, time: razdor::trf!("Time: {date}", date = saved_label(m.saved_at)), pinned: e.pinned, waiting: false }
 }
 
 /// Razdor's pin of a save: a round head with a needle, gold when pinned, grey when not.
@@ -338,15 +402,16 @@ impl Book {
                 draw_pin(Rect::new(r.x + 6.0 * k, r.y + (r.h - sign) / 2.0, sign, sign), true, false);
             }
             let lh = r.h;
+            let dim = |c: Color| if row.waiting { Color { a: c.a * 0.55, ..c } } else { c };
             super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
                 let size = fit_size(&row.name, 250.0 * k, 16.0 * k);
-                super::chrome::shadow_centered(&ellipsize(&row.name, 250.0 * k, size), self.p(157.0, 0.0).x, r.y + lh * 0.5 + size * 0.36, size, super::chrome::CREAM);
+                super::chrome::shadow_centered(&ellipsize(&row.name, 250.0 * k, size), self.p(157.0, 0.0).x, r.y + lh * 0.5 + size * 0.36, size, dim(super::chrome::CREAM));
             });
             let cx = self.p(437.0, 0.0).x;
             super::dt_font::with_face(super::dt_font::Face::Bold, || {
                 super::chrome::shadow_centered(&ellipsize(&row.scenario, 250.0 * k, 11.0 * k), cx, r.y + lh * 0.42, 11.0 * k, WHITE);
             });
-            super::chrome::shadow_centered(&ellipsize(&row.time, 250.0 * k, 11.0 * k), cx, r.y + lh * 0.9, 11.0 * k, Color::new(0.85, 0.75, 0.45, 1.0));
+            super::chrome::shadow_centered(&ellipsize(&row.time, 250.0 * k, 11.0 * k), cx, r.y + lh * 0.9, 11.0 * k, dim(Color::new(0.85, 0.75, 0.45, 1.0)));
             if hover && clicked() && delete.is_none() && pin.is_none() {
                 picked = Some(i);
             }
@@ -401,14 +466,20 @@ pub fn save_screen(game: &Game, assets: &Assets, view: &mut SaveView, message: &
     if is_key_pressed(KeyCode::Backspace) {
         view.name.pop();
     }
-    let same = view.entries.iter().position(|e| e.meta.name == view.name);
+    fill_metas(&mut view.entries, &mut view.asked, &mut view.settled, view.scroll.saturating_sub(1), None);
+    let same = view.entries.iter().position(|e| e.meta.as_ref().is_some_and(|m| m.name == view.name));
     // The first row is the name being typed (a new save, or the one it replaces).
     let caret = if (get_time() * 2.0) as i64 % 2 == 0 { "|" } else { " " };
     let typed = if view.name.is_empty() { own("Buttons", "NewSave", n_("(save anew)")) } else { format!("{}{caret}", view.name) };
-    let mut rows = vec![Row { name: typed, scenario: game.world.title.clone(), time: razdor::trf!("Time: {date}", date = game.clock.label()), pinned: false }];
+    let mut rows = vec![Row { name: typed, scenario: game.world.title.clone(), time: razdor::trf!("Time: {date}", date = game.clock.label()), pinned: false, waiting: false }];
     rows.extend(view.entries.iter().map(row_of));
     if let (Some(k), _, _) = book.rows(&rows, Some(same.map_or(0, |i| i + 1)), &mut view.scroll, false) {
-        view.name = if k == 0 { String::new() } else { view.entries[k - 1].meta.name.clone() };
+        // A save whose meta is not read yet gives no name to take.
+        match k.checked_sub(1).map(|i| view.entries[i].meta.as_ref()) {
+            None => view.name = String::new(),
+            Some(Some(m)) => view.name = m.name.clone(),
+            Some(None) => {}
+        }
     }
     let dir = save::games_dir();
     let warning = if dir.is_none() { Some(tr("No data folder for saves: set RAZDOR_SAVE_DIR.")) } else { view.error.as_deref() };
@@ -449,6 +520,7 @@ pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pe
     }
     let (book, closed) = Book::at(&own("LoadGame", "Title", n_("Load a saved game")));
     book.page(&own("LoadGame", "GameName", n_("Name of the saved game")), &own("LoadGame", "ScenarioName", n_("Name of the scenario")));
+    fill_metas(&mut view.entries, &mut view.asked, &mut view.settled, view.scroll, Some(&mut view.selected));
     let rows: Vec<Row> = view.entries.iter().map(row_of).collect();
     if rows.is_empty() {
         let p = book.p(297.0, 230.0);
@@ -464,6 +536,7 @@ pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pe
             razdor::diag!("{}: {err}", path.display());
         }
         view.refresh();
+        fill_metas(&mut view.entries, &mut view.asked, &mut view.settled, 0, None);
         // The save stays selected where the list now puts it.
         if let Some(k) = view.entries.iter().position(|e| e.path == path) {
             view.selected = k;
