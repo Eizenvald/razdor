@@ -121,6 +121,10 @@ pub fn is_mouse_button_down(b: MouseButton) -> bool {
     mq::is_mouse_button_down(b) || button(b).down
 }
 
+pub fn is_mouse_button_released(b: MouseButton) -> bool {
+    mq::is_mouse_button_released(b) || button(b).released
+}
+
 pub fn is_key_pressed(k: KeyCode) -> bool {
     mq::is_key_pressed(k) || key_edge(k).pressed
 }

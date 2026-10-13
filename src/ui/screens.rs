@@ -16,6 +16,7 @@ use razdor::rules::units::Stats;
 
 use super::assets::Assets;
 use super::audio::{cue, Cue};
+use super::chrome::{self, Skin};
 use super::widgets::*;
 use super::{ScenarioEntry, Screen};
 
@@ -110,18 +111,18 @@ pub fn scenario_select(scenarios: &[ScenarioEntry], has_install: bool) -> Option
     for (k, (idx, title, desc)) in entries.iter().enumerate() {
         let (c, r) = (k / per_col, k % per_col);
         let (ex, ey) = (x + c as f32 * (col_w + 20.0), top + r as f32 * (row_h + 6.0));
-        let hover = mouse_in(ex, ey, col_w, row_h);
+        let (hover, down, pressed) = super::widgets::button_state(Rect::new(ex, ey, col_w, row_h), true);
         draw_rectangle(ex, ey, col_w, row_h, PANEL);
-        draw_rectangle_lines(ex, ey, col_w, row_h, 2.0, if hover { ACCENT } else { DIM });
+        draw_rectangle_lines(ex, ey, col_w, row_h, 2.0, if down { chrome::GOLD } else if hover { ACCENT } else { DIM });
         text_fit(title, ex + 12.0, ey + 22.0, col_w - 24.0, 20.0, if idx.is_none() { ACCENT } else { INK });
         let first = wrap(desc, col_w - 24.0, 16.0).into_iter().next().unwrap_or_default();
         text(&first, ex + 12.0, ey + 42.0, 16.0, DIM);
         if hover {
             hovered = Some((*idx, desc.clone()));
-            if clicked() {
-                cue(Cue::MenuPress);
-                return Some(Screen::ClassSelect { scenario: *idx });
-            }
+        }
+        if pressed {
+            cue(Cue::MenuPress);
+            return Some(Screen::ClassSelect { scenario: *idx });
         }
     }
     if button(screen_width() - 220.0, 40.0, 180.0, 44.0, tr("Load a game"), true) {
@@ -235,7 +236,9 @@ pub fn class_select(
         if !offered[i] {
             draw_rectangle(x, y, w, h, Color::new(0.0, 0.0, 0.0, 0.6));
         }
-        if hover && clicked() {
+        let (_, down, pressed) = super::widgets::button_state(Rect::new(x, y, w, h), offered[i]);
+        if down { chrome::glow_frame(Rect::new(x, y, w, h), Color::new(0.8, 0.65, 0.3, 1.0), false); }
+        if pressed {
             cue(Cue::MenuPress);
             *game = Some(start_game(&content, scenario.as_ref().map(|(e, c)| (*e, c)), hero, &name));
             return Some(Screen::WorldMap);
@@ -309,25 +312,96 @@ fn latest_save(game: &Game) -> Option<std::path::PathBuf> {
     })
 }
 
-/// The defeat screen: a new game, or, for the map just lost, its newest save or a restart.
-pub fn game_over(game: &mut Option<Game>) -> (Option<Screen>, Option<EndChoice>) {
+/// The original red defeat dialog over the last view of the map. Keep Razdor's three
+/// ways out of a lost game together in its footer.
+pub fn game_over(game: &mut Option<Game>, assets: &Assets) -> (Option<Screen>, Option<EndChoice>) {
     let days = days_played(game);
     let latest = game.as_ref().and_then(latest_save);
     let can_restart = game.as_ref().is_some_and(|g| g.origin.is_some());
-    let shown = match end_event(game) {
-        Some(title) => end_screen(tr("Defeat"), &trf!("{title}. You lasted {days} days.", title, days), RED, game),
-        None => end_screen(tr("Your hero has fallen"), &trf!("The discord goes on. You lasted {days} days.", days), RED, game),
-    };
-    if shown.is_some() {
-        return (shown, None);
+    if let Some(g) = game.as_ref() {
+        super::world_view::backdrop(g, assets);
+    } else {
+        clear_background(Color::from_rgba(12, 5, 4, 255));
     }
-    let x = screen_width() / 2.0 - 110.0;
-    if button(x, 445.0, 220.0, 50.0, tr("Load the latest save"), latest.is_some()) {
+
+    let scale = chrome::k();
+    let (w, h) = (700.0 * scale, 296.0 * scale);
+    let x = (screen_width() - w) / 2.0;
+    let y = ((screen_height() - chrome::bar_height() - h) / 2.0).max(8.0 * scale);
+    let title = end_event(game).unwrap_or_else(|| tr("Defeat in battle!").to_string());
+    chrome::window(Rect::new(x, y, w, h), &title, Skin::Red, false);
+
+    let body = Rect::new(x + 3.0 * scale, y + 29.0 * scale, w - 6.0 * scale, 191.0 * scale);
+    chrome::silver_frame(body, scale.max(1.0));
+    let portrait = Rect::new(x + 20.0 * scale, y + 46.0 * scale, 128.0 * scale, 128.0 * scale);
+    // The red win/defeat skin is the original backing. `Skull.lit` supplies only the skull;
+    // do not use the spell's `_Rays` layer or its circular Spell-Frame here.
+    chrome::surface(portrait, Skin::Red);
+    let skull_rect = Rect::new(portrait.x + 8.0 * scale, portrait.y + 8.0 * scale,
+        portrait.w - 16.0 * scale, portrait.h - 16.0 * scale);
+    if let Some(skull) = chrome::art("Spells/Skull.lit", chrome::Fx::KeyBlack) {
+        chrome::tex(&skull, skull_rect, WHITE);
+    } else if let Some(skull) = chrome::art("Windows/Army-Death.lit", chrome::Fx::KeyBlack) {
+        chrome::tex(&skull, skull_rect, WHITE);
+    } else {
+        chrome::shadow_centered("☠", portrait.x + portrait.w / 2.0,
+            portrait.y + 91.0 * scale, 84.0 * scale, chrome::SILVER);
+    }
+    chrome::silver_frame(portrait, 1.0 * scale);
+    // The original's ornate window corners make a square portrait frame that fits the red
+    // defeat panel. Spell-Frame is a round medallion and is intentionally not used here.
+    let corner_size = 26.0 * scale;
+    for (name, cx, cy) in [
+        ("Corner_Frame-LU", portrait.x, portrait.y),
+        ("Corner_Frame-RU", portrait.x + portrait.w - corner_size, portrait.y),
+        ("Corner_Frame-LD", portrait.x, portrait.y + portrait.h - corner_size),
+        ("Corner_Frame-RD", portrait.x + portrait.w - corner_size, portrait.y + portrait.h - corner_size),
+    ] {
+        if let Some(corner) = chrome::art(&format!("Windows/{name}.lit"), chrome::Fx::KeyBlack) {
+            chrome::tex(&corner, Rect::new(cx, cy, corner_size, corner_size), WHITE);
+        }
+    }
+    let message = Rect::new(x + 164.0 * scale, portrait.y, 516.0 * scale, portrait.h);
+    chrome::text_box(message);
+    let message_cx = message.x + message.w / 2.0;
+    let intro = tr("Your enemy proved stronger, and you lost this battle.");
+    let consequence = tr("Your hero has fallen. This scenario cannot be continued.");
+    for (i, line) in wrap(intro, message.w - 44.0 * scale, 18.0 * scale).iter().enumerate() {
+        chrome::shadow_centered(line, message_cx, message.y + (35.0 + i as f32 * 20.0) * scale,
+            18.0 * scale, chrome::CREAM);
+    }
+    for (i, line) in wrap(consequence, message.w - 44.0 * scale, 18.0 * scale).iter().enumerate() {
+        chrome::shadow_centered(line, message_cx, message.y + (83.0 + i as f32 * 20.0) * scale,
+            18.0 * scale, chrome::ORANGE_TEXT);
+    }
+    chrome::shadow_centered(&trf!("Days played: {days}", days), x + w / 2.0,
+        y + 206.0 * scale, 17.0 * scale, chrome::CREAM);
+
+    let footer = Rect::new(x + 3.0 * scale, y + 223.0 * scale, w - 6.0 * scale, 70.0 * scale);
+    chrome::silver_frame(footer, scale.max(1.0));
+    let labels = [tr("New game"), tr("Load the latest save"), tr("Restart this map")];
+    let enabled = [true, latest.is_some(), can_restart];
+    let mut picked = None;
+    for (i, label) in labels.into_iter().enumerate() {
+        let r = Rect::new(x + (24.0 + i as f32 * 225.0) * scale, y + 239.0 * scale,
+            202.0 * scale, 38.0 * scale);
+        let (_, down, pressed) = super::widgets::button_state(r, enabled[i]);
+        chrome::quest_button(r, label, enabled[i], down);
+        if pressed {
+            cue(Cue::Button);
+            picked = Some(i);
+        }
+    }
+    if picked == Some(0) {
+        *game = None;
+        return (Some(Screen::MainMenu), None);
+    }
+    if picked == Some(1) {
         if let Some(path) = latest {
             return (None, Some(EndChoice::Load(path)));
         }
     }
-    if button(x, 510.0, 220.0, 50.0, tr("Restart this map"), can_restart) {
+    if picked == Some(2) {
         return (None, Some(EndChoice::Restart));
     }
     (None, None)

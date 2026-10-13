@@ -416,7 +416,9 @@ pub fn battle_stat_strip(strip: Rect, now: &Stats, base: &Stats, power: i32, cas
 #[allow(clippy::too_many_arguments)]
 fn stat_strip_impl(strip: Rect, now: &Stats, base: &Stats, power: i32, caster: bool, place: usize, hp: i32, row2: i32, lit: bool, panel: StripPanel, battle: bool) {
     let k = k();
-    chrome::surface(strip, chrome::Skin::Strip);
+    // The hero's strip uses the same visible parchment grain as the reference hire card;
+    // the darker standard strip texture loses too much detail once tinted red.
+    chrome::surface(strip, if panel == StripPanel::Hero && !battle { chrome::Skin::Paper } else { chrome::Skin::Strip });
     // The original recolours the strip itself (0x48da5c): red for the hero, blue for a named
     // character; a tint over it here. The hero's red is a deeper one than the original's
     // (about 160,50,0 on this paper), which glared (a choice over the original).
@@ -424,8 +426,10 @@ fn stat_strip_impl(strip: Rect, now: &Stats, base: &Stats, power: i32, caster: b
         StripPanel::Plain => {}
         StripPanel::Hero if battle => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.5, 0.05, 0.03, 0.55)),
         StripPanel::Named if battle => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.05, 0.3, 0.95, 0.6)),
-        StripPanel::Hero => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.36, 0.07, 0.035, 1.0)),
-        StripPanel::Named => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.035, 0.16, 0.42, 1.0)),
+        // Preserve the paper's warm variation under the leader's red highlight, as in the
+        // reference card. The tint changes its color without flattening the texture.
+        StripPanel::Hero => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.48, 0.12, 0.035, 0.36)),
+        StripPanel::Named => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.035, 0.16, 0.42, 0.62)),
     }
     if lit {
         draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.75, 0.25, 0.0, 0.4));

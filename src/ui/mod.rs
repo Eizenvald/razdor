@@ -508,7 +508,6 @@ impl App {
                 if let Screen::Building(view) = std::mem::replace(&mut self.screen, Screen::WorldMap) {
                     self.map_view.back_to = Some(view);
                 }
-                self.map_view.reset();
             }
             world_view::BuildingFlight::ComeBack => {
                 if let Some(view) = self.map_view.back_to.take() {
@@ -832,7 +831,7 @@ impl App {
             }
             (Screen::Save(view), Some(game)) => saves::save_screen(game, &self.assets, view, &mut self.message),
             (Screen::Load(view), game) => saves::load_screen(game.as_ref(), &self.assets, view, &mut self.pending_load, &self.load_error),
-            (Screen::GameOver, game) => match screens::game_over(game) {
+            (Screen::GameOver, game) => match screens::game_over(game, &self.assets) {
                 (next, Some(screens::EndChoice::Load(path))) => {
                     self.pending_load = Some(path);
                     next

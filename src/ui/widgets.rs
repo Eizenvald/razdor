@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use crate::ui::input::{get_keys_pressed, get_keys_released, is_key_down, is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, mouse_position, mouse_wheel};
+use crate::ui::input::{get_keys_pressed, get_keys_released, is_key_down, is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, is_mouse_button_released, mouse_position, mouse_wheel};
 use macroquad::prelude::*;
 
 pub const INK: Color = Color::new(0.93, 0.90, 0.82, 1.0);
@@ -158,6 +158,12 @@ thread_local! {
     static SWALLOWED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+thread_local! {
+    /// The dialog button where the left-button press began. Its action runs only when that
+    /// same button receives the release while still under the pointer.
+    static BUTTON_CAPTURE: std::cell::Cell<Option<[u32; 4]>> = const { std::cell::Cell::new(None) };
+}
+
 /// The rest of this frame sees no click and no key press ([`clicked`], [`key`],
 /// [`held_key`], the global keys); cleared by [`track_held_key`] at the next frame.
 pub fn swallow_input() {
@@ -195,6 +201,22 @@ pub fn mouse_in(x: f32, y: f32, w: f32, h: f32) -> bool {
 
 pub fn clicked() -> bool {
     !input_blocked() && !input_swallowed() && is_mouse_button_pressed(MouseButton::Left)
+}
+
+/// Tracks a button from mouse-down to mouse-up. Returns its hover, held-down visual state,
+/// and activation edge; dragging out cancels activation and dragging back in restores it.
+pub fn button_state(r: Rect, enabled: bool) -> (bool, bool, bool) {
+    let hover = enabled && !input_swallowed() && mouse_in(r.x, r.y, r.w, r.h);
+    let capture = [r.x.to_bits(), r.y.to_bits(), r.w.to_bits(), r.h.to_bits()];
+    let down_edge = is_mouse_button_pressed(MouseButton::Left);
+    let up_edge = is_mouse_button_released(MouseButton::Left);
+    if down_edge && hover {
+        BUTTON_CAPTURE.with(|c| c.set(Some(capture)));
+    } else if !is_mouse_button_down(MouseButton::Left) && !up_edge {
+        BUTTON_CAPTURE.with(|c| c.set(None));
+    }
+    let captured = BUTTON_CAPTURE.with(|c| c.get() == Some(capture));
+    (hover, captured && hover && is_mouse_button_down(MouseButton::Left), hover && captured && up_edge)
 }
 
 pub fn right_clicked() -> bool {
@@ -413,9 +435,9 @@ pub fn button(x: f32, y: f32, w: f32, h: f32, label: &str, enabled: bool) -> boo
 
 /// [`button`] with its own press sound (the money buttons play `Item-Gold`).
 pub fn button_sounding(x: f32, y: f32, w: f32, h: f32, label: &str, enabled: bool, sound: super::audio::Cue) -> bool {
-    let hover = enabled && mouse_in(x, y, w, h);
-    super::chrome::marble_button(Rect::new(x, y, w, h), label, enabled, hover);
-    let pressed = hover && clicked();
+    let r = Rect::new(x, y, w, h);
+    let (_, down, pressed) = button_state(r, enabled);
+    super::chrome::marble_button(Rect::new(x, y, w, h), label, enabled, down);
     if pressed {
         super::audio::cue(sound);
     }
@@ -832,8 +854,9 @@ pub fn number_field(key: &str, x: f32, y: f32, w: f32, value: i64, min: i64, max
 
 /// A compact button (no sound, for steppers and list rows).
 pub fn small_button(x: f32, y: f32, w: f32, h: f32, label: &str, enabled: bool) -> bool {
-    let hover = enabled && mouse_in(x, y, w, h);
-    let bg = match (enabled, hover) {
+    let r = Rect::new(x, y, w, h);
+    let (_, down, pressed) = button_state(r, enabled);
+    let bg = match (enabled, down) {
         (false, _) => Color::new(0.16, 0.16, 0.16, 1.0),
         (true, true) => Color::new(0.45, 0.35, 0.2, 1.0),
         (true, false) => Color::new(0.26, 0.21, 0.14, 1.0),
@@ -846,13 +869,13 @@ pub fn small_button(x: f32, y: f32, w: f32, h: f32, label: &str, enabled: bool) 
         let d = measure(label, size);
         text(label, x + (w - d.width) / 2.0, y + (h + d.offset_y) / 2.0 - 1.0, size, if enabled { INK } else { DIM });
     });
-    hover && clicked()
+    pressed
 }
 
 /// A button that stays lit while `on` (tool and mode pickers). True when clicked.
 pub fn toggle_button(x: f32, y: f32, w: f32, h: f32, label: &str, on: bool) -> bool {
-    let hover = mouse_in(x, y, w, h);
-    let bg = if on { Color::new(0.55, 0.42, 0.18, 1.0) } else if hover { Color::new(0.36, 0.28, 0.18, 1.0) } else { Color::new(0.22, 0.18, 0.12, 1.0) };
+    let (hover, down, pressed) = button_state(Rect::new(x, y, w, h), true);
+    let bg = if on { Color::new(0.55, 0.42, 0.18, 1.0) } else if down { Color::new(0.36, 0.28, 0.18, 1.0) } else if hover { Color::new(0.28, 0.22, 0.14, 1.0) } else { Color::new(0.22, 0.18, 0.12, 1.0) };
     draw_rectangle(x, y, w, h, bg);
     draw_rectangle_lines(x, y, w, h, 1.0, if on { ACCENT } else { DIM });
     super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
@@ -861,7 +884,6 @@ pub fn toggle_button(x: f32, y: f32, w: f32, h: f32, label: &str, on: bool) -> b
         let d = measure(label, size);
         text(label, x + (w - d.width) / 2.0, y + (h + d.offset_y) / 2.0 - 1.0, size, INK);
     });
-    let pressed = hover && clicked();
     if pressed {
         claim();
     }

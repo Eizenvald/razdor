@@ -37,6 +37,9 @@ const PARCHMENT_INK: Color = Color::new(0.45, 0.28, 0.14, 1.0);
 const BOX_INK: Color = Color::new(1.0, 0.86, 0.58, 1.0);
 const SILVER: Color = Color::new(0.78, 0.78, 0.82, 1.0);
 const TAB_RED: Color = Color::new(0.75, 0.18, 0.12, 1.0);
+const MARKET_HEADING: Color = Color::new(156.0 / 255.0, 1.0, 156.0 / 255.0, 1.0);
+const BUILDING_AND_ITEM_NAME: Color = Color::new(211.0 / 255.0, 228.0 / 255.0, 161.0 / 255.0, 1.0);
+const QUEST_HEADING: Color = Color::new(189.0 / 255.0, 190.0 / 255.0, 90.0 / 255.0, 1.0);
 
 fn quest_text_color() -> Color {
     let saturation = window_layout::visual().quest_text_saturation;
@@ -51,9 +54,8 @@ fn quest_selection_row(r: Rect) {
 fn take_quest_button(r: Rect, picked: Option<HallEntry>) -> bool {
     let enabled = picked.is_some();
     let label = if matches!(picked, Some(HallEntry::Rumour(_))) { tr("Hear rumour") } else { tr("Take quest") };
-    let hover = enabled && mouse_in(r.x, r.y, r.w, r.h);
-    chrome::quest_button(r, label, enabled, hover);
-    let pressed = hover && clicked();
+    let (_, down, pressed) = button_state(r, enabled);
+    chrome::quest_button(r, label, enabled, down);
     if pressed { cue(Cue::Button); }
     pressed
 }
@@ -228,10 +230,10 @@ fn tab_art(tab: Option<Tab>) -> Option<usize> {
 
 /// A parchment tab in the left column (`tab` `None` is the exit). Returns true when clicked.
 fn tab_button(label: &str, tab: Option<Tab>, r: Rect, active: bool) -> bool {
-    let hover = mouse_in(r.x, r.y, r.w, r.h);
+    let (hover, down, pressed) = button_state(r, true);
     let state = if active {
         "TBd"
-    } else if hover {
+    } else if down {
         "TBo"
     } else {
         "TB-"
@@ -254,7 +256,7 @@ fn tab_button(label: &str, tab: Option<Tab>, r: Rect, active: bool) -> bool {
         text(label, r.x + (r.w - d.width) / 2.0 + 1.5, r.y + (r.h + d.offset_y) / 2.0 - 1.5, size, Color::new(1.0, 0.95, 0.85, 0.5));
         text(label, r.x + (r.w - d.width) / 2.0, r.y + (r.h + d.offset_y) / 2.0 - 3.0, size, color);
     }
-    hover && clicked()
+    pressed
 }
 
 /// The red-brown text box with the building's description.
@@ -353,7 +355,7 @@ fn hall_offers(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mu
     }
     let title_area = Rect::new(quest_border.x + 62.0*k, quest_border.y, quest_border.w - 70.0*k, quest_border.h);
     let title_size = fit_size(title, title_area.w, 20.0 * k);
-    chrome::shadow_centered(title, title_area.center().x, title_area.y + (title_area.h + title_size * 0.36) / 2.0, title_size, chrome::GOLD);
+    chrome::shadow_centered(title, title_area.center().x, title_area.y + (title_area.h + title_size * 0.36) / 2.0, title_size, QUEST_HEADING);
 
     let rows = 3usize;
     let row_h = 24.0 * k;
@@ -572,6 +574,9 @@ fn barracks(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
         let stock_left = r.stock != Some(0);
         let can = hires && stock_left && game.can_afford(price) && game.squad.len() < game.max_squad();
         let pill = Rect::new(face.x + 4.0 * k, face.y + face.h + 2.0 * k, face.w - 8.0 * k, 17.0 * k);
+        // The hire pill now has a transparent black matte. Keep its card backing and the
+        // price on parchment, instead of letting the scene show through the button area.
+        chrome::surface(Rect::new(face.x, face.y + face.h, face.w, 36.0 * k), chrome::Skin::Strip);
         let hire = own_text("Army", "HireArmy", n_("Hire"));
         if chrome::pill_button(pill, &hire, can, true) {
             // The original plays the gold on the press and again in the click action on the
@@ -1039,8 +1044,10 @@ fn price_list(assets: Option<&Assets>, rows: &[(Option<ItemId>, String, String, 
         let shown = ellipsize(name, w - 110.0 * k, 17.0 * k);
         let visible_end = shown.strip_suffix('…').unwrap_or(&shown).len();
         let mark = marks.get(n).cloned().flatten().filter(|r| r.end <= visible_end && shown.is_char_boundary(r.start) && shown.is_char_boundary(r.end));
-        text_marked(&shown, mark, x + 32.0 * k, ry + 20.0 * k, 17.0 * k, if sel { WHITE } else { ACCENT }, chrome::GOLD);
-        text(price, x + w - 80.0 * k, ry + 21.0 * k, 18.0 * k, if *red { RED } else { ACCENT });
+        let item_color = if *red { Color::new(1.0, 0.56, 0.16, 1.0) } else { BUILDING_AND_ITEM_NAME };
+        let price_color = if *red { Color::new(1.0, 0.56, 0.16, 1.0) } else { ACCENT };
+        text_marked(&shown, mark, x + 32.0 * k, ry + 20.0 * k, 17.0 * k, item_color, item_color);
+        text(price, x + w - 80.0 * k, ry + 21.0 * k, 18.0 * k, price_color);
         if mouse_in(x, ry, w - 18.0 * k, row_h) && clicked() {
             hit = Some(n);
         }
@@ -1080,11 +1087,11 @@ pub(super) fn item_description(game: &Game, assets: &Assets, item: ItemId, x: f3
     let icon = 56.0 * k * s;
     assets.draw_item(item, x + w / 2.0 - icon / 2.0, y + 10.0 * k, icon);
     let mut ly = y + 10.0 * k + icon + 6.0 * k + 18.0 * k * s;
-    text_centered(&d.name, x + w / 2.0, ly, 20.0 * k * s, BOX_INK);
+    text_centered(&d.name, x + w / 2.0, ly, 20.0 * k * s, Color::new(0.84, 0.85, 0.87, 1.0));
     ly += 4.0 * k * s;
     if let Some(limit) = limit {
         ly += 20.0 * k * s;
-        text_centered(limit, x + w / 2.0, ly, 16.0 * k * s, Color::new(1.0, 0.6, 0.4, 1.0));
+        text_centered(limit, x + w / 2.0, ly, 16.0 * k * s, Color::new(0.34, 0.34, 0.34, 1.0));
     }
     // At the smallest size the description gives way to the properties.
     let room = ((y + h - 6.0 * k - ly - 4.0 * k - 19.0 * k * s * lines.len() as f32) / (18.0 * k * s)).floor().max(0.0) as usize;
@@ -1096,15 +1103,15 @@ pub(super) fn item_description(game: &Game, assets: &Assets, item: ItemId, x: f3
     }
     for line in &desc {
         ly += 18.0 * k * s;
-        text_centered(line, x + w / 2.0, ly, 15.0 * k * s, BOX_INK);
+        text_centered(line, x + w / 2.0, ly, 15.0 * k * s, ACCENT);
     }
     ly += 4.0 * k;
     for (n, line) in lines.iter().enumerate() {
         ly += 19.0 * k * s;
         if n < props_n {
-            text_centered(line, x + w / 2.0, ly, 16.0 * k * s, MANA);
+            text_centered(line, x + w / 2.0, ly, 16.0 * k * s, chrome::ORANGE_TEXT);
         } else {
-            text_centered(line, x + w / 2.0, ly, 15.0 * k * s, chrome::GOLD);
+            text_centered(line, x + w / 2.0, ly, 15.0 * k * s, WHITE);
         }
     }
 }
@@ -1124,7 +1131,7 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
     let dw = w * 0.492;
     let (lx, lw) = (x + dw + 8.0 * k, w - dw - 8.0 * k);
     let heading = own_text("Building", "ItemInfo", n_("Item description"));
-    chrome::shadow_centered(&heading, x + dw / 2.0, y + 13.0 * k, 17.0 * k, ACCENT);
+    chrome::shadow_centered(&heading, x + dw / 2.0, y + 13.0 * k, 17.0 * k, MARKET_HEADING);
     // The sell list holds only the pack items worth more than 1 (personal items and the
     // cheapest are not bought); a buy price above the gold is red (0x4bca8c).
     let sellable: Vec<usize> = (0..game.pack.len()).filter(|&k| game.can_sell(game.pack[k])).collect();
@@ -1137,7 +1144,7 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
     // The title on the left of its row, the filter line on the right: the list keeps the
     // items that match what is typed, their matched part lit; Enter picks the first.
     let head = if view.selling { tr("Your pack: what the market pays") } else { tr("Goods for sale") };
-    text_fit(head, lx, y + 18.0 * k, lw * 0.5 - 6.0 * k, 18.0 * k, ACCENT);
+    text_fit(head, lx, y + 18.0 * k, lw * 0.5 - 6.0 * k, 18.0 * k, MARKET_HEADING);
     let all: Vec<(usize, ItemId)> = rows.iter().enumerate().filter_map(|(n, r)| r.0.map(|i| (n, i))).collect();
     let before = item_filter::keep(&c, all.iter().copied(), &view.filter).len();
     let filter_rect = Rect::new(lx + lw * 0.5, y, lw * 0.5, 18.0 * k);
@@ -1329,7 +1336,7 @@ fn gold_group(game: &Game, r: Rect) {
     let x = r.x + ((r.w - icon - 6.0 * k - tw) / 2.0).max(0.0);
     resource_icon(Resource::Gold, x + icon / 2.0, r.y + r.h / 2.0, icon);
     let tx = x + icon + 6.0 * k;
-    chrome::shadow_text(&label, tx, r.y + r.h / 2.0 - 4.0 * k, size, ACCENT);
+    chrome::shadow_text(&label, tx, r.y + r.h / 2.0 - 4.0 * k, size, MARKET_HEADING);
     chrome::shadow_text(&amount, tx, r.y + r.h / 2.0 + 15.0 * k, 16.0 * k, ACCENT);
 }
 
@@ -1663,12 +1670,12 @@ pub fn frame(game: &mut Game, assets: &Assets, view: &mut BuildingView, message:
     }
     let f = window();
     let k = chrome::k();
-    let (_, close) = chrome::window(Rect::new(f.x, f.y, f.w, f.h), &title(game), chrome::Skin::Marble, true);
+    let (_, close) = chrome::window_with_title_color(Rect::new(f.x, f.y, f.w, f.h), &title(game), chrome::Skin::Marble, true, BUILDING_AND_ITEM_NAME);
     chrome::silver_frame(card_panel_lower(&f), k.max(1.0));
 
     // Tabs, on light parchment.
     let col = window_layout::left(Rect::new(f.x, f.y, f.w, f.h));
-    chrome::surface(col, chrome::Skin::Paper);
+    chrome::paper_panel(col);
     chrome::silver_frame(col, k.max(1.0));
     let (tw, th) = ((col.w - 12.0 * k).min(232.0 * k), 88.0 * k);
     let tx = col.x + (col.w - tw) / 2.0;

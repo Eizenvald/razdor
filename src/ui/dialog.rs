@@ -30,7 +30,7 @@ pub enum Resource {
     Experience,
 }
 
-/// A picture over the text: a unit's portrait, or an event's own image.
+/// A picture beside the text: a unit's portrait, or an event's own image.
 #[derive(Clone, Debug)]
 pub enum Picture {
     Unit(UnitId),
@@ -318,8 +318,13 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
     }
     let (sw, sh) = (screen_width(), screen_height());
     chrome::under_message();
-    // A picture at the side takes its width and 14 more from the text box.
+    // Every dialog picture sits left of the text box, with a 14 px gap.
     let side = match &d.picture {
+        Some(Picture::Unit(_)) => Some((128.0, 128.0)),
+        Some(Picture::Image(t)) => {
+            let scale = (128.0 / t.height()).min(220.0 / t.width());
+            Some((t.width() * scale, t.height() * scale))
+        }
         Some(Picture::Side(t)) => Some((t.width(), t.height())),
         _ => None,
     };
@@ -331,7 +336,8 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
             None => (w, d.text.iter().flat_map(|t| wrap(t, w - 80.0 - side_w, 19.0)).collect(), Vec::new()),
         }
     };
-    let (mut w, mut lines, mut rows) = fit(620.0f32.min(sw - 20.0));
+    let preferred_w: f32 = if side.is_some() { 900.0 } else { 620.0 };
+    let (mut w, mut lines, mut rows) = fit(preferred_w.min(sw - 20.0));
     if (lines.len() + rows.len()) as f32 * 23.0 > sh * 0.45 {
         (w, lines, rows) = fit(980.0f32.min(sw - 20.0));
     }
@@ -345,10 +351,9 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
     // Reserve a little extra vertical space so the blue journal notice has breathing room
     // between the event text and the lower frame instead of touching its outline.
     let notice_h = if d.notice.is_some() { 36.0 } else { 0.0 };
-    let pic_h = if d.picture.is_some() && side.is_none() { 140.0 } else { 0.0 };
     let units_h = [&d.joined, &d.left].iter().filter(|u| !u.is_empty()).count() as f32 * 60.0;
     let title_h = (26.0 * chrome::k()).round();
-    let fixed = title_h + 16.0 + pic_h + res_h + items_h + spells_h + units_h + notice_h + 64.0;
+    let fixed = title_h + 16.0 + res_h + items_h + spells_h + units_h + notice_h + 64.0;
     // Too tall for the screen: the text scrolls inside a shorter box, so the buttons stay
     // in sight.
     let shown = visible_lines(total, fixed, sh - 20.0);
@@ -367,15 +372,15 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
     let mut cy = y + title_h + 16.0;
     match &d.picture {
         Some(Picture::Unit(u)) => {
-            let r = Rect::new(x + w / 2.0 - 64.0, cy, 128.0, 128.0);
+            let r = Rect::new(x + 17.0, cy + 1.0, 128.0, 128.0);
             assets.draw_portrait(*u, Team::Player, r);
             chrome::silver_frame(r, 1.5);
         }
         Some(Picture::Image(tex)) => {
-            let k = (128.0 / tex.height()).min((w - 60.0) / tex.width());
-            let (tw, th) = (tex.width() * k, tex.height() * k);
-            draw_texture_ex(tex, x + (w - tw) / 2.0, cy, WHITE, DrawTextureParams { dest_size: Some(vec2(tw, th)), ..Default::default() });
-            draw_rectangle_lines(x + (w - tw) / 2.0, cy, tw, th, 2.0, MARBLE_EDGE);
+            let (tw, th) = side.expect("picture dimensions");
+            let r = Rect::new(x + 17.0, cy + 1.0, tw, th);
+            draw_texture_ex(tex, r.x, r.y, WHITE, DrawTextureParams { dest_size: Some(vec2(tw, th)), ..Default::default() });
+            draw_rectangle_lines(r.x, r.y, r.w, r.h, 2.0, MARBLE_EDGE);
         }
         Some(Picture::Side(tex)) => {
             let (px, py) = (x + 17.0, cy + 1.0);
@@ -384,7 +389,6 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
         }
         None => {}
     }
-    cy += pic_h;
     let tb = Rect::new(x + 16.0 + side_w, cy, w - 32.0 - side_w, text_h);
     chrome::text_box(tb);
     let first = scrolled(d, total, shown, tb);

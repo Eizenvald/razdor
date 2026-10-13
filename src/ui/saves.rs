@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::ui::input::{is_key_pressed, is_mouse_button_down};
+use crate::ui::input::is_key_pressed;
 use macroquad::prelude::*;
 
 use razdor::i18n::{n_, tr};
@@ -359,6 +359,13 @@ impl Book {
         for (i, row) in rows.iter().enumerate().skip(*scroll).take(Book::ROWS) {
             let r = self.row_rect(i - *scroll);
             let hover = !input_blocked() && r.contains(crate::ui::widgets::pointer().into());
+            let sign = 22.0 * k;
+            let row_hit = if deletable && selected == Some(i) {
+                Rect::new(r.x, r.y, r.w - 2.0 * sign - 10.0 * k, r.h)
+            } else {
+                r
+            };
+            let (_, row_down, row_pressed) = super::widgets::button_state(row_hit, true);
             if selected == Some(i) {
                 // The video's blue bar, the load sign on its left, the delete sign on its right.
                 let steps = 8;
@@ -367,33 +374,34 @@ impl Book {
                     let a = 0.85 - 0.5 * (t - 0.5).abs();
                     draw_rectangle(r.x, r.y + r.h * s as f32 / steps as f32, r.w, r.h / steps as f32 + 0.5, Color::new(0.12, 0.2, 0.62, a));
                 }
-                let sign = 22.0 * k;
                 if let Some(t) = super::chrome::win("LSign-Load") {
                     super::chrome::tex(&t, Rect::new(r.x + 4.0 * k, r.y + (r.h - sign) / 2.0, sign, sign), WHITE);
                 }
                 if deletable {
                     // Razdor's pin, left of the delete sign.
                     let p = Rect::new(r.x + r.w - 2.0 * sign - 10.0 * k, r.y + (r.h - sign) / 2.0, sign, sign);
-                    let over = p.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-                    draw_pin(p, row.pinned, over);
+                    let (over, down, pressed) = super::widgets::button_state(p, true);
+                    draw_pin(p, row.pinned, down);
                     if over {
                         tooltip(&[(if row.pinned { tr("Unpin the save (P)") } else { tr("Pin the save (P): it is never overwritten and stays on top") }.to_string(), INK)]);
-                        if clicked() {
-                            pin = Some(i);
-                        }
+                    }
+                    if pressed {
+                        pin = Some(i);
                     }
                     let d = Rect::new(r.x + r.w - sign - 4.0 * k, r.y + (r.h - sign) / 2.0, sign, sign);
-                    let over = d.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-                    if let Some(t) = super::chrome::win(if over && is_mouse_button_down(MouseButton::Left) { "LSign-Delete-Down" } else { "LSign-Delete" }) {
+                    let (over, down, pressed) = super::widgets::button_state(d, true);
+                    if let Some(t) = super::chrome::win(if down { "LSign-Delete-Down" } else { "LSign-Delete" }) {
                         super::chrome::tex(&t, d, WHITE);
                     }
                     if over {
                         tooltip(&[(own("LoadGame", "DeleteHint", n_("Delete the saved game")), INK)]);
-                        if clicked() {
-                            delete = Some(i);
-                        }
+                    }
+                    if pressed {
+                        delete = Some(i);
                     }
                 }
+            } else if row_down {
+                draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.16, 0.24, 0.54, 0.55));
             } else if hover {
                 draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.1, 0.15, 0.45, 0.35));
             }
@@ -412,7 +420,13 @@ impl Book {
                 super::chrome::shadow_centered(&ellipsize(&row.scenario, 250.0 * k, 11.0 * k), cx, r.y + lh * 0.42, 11.0 * k, WHITE);
             });
             super::chrome::shadow_centered(&ellipsize(&row.time, 250.0 * k, 11.0 * k), cx, r.y + lh * 0.9, 11.0 * k, dim(Color::new(0.85, 0.75, 0.45, 1.0)));
-            if hover && clicked() && delete.is_none() && pin.is_none() {
+            if row_hit.contains(crate::ui::widgets::pointer().into()) {
+                if row_down && selected == Some(i) {
+                    // A held click on the selected row shows its load sign as pressed.
+                    draw_rectangle(r.x + 4.0 * k, r.y + (r.h - sign) / 2.0, sign, sign, Color::new(0.0, 0.0, 0.0, 0.28));
+                }
+            }
+            if row_pressed && delete.is_none() && pin.is_none() {
                 picked = Some(i);
             }
         }
@@ -424,16 +438,16 @@ impl Book {
     fn tab(&self, x: f32, label: &str, open: bool) -> bool {
         let k = self.k;
         let r = self.rect(x, 409.0, 133.0, 34.0);
-        let hover = !input_blocked() && r.contains(crate::ui::widgets::pointer().into());
+        let (hover, down, pressed) = super::widgets::button_state(r, true);
         match super::chrome::win(if open { "load-button-2" } else { "load-button-1" }) {
-            Some(t) => super::chrome::tex(&t, r, if open || hover { WHITE } else { Color::new(0.85, 0.85, 0.85, 1.0) }),
+            Some(t) => super::chrome::tex(&t, r, if open || down { WHITE } else if hover { Color::new(0.95, 0.95, 0.95, 1.0) } else { Color::new(0.85, 0.85, 0.85, 1.0) }),
             None => super::chrome::surface(r, super::chrome::Skin::Paper),
         }
         super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
             let size = 15.0 * k;
             super::chrome::shadow_centered(label, r.center().x, r.y + r.h * 0.55, size, if open { super::chrome::CREAM } else { WHITE });
         });
-        hover && clicked()
+        pressed
     }
 
     /// The steel line the tabs hang on.
@@ -446,9 +460,9 @@ impl Book {
 
     fn button(&self, x: f32, w: f32, label: &str, enabled: bool) -> bool {
         let r = self.rect(x, 442.0, w, 28.0);
-        let hover = !input_blocked() && r.contains(crate::ui::widgets::pointer().into());
-        super::chrome::marble_button(r, label, enabled, hover);
-        enabled && hover && clicked()
+        let (_, down, pressed) = super::widgets::button_state(r, enabled);
+        super::chrome::marble_button(r, label, enabled, down);
+        pressed
     }
 }
 
@@ -560,6 +574,7 @@ pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pe
     book.tab_line();
     for (x, tab, label) in [(17.0, SaveKind::Manual, own("LoadGame", "PrivateSave", n_("Private"))), (172.0, SaveKind::Auto, own("LoadGame", "AutoSave", n_("Autosaves")))] {
         if book.tab(x, &label, view.tab == tab) && view.tab != tab && !asking {
+            super::audio::cue(super::audio::Cue::CastSpell);
             view.tab = tab;
             LAST_TAB.with(|t| t.set(tab));
             view.refresh();
@@ -667,9 +682,9 @@ fn exit_dialog(title: &str, warning: &str, asking: &mut bool, battle: bool) -> (
     let was_asking = *asking;
     for (i, (label, what)) in labels.iter().enumerate() {
         let b = Rect::new(inner.x + 10.0 * k + i as f32 * (bw + 10.0 * k), by, bw, 30.0 * k);
-        let over = !*asking && b.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-        super::chrome::marble_button(b, label, true, over);
-        if over && clicked() {
+        let (_, down, pressed) = super::widgets::button_state(b, !*asking);
+        super::chrome::marble_button(b, label, true, down);
+        if pressed {
             match what {
                 Some(ExitChoice::Restart) => *asking = true,
                 Some(c) => choice = Some(*c),
@@ -740,15 +755,16 @@ fn question_box(title: &str, text: &str, marked: bool) -> Option<bool> {
     let by = inner.y + inner.h - 38.0 * k;
     let yes = Rect::new(inner.center().x - bw - 8.0 * k, by, bw, 28.0 * k);
     let no = Rect::new(inner.center().x + 8.0 * k, by, bw, 28.0 * k);
-    let over = |r: Rect| r.contains(crate::ui::widgets::pointer().into());
     let (yes_label, no_label) = (own("Buttons", "Yes", n_("Yes")), own("Buttons", "No", n_("No")));
-    super::chrome::marble_button(yes, &yes_label, true, over(yes));
-    super::chrome::marble_button(no, &no_label, true, over(no));
+    let (_, yes_down, yes_pressed) = super::widgets::button_state(yes, true);
+    super::chrome::marble_button(yes, &yes_label, true, yes_down);
+    let (_, no_down, no_pressed) = super::widgets::button_state(no, true);
+    super::chrome::marble_button(no, &no_label, true, no_down);
     let answer = answer_key();
-    if (over(yes) && clicked()) || answer == Some(true) {
+    if yes_pressed || answer == Some(true) {
         return Some(true);
     }
-    if (over(no) && clicked()) || answer == Some(false) {
+    if no_pressed || answer == Some(false) {
         return Some(false);
     }
     None

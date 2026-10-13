@@ -110,9 +110,9 @@ fn buttons(inner: Rect, labels: &[&str]) -> Option<usize> {
     let mut picked = None;
     for (i, label) in labels.iter().enumerate() {
         let r = Rect::new(x, y, w, h);
-        let over = r.contains(pointer().into()) && !input_blocked();
-        chrome::marble_button(r, label, true, over);
-        if over && clicked() {
+        let (_, down, pressed) = super::widgets::button_state(r, true);
+        chrome::marble_button(r, label, true, down);
+        if pressed {
             cue(Cue::Button);
             picked = Some(i);
         }

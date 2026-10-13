@@ -33,18 +33,20 @@ pub enum Fx {
     Grey,
     /// A dark overlay whose opacity is the picture's brightness (ornaments on parchment).
     Shade,
-    /// Green and blue swapped (0x48dd40 with 1, 3, 2): the blue pill made the green one.
-    SwapGreenBlue,
+    /// Green/blue swap and black transparency key for the barracks' green hire pill.
+    KeyBlackSwapGreenBlue,
     /// Higher-contrast brown ornaments for the shop's dark parchment panels.
     ShadeStrong,
     /// The original trait icons use an opaque violet matte (RGB 129, 0, 127).
     KeyPurple,
+    /// Warm red button palette, preserving the silver outer edge of the original art.
+    ButtonRed,
 }
 
 struct Chrome {
     dir: PathBuf,
     /// By path, then by [`Fx`] (its index).
-    textures: HashMap<String, [Option<Option<Texture2D>>; 8]>,
+    textures: HashMap<String, [Option<Option<Texture2D>>; 9]>,
     /// By key: the tuning it was made with and the texture (`None`: its file is missing).
     visual_textures: HashMap<&'static str, ([f32; 4], Option<Texture2D>)>,
     /// The pictures of [`visual_texture`] as decoded, by path: the light and the brown paper
@@ -147,13 +149,32 @@ pub fn lock_portrait(img: &mut Image) {
 
 /// Applies `fx` to `img` in place.
 pub fn transform(img: &mut Image, fx: Fx) {
-    for p in img.rgba.chunks_exact_mut(4) {
+    let (w, h) = (img.width as usize, img.height as usize);
+    for (i, p) in img.rgba.chunks_exact_mut(4).enumerate() {
         match fx {
             Fx::Plain => {}
-            Fx::KeyBlack => {
+            Fx::ButtonRed => {
+                // A colour multiplication loses the green marble's bright channel and
+                // stains its silver edge. Move that channel into red instead, and keep
+                // the one-pixel outer rim in its original colour.
+                let (x, y) = (i % w, i / w);
+                if x > 0 && y > 0 && x + 1 < w && y + 1 < h {
+                    let (r, g) = (p[0] as i32, p[1] as i32);
+                    p[0] = (g + 5).min(255) as u8;
+                    p[1] = (r * 88 / 100 - 36).clamp(0, 255) as u8;
+                    p[2] = (r * 35 / 100 - 40).clamp(0, 255) as u8;
+                } else {
+                    let silver = p[1];
+                    p[..3].fill(silver);
+                }
+            }
+            Fx::KeyBlack | Fx::KeyBlackSwapGreenBlue => {
                 let m = p[0].max(p[1]).max(p[2]) as u32;
                 let a = (m.saturating_sub(10) * 16).min(255);
                 p[3] = p[3].min(a as u8);
+                if fx == Fx::KeyBlackSwapGreenBlue {
+                    p.swap(1, 2);
+                }
             }
             Fx::Glow => {
                 let m = p[0].max(p[1]).max(p[2]);
@@ -177,7 +198,6 @@ pub fn transform(img: &mut Image, fx: Fx) {
                 p[..3].copy_from_slice(&[20, 10, 4]);
                 p[3] = a.min(p[3]);
             }
-            Fx::SwapGreenBlue => p.swap(1, 2),
             Fx::ShadeStrong => {
                 let a = (lum(p) * 5 / 2).min(255) as u8;
                 p[..3].copy_from_slice(&[60, 20, 0]);
@@ -1079,6 +1099,45 @@ pub fn surface(r: Rect, skin: Skin) {
     surface_alpha(r, skin, 1.0);
 }
 
+/// Keeps the paper grain at its normal scale. Alternating mirrored tiles meet at the
+/// same source edge, avoiding the top-to-bottom seam without stretching the parchment.
+pub fn paper_panel(r: Rect) {
+    if let Some((t, c)) = Skin::Paper.texture() {
+        let scale = k().min(1.4);
+        let (tw, th) = (t.width() * scale, t.height() * scale);
+        if tw < 1.0 || th < 1.0 { return; }
+        let mut row = 0;
+        let mut y = r.y;
+        while y < r.bottom() {
+            let h = th.min(r.bottom() - y);
+            let mut column = 0;
+            let mut x = r.x;
+            while x < r.right() {
+                let w = tw.min(r.right() - x);
+                let (sw, sh) = (w / scale, h / scale);
+                let (flip_x, flip_y) = (column % 2 != 0, row % 2 != 0);
+                // A clipped mirrored tile starts at the far source edge, so the final
+                // partial row/column keeps the same grain size and edge continuity.
+                let source = Rect::new(
+                    if flip_x { t.width() - sw } else { 0.0 },
+                    if flip_y { t.height() - sh } else { 0.0 },
+                    sw, sh,
+                );
+                draw_texture_ex(&t, x, y, c, DrawTextureParams {
+                    dest_size: Some(vec2(w, h)), source: Some(source), flip_x, flip_y,
+                    ..Default::default()
+                });
+                x += tw;
+                column += 1;
+            }
+            y += th;
+            row += 1;
+        }
+    } else {
+        surface(r, Skin::Paper);
+    }
+}
+
 /// A skin at opacity `alpha` (the map's tooltips let the ground show through).
 pub fn surface_alpha(r: Rect, skin: Skin, alpha: f32) {
     if let Some((t, c)) = skin.texture() {
@@ -1110,8 +1169,8 @@ pub fn silver_frame(r: Rect, width: f32) {
 
 /// The window's close box; true when clicked.
 pub fn close_button(x: f32, y: f32, s: f32, red: bool) -> bool {
-    let hover = super::widgets::mouse_in(x, y, s, s);
-    let name = match (red, hover) {
+    let (hover, down, pressed) = super::widgets::button_state(Rect::new(x, y, s, s), true);
+    let name = match (red, down) {
         (true, false) => "CloseButtonRed-Up",
         (true, true) => "CloseButtonRed-Down2",
         (false, false) => "CloseButtonGreen-Up",
@@ -1127,13 +1186,13 @@ pub fn close_button(x: f32, y: f32, s: f32, red: bool) -> bool {
         draw_line(x + p, y + p, x + s - p, y + s - p, 2.0, c);
         draw_line(x + s - p, y + p, x + p, y + s - p, 2.0, c);
     }
-    hover && super::widgets::clicked()
+    pressed
 }
 
 /// Title bar of a window: the window's own skin, the title centred; `ornate` puts the
 /// corner ornaments on a wide one, including town and building windows.
 /// Returns true when its close box (if any) was clicked.
-fn title_bar_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bool) -> bool {
+fn title_bar_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bool, title_color: Option<Color>) -> bool {
     let k = k();
     surface(r, skin);
     draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.0, 0.0, 0.0, 0.15));
@@ -1156,7 +1215,7 @@ fn title_bar_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bo
         }
     }
     draw_line(r.x, r.y + r.h, r.x + r.w, r.y + r.h, 1.0 * k, SILVER);
-    let color = if skin == Skin::Red { GOLD } else { CREAM };
+    let color = title_color.unwrap_or(if skin == Skin::Red { GOLD } else { CREAM });
     let room = if ornate { r.w - 300.0 * k } else { r.w - 2.0 * r.h - 8.0 * k };
     super::dt_font::with_face(face, || {
         let mut t = title.to_string();
@@ -1175,10 +1234,14 @@ fn title_bar_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bo
 /// A modal window: background, silver frame, title bar. Returns the area below the title
 /// bar and whether the close box was clicked.
 pub fn window(r: Rect, title: &str, skin: Skin, closable: bool) -> (Rect, bool) {
-    window_styled(r, title, skin, closable, true)
+    window_styled(r, title, skin, closable, true, None)
 }
 
-fn window_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bool) -> (Rect, bool) {
+pub fn window_with_title_color(r: Rect, title: &str, skin: Skin, closable: bool, color: Color) -> (Rect, bool) {
+    window_styled(r, title, skin, closable, true, Some(color))
+}
+
+fn window_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bool, title_color: Option<Color>) -> (Rect, bool) {
     let k = k();
     BIGGEST.with(|b| {
         if b.get().is_none_or(|o| o.w * o.h < r.w * r.h) {
@@ -1188,7 +1251,7 @@ fn window_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bool)
     draw_rectangle(r.x + 6.0 * k, r.y + 6.0 * k, r.w, r.h, Color::new(0.0, 0.0, 0.0, 0.35));
     surface(r, skin);
     let tb = (26.0 * k).round();
-    let closed = title_bar_styled(Rect::new(r.x, r.y, r.w, tb), title, skin, closable, ornate);
+    let closed = title_bar_styled(Rect::new(r.x, r.y, r.w, tb), title, skin, closable, ornate, title_color);
     silver_frame(r, (1.5 * k).max(1.0));
     // Each caller draws the frames for its own content and footer.
     (Rect::new(r.x + 2.0 * k, r.y + tb + 1.0, r.w - 4.0 * k, r.h - tb - 3.0 * k), closed)
@@ -1272,7 +1335,7 @@ pub fn shaded_text_box(r: Rect, alpha: f32) {
 
 /// The original parchment treatment used behind a battle unit's hover details.
 pub fn unit_parchment(r: Rect) {
-    surface(r, Skin::Paper);
+    paper_panel(r);
     if let Some(t) = win_fx("UnitFrame", Fx::Shade) {
         tex(&t, r, Color::new(1.0, 1.0, 1.0, 0.8));
     }
@@ -1323,7 +1386,7 @@ pub fn marble_button(r: Rect, label: &str, enabled: bool, hover: bool) {
     marble_button_tinted(r, label, enabled, hover, false);
 }
 
-/// The quest action uses the same button art, with the original's red enabled state.
+/// The quest action uses the same marble pattern in the original's warm red palette.
 pub fn quest_button(r: Rect, label: &str, enabled: bool, hover: bool) {
     marble_button_tinted(r, label, enabled, hover, true);
 }
@@ -1331,10 +1394,9 @@ pub fn quest_button(r: Rect, label: &str, enabled: bool, hover: bool) {
 fn marble_button_tinted(r: Rect, label: &str, enabled: bool, hover: bool, quest_red: bool) {
     let name = if r.w < 110.0 { "Btn1" } else if r.w < 145.0 { "Btn2" } else { "Btn3" };
     let state = if hover && enabled { "Down" } else { "Up" };
-    let fx = if enabled { Fx::Plain } else { Fx::Grey };
+    let fx = if !enabled { Fx::Grey } else if quest_red { Fx::ButtonRed } else { Fx::Plain };
     if let Some(t) = win_fx(&format!("{name}{state}"), fx) {
-        let tint = if quest_red && enabled { Color::new(1.0, 0.32, 0.25, 1.0) } else { WHITE };
-        three_slice(&t, r, 14.0, tint);
+        three_slice(&t, r, 14.0, WHITE);
     } else {
         let bg = match (enabled, hover, quest_red) {
             (false, _, _) => Color::new(0.2, 0.22, 0.21, 1.0),
@@ -1349,41 +1411,40 @@ fn marble_button_tinted(r: Rect, label: &str, enabled: bool, hover: bool, quest_
     }
     let color = if !enabled {
         Color::new(0.6, 0.6, 0.58, 1.0)
-    } else if quest_red {
-        CREAM
-    } else if hover {
-        GOLD
     } else {
-        CREAM
+        Color::new(1.0, 0.98, 0.94, 1.0)
     };
     // Button labels in the buttons' and names' face.
     super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
-        let mut size: f32 = (r.h * 0.56).clamp(12.0, (22.0 * k()).max(12.0)).round();
+        let mut size: f32 = (r.h * 0.50).clamp(12.0, (22.0 * k()).max(12.0)).round();
         while size > 11.0 && measure(label, size).width > r.w - 10.0 {
             size -= 1.0;
         }
         let d = measure(label, size);
-        shadow_text(label, r.x + (r.w - d.width) / 2.0, r.y + (r.h + d.offset_y) / 2.0 - 1.0, size, color);
+        let x = r.x + (r.w - d.width) / 2.0;
+        let y = r.y + (r.h + d.offset_y) / 2.0 - 1.0;
+        let offset = (size / 22.0).max(1.0);
+        text(label, x + offset, y + offset, size, Color::new(0.0, 0.0, 0.0, 0.35 * color.a));
+        text(label, x, y, size, color);
     });
 }
 
 /// The small pill buttons of the barracks ("Hire" green, "Heal" blue). They pay: the
 /// press plays `Item-Gold` (interface.md §14).
 pub fn pill_button(r: Rect, label: &str, enabled: bool, green: bool) -> bool {
-    let hover = enabled && super::widgets::mouse_in(r.x, r.y, r.w, r.h);
+    let (hover, down, pressed) = super::widgets::button_state(r, enabled);
     let name = if !enabled {
         "smb-disable"
-    } else if hover {
+    } else if down {
         "smb-down"
     } else {
         "smb-up"
     };
-    match win(name) {
+    match win_fx(name, if green && enabled { Fx::KeyBlackSwapGreenBlue } else { Fx::KeyBlack }) {
         Some(t) if green && enabled => {
             // The blue pill with its green and blue swapped, as the original makes the green
             // one from smb-up and smb-down at start (0x48dd40(…, 1, 3, 2)).
-            let g = win_fx(name, Fx::SwapGreenBlue).unwrap_or(t);
-            three_slice(&g, r, 12.0, WHITE);
+            three_slice(&t, r, 12.0, WHITE);
         }
         Some(t) => three_slice(&t, r, 12.0, WHITE),
         None => {
@@ -1401,7 +1462,6 @@ pub fn pill_button(r: Rect, label: &str, enabled: bool, green: bool) -> bool {
         let d = measure(label, size);
         shadow_text(label, r.x + (r.w - d.width) / 2.0, r.y + (r.h + d.offset_y) / 2.0 - 1.0, size, if enabled { WHITE } else { Color::new(0.8, 0.8, 0.8, 1.0) });
     });
-    let pressed = hover && super::widgets::clicked();
     if pressed {
         super::audio::cue(super::audio::Cue::Gold);
     }

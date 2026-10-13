@@ -120,6 +120,8 @@ pub struct MapView {
     /// Places the scenario's events have shown (lanterns, shown armies), first in line: the
     /// camera flies to each in turn and its uncovered cells fade in from the fog.
     shows: VecDeque<Showing>,
+    /// Presentation time for place reveals; a long frame must not skip the camera glide.
+    show_clock: f64,
     /// After an event's last shown place: when the camera set off back to the hero, and from
     /// where.
     returning: Option<(f64, (f32, f32))>,
@@ -178,7 +180,7 @@ struct MapHoverLook {
 
 impl Default for MapView {
     fn default() -> Self {
-        MapView { zoom: 1.0, zoom_steps: 0, minimap: false, debug: false, look: None, shows: VecDeque::new(), returning: None, opening: None, spell_fx: VecDeque::new(), preview: None, last_frame_ms: None, back_to: None, centring: None, grab: None, toasts: VecDeque::new(), pointer: Shape::Arrow, pointer_cell: None, was_busy: false, hover: None, outlined: None }
+        MapView { zoom: 1.0, zoom_steps: 0, minimap: false, debug: false, look: None, shows: VecDeque::new(), show_clock: 0.0, returning: None, opening: None, spell_fx: VecDeque::new(), preview: None, last_frame_ms: None, back_to: None, centring: None, grab: None, toasts: VecDeque::new(), pointer: Shape::Arrow, pointer_cell: None, was_busy: false, hover: None, outlined: None }
     }
 }
 
@@ -337,7 +339,6 @@ fn scroll(game: &Game, view: &mut MapView, dt_ms: i64, pad: (f32, f32)) {
 /// in, then the view rests there before the next place.
 const SHOW_PAN: f64 = 0.8;
 const SHOW_FADE: f64 = 1.2;
-const SHOW_REST: f64 = 0.4;
 
 /// A place an event showed: the cells it uncovered stay dark until the camera is there
 /// (after the event's message is read), then fade in.
@@ -351,6 +352,9 @@ struct Showing {
     /// place pops out of the dark without any hint before.
     before: Vec<u8>,
     mask: Option<Texture2D>,
+    /// Reused upload buffer and distances for only the texels the reveal can change.
+    mask_image: Option<std::cell::RefCell<Image>>,
+    reveal_cells: Vec<(usize, f32)>,
     /// World distance from the place's centre to its farthest uncovered cell, plus the rim.
     reach: f32,
     /// When the camera set off, and from where.
@@ -368,16 +372,29 @@ impl Showing {
         let map = &game.world.map;
         let at = map.center(shown.at);
         let mut before = Vec::new();
+        let reach = shown.cells.iter().map(|&t| (Vec2::from(map.center(t)) - Vec2::from(at)).length()).fold(0.0, f32::max) + SHOW_RIM + 1.0;
+        let mut mask_image = None;
+        let mut reveal_cells = Vec::new();
         let mask = (!shown.cells.is_empty() && fog.w > 0 && fog.h > 0).then(|| {
             let fresh: std::collections::HashSet<Tile> = shown.cells.iter().copied().collect();
             before = minimap::darkness_of(fog.w, fog.h, |t| fog.explored(t) && !fresh.contains(&t));
             let rgba: Vec<u8> = before.iter().flat_map(|&a| [0, 0, 0, a]).collect();
             let t = Texture2D::from_rgba8(fog.w as u16, fog.h as u16, &rgba);
             t.set_filter(FilterMode::Linear);
+            for (i, &alpha) in before.iter().enumerate() {
+                if alpha == 0 {
+                    continue;
+                }
+                let tile = (i as i32 % fog.w, i as i32 / fog.w);
+                let distance = (Vec2::from(map.center(tile)) - Vec2::from(at)).length();
+                if distance <= reach + SHOW_RIM {
+                    reveal_cells.push((i, distance));
+                }
+            }
+            mask_image = Some(std::cell::RefCell::new(Image { bytes: rgba, width: fog.w as u16, height: fog.h as u16 }));
             t
         });
-        let reach = shown.cells.iter().map(|&t| (Vec2::from(map.center(t)) - Vec2::from(at)).length()).fold(0.0, f32::max) + SHOW_RIM + 1.0;
-        Showing { at, event: shown.event, before, mask, reach, started: None, radius: shown.radius as f32 + 0.5 }
+        Showing { at, event: shown.event, before, mask, mask_image, reveal_cells, reach, started: None, radius: shown.radius as f32 + 0.5 }
     }
 
     /// Its event's window is closed (a place shown with no window waits for all of them).
@@ -424,7 +441,7 @@ impl MapView {
         let cells = (at.1 - r..=at.1 + r).flat_map(|y| (at.0 - r..=at.0 + r).map(move |x| (x, y))).filter(|&t| game.fog.explored(t)).collect();
         let mut s = Showing::new(game, &razdor::rules::game::Shown { at, cells, radius: r, event: None });
         // No flight: the fog opens at once.
-        s.started = Some((get_time() - SHOW_PAN, s.at));
+        s.started = Some((self.show_clock - SHOW_PAN, s.at));
         self.opening = Some(s);
     }
 
@@ -858,8 +875,6 @@ impl Camera {
 
     fn draw_showing<'s>(&self, game: &Game, shows: impl IntoIterator<Item = &'s Showing>, now: f64) {
         let (tl, br) = self.fog_corners(game);
-        let map = &game.world.map;
-        let (w, h) = (game.fog.w, game.fog.h);
         for s in shows {
             let Some(mask) = &s.mask else { continue };
             let p = s.progress(now);
@@ -869,17 +884,13 @@ impl Camera {
             if p > 0.0 {
                 // Ease out: quick at first, slowing as it reaches the edges.
                 let r = (1.0 - (1.0 - p) * (1.0 - p)) * s.reach;
-                let centre = Vec2::from(s.at);
-                let mut rgba = vec![0u8; s.before.len() * 4];
-                for y in 0..h {
-                    for x in 0..w {
-                        let i = (y * w + x) as usize;
-                        let d = (Vec2::from(map.center((x, y))) - centre).length();
-                        let keep = ((d - r) / SHOW_RIM + 0.5).clamp(0.0, 1.0);
-                        rgba[i * 4 + 3] = (s.before[i] as f32 * keep) as u8;
-                    }
+                let Some(image) = &s.mask_image else { continue };
+                let mut image = image.borrow_mut();
+                for &(i, d) in &s.reveal_cells {
+                    let keep = ((d - r) / SHOW_RIM + 0.5).clamp(0.0, 1.0);
+                    image.bytes[i * 4 + 3] = (s.before[i] as f32 * keep) as u8;
                 }
-                mask.update(&Image { bytes: rgba, width: w as u16, height: h as u16 });
+                mask.update(&image);
             }
             draw_texture_ex(mask, tl.x, tl.y, WHITE, DrawTextureParams { dest_size: Some(br - tl), ..Default::default() });
         }
@@ -2253,6 +2264,7 @@ fn map_frame(game: &mut Game, assets: &Assets, view: &mut MapView, message: &mut
     let now_ms = (get_time() * 1000.0) as i64;
     let dt_ms = now_ms - view.last_frame_ms.unwrap_or(now_ms);
     view.last_frame_ms = Some(now_ms);
+    view.show_clock += get_frame_time().clamp(0.0, 1.0 / 30.0) as f64;
     // A gamepad's right stick scrolls the map here (Razdor's), and turns no wheel.
     let pad_scroll = crate::ui::input::map_scroll();
 
@@ -2313,12 +2325,11 @@ fn map_frame(game: &mut Game, assets: &Assets, view: &mut MapView, message: &mut
             view.look = None;
         }
     }
-    if idle && dialogs.is_empty() && view.grab.is_none() {
+    if idle && dialogs.is_empty() && view.grab.is_none() && !view.flying() && view.spell_fx.is_empty() {
         scroll(game, view, dt_ms, pad_scroll);
     }
     // While he walks the view is locked on him (interface.md §8).
     view.look = camera_look(view.look, game.moving(), !view.shows.is_empty());
-    LAST_CAM.with(|c| c.set(Some((view.zoom, view.look))));
     let cam = Camera::looking_at(game, view.zoom, view.look.unwrap_or(game.display_pos()));
     let on_minimap = view.minimap && minimap::under_pointer(&game.world.map, cam.view);
     let clock = game_bar::time_panel();
@@ -2413,13 +2424,15 @@ fn map_frame(game: &mut Game, assets: &Assets, view: &mut MapView, message: &mut
     // uncovered area fades in; then the next place, if any. After the last one the camera
     // flies back to the hero.
     let now = get_time();
+    let show_now = view.show_clock;
     for shown in std::mem::take(&mut game.shown) {
         view.shows.push_back(Showing::new(game, &shown));
     }
     // An event's places are shown once its own window is closed, before the next window
-    // opens (`App` holds it meanwhile); after its last one the camera flies back.
+    // opens (`App` holds it meanwhile). Continue directly to the next ready place;
+    // return to the hero once the queue ends or the next place waits for its dialog.
     if let Some((t0, from)) = view.returning {
-        let p = ((now - t0) / SHOW_PAN).clamp(0.0, 1.0) as f32;
+        let p = ((show_now - t0) / SHOW_PAN).clamp(0.0, 1.0) as f32;
         let ease = p * p * (3.0 - 2.0 * p);
         let to = game.display_pos();
         view.look = Some((from.0 + (to.0 - from.0) * ease, from.1 + (to.1 - from.1) * ease));
@@ -2428,26 +2441,27 @@ fn map_frame(game: &mut Game, assets: &Assets, view: &mut MapView, message: &mut
             view.look = None;
         }
     } else if let Some(front) = view.shows.front_mut().filter(|s| s.free(dialogs)) {
-        let event = front.event;
-        let here = view.look.unwrap_or(game.display_pos());
-        let (t0, from) = *front.started.get_or_insert((now, here));
-        let p = ((now - t0) / SHOW_PAN).clamp(0.0, 1.0) as f32;
+        let here = Camera::looking_at(game, view.zoom, view.look.unwrap_or(game.display_pos())).centre();
+        let (t0, from) = *front.started.get_or_insert((show_now, here));
+        let p = ((show_now - t0) / SHOW_PAN).clamp(0.0, 1.0) as f32;
         let ease = p * p * (3.0 - 2.0 * p);
         view.look = Some((from.0 + (front.at.0 - from.0) * ease, from.1 + (front.at.1 - from.1) * ease));
-        if now - t0 > SHOW_PAN + SHOW_FADE + SHOW_REST {
+        if show_now - t0 > SHOW_PAN + SHOW_FADE {
             view.shows.pop_front();
-            if view.shows.front().is_none_or(|s| s.event != event) {
-                view.returning = view.look.map(|at| (now, at));
+            if view.shows.front().is_none_or(|s| !s.free(dialogs)) {
+                let here = Camera::looking_at(game, view.zoom, view.look.unwrap_or(game.display_pos())).centre();
+                view.returning = Some((show_now, here));
             }
         }
     } else {
         play_spell_fx(game, view, now);
     }
-    if view.opening.as_ref().is_some_and(|s| s.progress(now) >= 1.0) {
+    if view.opening.as_ref().is_some_and(|s| s.progress(show_now) >= 1.0) {
         view.opening = None;
     }
 
     let cam = Camera::looking_at(game, view.zoom, view.look.unwrap_or(game.display_pos()));
+    LAST_CAM.with(|c| c.set(Some((view.zoom, view.look))));
     // A spell's own effects, each layer while it runs (0x4af2f8), drawn among the figures.
     let show = match view.spell_fx.front() {
         Some(SpellFx::Layers { army, layers, started: Some(t0) }) => {
@@ -2493,9 +2507,9 @@ fn map_frame(game: &mut Game, assets: &Assets, view: &mut MapView, message: &mut
     }
     draw_world(game, assets, &cam, view.preview.as_ref().map(|p| p.1.as_slice()), show.as_ref(), hover);
     cam.draw_fog(game);
-    cam.draw_showing(game, view.opening.iter().chain(&view.shows), now);
+    cam.draw_showing(game, view.opening.iter().chain(&view.shows), show_now);
     if let Some(s) = view.shows.front() {
-        cam.draw_known_place(s, now);
+        cam.draw_known_place(s, show_now);
     }
     // A spell's effect over the army it landed on.
     if let Some(SpellFx::Effect { army, art, started: Some(t0) }) = view.spell_fx.front() {

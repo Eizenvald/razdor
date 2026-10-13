@@ -706,8 +706,6 @@ pub fn squad(
     let personal_hover = hover.is_some_and(|h| u.items.iter().enumerate().any(|(s, i)| *i == Some(h) && locked(s)));
     if let Some(slot) = pressed_slot.filter(|&s| !locked(s)) {
         if let Some(item) = u.items[slot] {
-            // An item taken up plays its sound, and again where it goes (interface.md §14).
-            cue(Cue::Item(c.item(item).kind));
             held = Some(Held { from: From::Worn(sel, slot), item, at: pointer().into(), moved: false });
         }
     }
@@ -766,7 +764,6 @@ pub fn squad(
             tree_hint = chrome::ui_line("Army", n).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru).map(|line| line.replace("#NAME1", &format!("\"{who}\"")));
         }
     } else if let Some(i) = pack_view(game, assets, content, scroll, &mut hover, filtering.then_some(&kept_ids[..])) {
-        cue(Cue::Item(c.item(game.pack[i]).kind));
         held = Some(Held { from: From::Pack(i), item: game.pack[i], at: pointer().into(), moved: false });
     }
     // Enter wears or drinks the first match on the selected unit.
@@ -776,7 +773,13 @@ pub fn squad(
         }
     }
     if let Some(h) = held.as_mut() {
-        h.moved |= Vec2::from(pointer()).distance(h.at) > DRAG_START;
+        let started_drag = !h.moved && Vec2::from(pointer()).distance(h.at) > DRAG_START;
+        h.moved |= started_drag;
+        if started_drag {
+            // Picking an item plays its sound only once it is actually dragged. A click that
+            // equips it directly gets the single sound from the successful equip action.
+            cue(Cue::Item(c.item(h.item).kind));
+        }
         if h.moved {
             hover = Some(h.item);
         }
@@ -988,13 +991,22 @@ pub fn squad(
             };
             match (h.from, h.moved, card, slot_under.filter(|_| on_sheet)) {
                 (From::Pack(i), false, _, _) => *message = use_pack_item(game, sel, i),
-                (From::Worn(unit, slot), false, _, _) => *message = game.unequip(unit, slot).err().map(equip_error),
+                (From::Worn(unit, slot), false, _, _) => {
+                    let result = game.unequip(unit, slot);
+                    if result.is_ok() {
+                        cue(Cue::Item(c.item(h.item).kind));
+                    }
+                    *message = result.err().map(equip_error);
+                }
                 (from, true, Some(t), _) => *message = give_on_card(game, from, t),
                 (From::Pack(i), true, None, Some(s)) => *message = worn(game.equip_at(sel, i, Some(s))),
                 (From::Worn(unit, slot), true, None, Some(s)) => *message = worn(game.move_worn(unit, slot, sel, s)),
                 (From::Pack(i), true, None, None) if on_sheet => *message = use_pack_item(game, sel, i),
                 (From::Worn(unit, slot), true, None, None) if on_sheet && sel != unit => *message = worn(game.give(unit, slot, sel)),
                 (From::Worn(unit, slot), true, None, _) if over_pack => *message = game.unequip(unit, slot).err().map(equip_error),
+                // Moving an item within the pack has no inventory mutation, but the drop
+                // still gets the placement sound (the pickup already sounded at drag start).
+                (From::Pack(_), true, None, _) if over_pack => cue(Cue::Item(c.item(h.item).kind)),
                 _ => {}
             }
         }

@@ -159,7 +159,7 @@ fn oval(i: usize, label: &str, hot: Option<usize>) -> bool {
     let c = video(button_centre(i));
     let size = OVAL * k;
     let r = oval_rect(i);
-    let hover = hot == Some(i);
+    let (hover, _down, pressed) = super::widgets::button_state(r, hot == Some(i));
     // The bell as the pointer comes onto an item (interface.md §4, 0x4b9b3c); leaving clears
     // the light.
     HOVERED.with(|h| {
@@ -219,7 +219,7 @@ fn oval(i: usize, label: &str, hot: Option<usize>) -> bool {
         );
     }
     word(i, label, c, hover);
-    if hover && clicked() {
+    if pressed {
         cue(Cue::MenuPress);
         return true;
     }
@@ -252,10 +252,10 @@ fn link(label: &str, x: f32, y: f32, right: bool) -> bool {
     let size = 18.0 * chrome::k();
     let w = measure(label, size).width;
     let x = if right { x - w } else { x };
-    let hover = !input_blocked() && mouse_in(x, y - size, w, size * 1.3);
-    let color = if hover { chrome::GOLD } else { Color::new(0.95, 0.88, 0.72, 0.85) };
+    let (_, down, pressed) = super::widgets::button_state(Rect::new(x, y - size, w, size * 1.3), true);
+    let color = if down { chrome::GOLD } else { Color::new(0.95, 0.88, 0.72, 0.85) };
     chrome::shadow_text(label, x, y, size, color);
-    if hover && clicked() {
+    if pressed {
         cue(Cue::Button);
         return true;
     }
@@ -541,10 +541,7 @@ fn advanced_window(audio: &mut super::audio::Settings, over_map: bool) -> bool {
     chrome::shadow_text(tr("Stepping onto a friendly army"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
     let br = Rect::new(inner.x + inner.w - 24.0 * k - 170.0 * k, y, 170.0 * k, 28.0 * k);
     let label = if audio.friends_let_pass { tr("Let pass") } else { tr("Battle (original)") };
-    let over = br.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-    chrome::marble_button(br, label, true, over);
-    if over && clicked() {
-        cue(Cue::Button);
+    if settings_button(br, &label) {
         audio.friends_let_pass = !audio.friends_let_pass;
     }
     let hint = tr("With no event of the map for the meeting, the original opens a battle against a friendly army the hero steps onto; Razdor can let him pass instead.");
@@ -556,10 +553,7 @@ fn advanced_window(audio: &mut super::audio::Settings, over_map: bool) -> bool {
     chrome::shadow_text(tr("Armies on bridges"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
     let pr = Rect::new(br.x, y, br.w, br.h);
     let label = if audio.pass_on_bridges { tr("Let pass") } else { tr("Stop (original)") };
-    let over_pass = pr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-    chrome::marble_button(pr, label, true, over_pass);
-    if over_pass && clicked() {
-        cue(Cue::Button);
+    if settings_button(pr, &label) {
         audio.pass_on_bridges = !audio.pass_on_bridges;
     }
     let hint = tr("The original stops the hero at any army on a bridge. Razdor can let him through those only passing by; guards, enemies and the army clicked still meet him.");
@@ -576,17 +570,11 @@ fn advanced_window(audio: &mut super::audio::Settings, over_map: bool) -> bool {
         razdor::update::Mode::Always => tr("Always"),
         razdor::update::Mode::Off => tr("Off"),
     };
-    let over_mode = ur.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-    chrome::marble_button(ur, mode, true, over_mode);
-    if over_mode && clicked() {
-        cue(Cue::Button);
+    if settings_button(ur, mode) {
         audio.updates = audio.updates.next();
     }
     let cr = Rect::new(ur.x, y + 40.0 * k, ur.w, ur.h);
-    let over_check = cr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-    chrome::marble_button(cr, tr("Check now"), true, over_check);
-    if over_check && clicked() {
-        cue(Cue::Button);
+    if settings_button(cr, tr("Check now")) {
         super::update_view::check_by_hand();
     }
     let state = super::update_view::status_label();
@@ -602,10 +590,7 @@ fn advanced_window(audio: &mut super::audio::Settings, over_map: bool) -> bool {
     chrome::shadow_text(tr("Map zoom"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
     let zr = Rect::new(br.x, y, br.w, br.h);
     let lock_label = if audio.zoom_locked { tr("Locked") } else { tr("Wheel and +/-") };
-    let over_lock = zr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-    chrome::marble_button(zr, lock_label, true, over_lock);
-    if over_lock && clicked() {
-        cue(Cue::Button);
+    if settings_button(zr, lock_label) {
         audio.zoom_locked = !audio.zoom_locked;
     }
     let (lo, hi) = super::world_view::ZOOM_RANGE;
@@ -620,10 +605,15 @@ fn advanced_window(audio: &mut super::audio::Settings, over_map: bool) -> bool {
         chrome::shadow_text(line, inner.x + 24.0 * k, y + 80.0 * k + i as f32 * 17.0 * k, 12.0 * k, WHITE);
     }
     let ok = Rect::new(inner.x + inner.w - 120.0 * k, inner.y + inner.h - 44.0 * k, 96.0 * k, 28.0 * k);
-    let over_ok = ok.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
     let ok_label = own("Buttons", "Ok", n_("OK"));
-    chrome::marble_button(ok, &ok_label, true, over_ok);
-    closed || key(KeyCode::Escape) || key(KeyCode::Enter) || (over_ok && clicked())
+    closed || key(KeyCode::Escape) || key(KeyCode::Enter) || settings_button(ok, &ok_label)
+}
+
+fn settings_button(r: Rect, label: &str) -> bool {
+    let (_, down, pressed) = super::widgets::button_state(r, true);
+    chrome::marble_button(r, label, true, down);
+    if pressed { cue(Cue::Button); }
+    pressed
 }
 
 /// The settings window alone (over the main menu, or `over_map` from the bar's gears: then
@@ -673,26 +663,17 @@ pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool, ov
     }
     let lang = format!("{} / {}", Lang::En.label(), Lang::Ru.label());
     let lr = Rect::new(inner.x + 24.0 * k, inner.y + inner.h - 44.0 * k, 140.0 * k, 28.0 * k);
-    let over = lr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-    chrome::marble_button(lr, &lang, true, over);
-    if over && clicked() {
-        cue(Cue::Button);
+    if settings_button(lr, &lang) {
         super::language::toggle();
     }
     let fr = Rect::new(lr.x + lr.w + 16.0 * k, lr.y, 150.0 * k, lr.h);
     let fps_label = if audio.show_fps { tr("FPS shown") } else { tr("FPS hidden") };
-    let over_fps = fr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-    chrome::marble_button(fr, fps_label, true, over_fps);
-    if over_fps && clicked() {
-        cue(Cue::Button);
+    if settings_button(fr, fps_label) {
         audio.show_fps = !audio.show_fps;
     }
     // Razdor's advanced settings, in a window of their own.
     let xr = Rect::new(fr.x + fr.w + 16.0 * k, lr.y, inner.x + inner.w - 136.0 * k - (fr.x + fr.w + 16.0 * k), lr.h);
-    let over_adv = xr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-    chrome::marble_button(xr, tr("Advanced…"), true, over_adv);
-    if over_adv && clicked() {
-        cue(Cue::Button);
+    if settings_button(xr, tr("Advanced…")) {
         ADVANCED.with(|a| a.set(true));
         return false;
     }
@@ -704,10 +685,7 @@ pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool, ov
     let expert = expert_ai(audio);
     let ar = Rect::new(inner.x + inner.w - 24.0 * k - 150.0 * k, y, 150.0 * k, 28.0 * k);
     let ai_label = if expert { tr("Expert") } else { tr("Easy") };
-    let over_ai = ar.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-    chrome::marble_button(ar, ai_label, true, over_ai);
-    if over_ai && clicked() {
-        cue(Cue::Button);
+    if settings_button(ar, ai_label) {
         audio.expert_ai = Some(!expert);
     }
     // The front row's width (Razdor's switch for the original's "wide front row in battle",
@@ -717,20 +695,14 @@ pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool, ov
     let wide = wide_row(audio, install_wide);
     let rr = Rect::new(ar.x, y, ar.w, ar.h);
     let row_label = if wide { tr("6 cells") } else { tr("4 cells") };
-    let over_row = rr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-    chrome::marble_button(rr, row_label, true, over_row);
-    if over_row && clicked() {
-        cue(Cue::Button);
+    if settings_button(rr, row_label) {
         audio.wide_row = Some(!wide);
     }
     // Windowed, borderless or full screen, set at once (`display::follow_settings`).
     let y = y + 58.0 * k;
     chrome::shadow_text(tr("Screen (Alt+Enter)"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
     let dr = Rect::new(ar.x, y, ar.w, ar.h);
-    let over_display = dr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-    chrome::marble_button(dr, audio.display.label(), true, over_display);
-    if over_display && clicked() {
-        cue(Cue::Button);
+    if settings_button(dr, audio.display.label()) {
         audio.display = audio.display.next();
     }
     // The interface scale, as Minecraft's: Auto (the largest that fits) or a fixed one below it.
@@ -738,15 +710,10 @@ pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool, ov
     chrome::shadow_text(tr("Interface scale"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
     let fit = chrome::fit_k();
     let sr = Rect::new(ar.x, y, ar.w, ar.h);
-    let over_scale = sr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-    chrome::marble_button(sr, &super::display::scale_label(audio.ui_scale, fit), true, over_scale);
-    if over_scale && clicked() {
-        cue(Cue::Button);
+    if settings_button(sr, &super::display::scale_label(audio.ui_scale, fit)) {
         audio.ui_scale = super::display::next_scale(audio.ui_scale, fit);
     }
     let ok = Rect::new(inner.x + inner.w - 120.0 * k, inner.y + inner.h - 44.0 * k, 96.0 * k, 28.0 * k);
-    let over_ok = ok.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
     let ok_label = own("Buttons", "Ok", n_("OK"));
-    chrome::marble_button(ok, &ok_label, true, over_ok);
-    closed || key(KeyCode::Escape) || key(KeyCode::Enter) || (over_ok && clicked())
+    closed || key(KeyCode::Escape) || key(KeyCode::Enter) || settings_button(ok, &ok_label)
 }

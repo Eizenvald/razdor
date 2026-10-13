@@ -64,9 +64,9 @@ impl Win {
 
     fn button(&self, x: f32, w: f32, label: &str, enabled: bool) -> bool {
         let r = self.rect(x, 442.0, w, 28.0);
-        let hover = !input_blocked() && r.contains(crate::ui::widgets::pointer().into());
-        chrome::marble_button(r, label, enabled, hover);
-        enabled && hover && clicked()
+        let (_, down, pressed) = button_state(r, enabled);
+        chrome::marble_button(r, label, enabled, down);
+        pressed
     }
 }
 
@@ -250,9 +250,11 @@ pub fn scenario_select(scenarios: &[ScenarioEntry], has_install: bool) -> Option
         if r.y >= inside.y + inside.h || r.y + r.h <= inside.y {
             continue;
         }
-        let hover = over_list && r.contains(crate::ui::widgets::pointer().into());
+        let (hover, down, pressed) = button_state(r, over_list);
         if row == picked {
             picked_bar(r);
+        } else if down {
+            draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.1, 0.15, 0.45, 0.5));
         } else if hover {
             draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.1, 0.15, 0.45, 0.35));
         }
@@ -270,7 +272,7 @@ pub fn scenario_select(scenarios: &[ScenarioEntry], has_install: bool) -> Option
             chrome::shadow_text(&ellipsize(title(&scenarios[c]), r.w - 60.0 * k, small), r.x + 52.0 * k, cy, small, CREAM);
         }
         // A row is picked silently (the original's list makes no sound).
-        if hover && clicked() {
+        if pressed {
             if row == picked {
                 next = Some(Screen::ClassSelect { scenario: Some(g.first) });
             }
@@ -449,7 +451,7 @@ pub fn class_select(game: &mut Option<Game>, demo: &Arc<Content>, scenario: Opti
     // The three heroes.
     for (i, hero) in HeroClass::ALL.into_iter().enumerate() {
         let r = win.rect(27.0 + i as f32 * 185.0, 38.0, 170.0, 150.0);
-        let hover = offered[i] && !input_blocked() && r.contains(crate::ui::widgets::pointer().into());
+        let (hover, down, pressed) = button_state(r, offered[i]);
         draw_rectangle(r.x + 3.0 * k, r.y + 3.0 * k, r.w, r.h, Color::new(0.0, 0.0, 0.0, 0.5));
         match chrome::win(["Hero0", "hero1", "hero2"][i]) {
             Some(t) => chrome::tex_src(&t, Rect::new(0.0, (t.height() - t.height() * 150.0 / 170.0) / 2.0, t.width(), t.height() * 150.0 / 170.0), r, WHITE),
@@ -460,13 +462,15 @@ pub fn class_select(game: &mut Option<Game>, demo: &Arc<Content>, scenario: Opti
         }
         if i == pick {
             chrome::glow_frame(r, Color::new(0.35, 1.0, 0.35, 1.0), true);
+        } else if down {
+            chrome::glow_frame(r, Color::new(0.8, 0.65, 0.3, 1.0), false);
         } else if hover {
             chrome::glow_frame(r, Color::new(0.35, 0.55, 1.0, 0.9), false);
         }
         let name = &content.unit(hero.unit()).name;
         let ink = if i == pick { GOLD } else if offered[i] { CREAM } else { Color::new(0.5, 0.48, 0.44, 1.0) };
         with_face(Face::Subtitle, || chrome::shadow_centered(name, r.center().x, r.y + r.h + 18.0 * k, 16.0 * k, ink));
-        if hover && clicked() {
+        if pressed {
             // Choosing another class plays the menu press (interface.md §14); the class
             // already picked, nothing.
             let was = pick;

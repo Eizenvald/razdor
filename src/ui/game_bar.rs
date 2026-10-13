@@ -6,7 +6,6 @@
 //! idle map shows the original's three small buttons on it (interface.md §6): wait 1 hour,
 //! centre the view on the hero, wait 4 hours.
 
-use crate::ui::input::{is_mouse_button_down};
 use macroquad::prelude::*;
 
 use razdor::i18n::tr;
@@ -15,7 +14,7 @@ use razdor::rules::game::Game;
 use razdor::trf;
 
 use super::chrome::{self, shadow_centered, shadow_text, tex, three_slice, Fx, CREAM, GOLD};
-use super::widgets::{clicked, fit_size, measure, mouse_in, panel_hint};
+use super::widgets::{fit_size, measure, panel_hint};
 
 /// A bar button.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -192,8 +191,8 @@ fn masked(name: &'static str, alpha: &str) -> Option<Texture2D> {
 }
 
 /// One time button; true when pressed (its sound plays: `InterfaceButtonDown`, §14).
-fn time_button(b: TimeButton, r: Rect, hover: bool) -> bool {
-    let down = hover && is_mouse_button_down(MouseButton::Left);
+fn time_button(b: TimeButton, r: Rect, _hover: bool) -> bool {
+    let (hover, down, pressed) = crate::ui::widgets::button_state(r, true);
     let (up_art, down_art, alpha) = b.art();
     match masked(if down { down_art } else { up_art }, alpha) {
         Some(t) => tex(&t, r, WHITE),
@@ -219,7 +218,6 @@ fn time_button(b: TimeButton, r: Rect, hover: bool) -> bool {
     if hover {
         panel_hint(&[(b.hint(), CREAM)]);
     }
-    let pressed = hover && clicked();
     if pressed {
         super::audio::cue(super::audio::Cue::Button);
     }
@@ -252,13 +250,13 @@ fn resources(game: &Game, y: f32, h: f32) {
         (tr("income"), "Res-Income", format!("+ {}", game.daily_income()), GOLD),
         (tr("wages"), "Res-Payment", wages, Color::new(1.0, 0.62, 0.25, 1.0)),
     ];
-    let label_size = (11.0 * k).round();
     let value_size = (19.0 * k).round();
+    let label_size = value_size;
     for (i, (label, art, value, color)) in items.iter().enumerate() {
         let cx = w * (0.125 + 0.25 * i as f32);
         let lw = measure(label, label_size).width;
         let base = y + h * 0.5 + value_size * 0.36;
-        shadow_text(label, cx - lw - 16.0 * k, base, label_size, Color::new(0.75, 0.75, 0.75, 1.0));
+        let label_x = cx - lw - 16.0 * k;
         let icon = 24.0 * k;
         // Each picture with its own alpha plane and nothing else, as the original's
         // (0x4dcd8d loads them, 0x49d3e5 draws them through 0x476a3c).
@@ -274,7 +272,10 @@ fn resources(game: &Game, y: f32, h: f32) {
                 icon,
             ),
         }
-        super::dt_font::with_face(super::dt_font::Face::Subtitle, || shadow_text(value, cx + 16.0 * k, base, value_size, *color));
+        super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
+            shadow_text(label, label_x, base, label_size, *color);
+            shadow_text(value, cx + 16.0 * k, base, value_size, *color);
+        });
     }
 }
 
@@ -301,11 +302,11 @@ fn lower_strip_gradient(bottom_tone: f32) -> Texture2D {
 }
 
 /// One oval button; true when clicked (never while greyed).
-fn oval(b: BarButton, r: Rect, look: Look) -> bool {
-    let hover = look != Look::Grey && mouse_in(r.x, r.y, r.w, r.h);
+fn oval(b: BarButton, r: Rect, look: Look) -> (bool, Option<String>) {
+    let (hover, down, pressed) = crate::ui::widgets::button_state(r, look != Look::Grey);
     let side = if BarButton::LEFT.contains(&b) { "ML" } else { "MR" };
     let size = if b.small() { 2 } else { 1 };
-    let state = if hover && is_mouse_button_down(MouseButton::Left) { "Down" } else { "Up" };
+    let state = if down { "Down" } else { "Up" };
     let name = format!("{side}Btn{size}{state}");
     let (fx, tint) = match look {
         // The video's buttons are a deeper blue than the art alone.
@@ -355,15 +356,11 @@ fn oval(b: BarButton, r: Rect, look: Look) -> bool {
         let s = fit_size(label, r.w - 8.0, (r.h * 0.34).round());
         shadow_centered(label, r.x + r.w / 2.0, r.y + r.h / 2.0 + s * 0.36, s, glyph);
     }
-    if hover {
-        panel_hint(&[(b.hint().to_string(), CREAM)]);
-    }
     // A panel icon's own sound (interface.md §14); the window it opens is silent.
-    let pressed = hover && clicked();
     if pressed {
         super::audio::cue(super::audio::Cue::Panel);
     }
-    pressed
+    (pressed, hover.then(|| b.hint()))
 }
 
 /// Draws the bar. `look` says how each button looks; returns the button clicked.
@@ -458,24 +455,34 @@ pub fn draw_with_time(game: &Game, look: impl Fn(BarButton) -> Look, time_button
 
     // The buttons.
     let mut pressed = None;
+    let mut hovered_hint = None;
     let bh = |b: BarButton| if b.small() { 44.0 } else { 54.0 } * row / 64.0;
     let bw = |b: BarButton| if b.small() { 80.0 } else { 98.0 } * row / 64.0;
     let mut x = 8.0 * k;
     for b in BarButton::LEFT {
         let r = Rect::new(x, y + (row - bh(b)) / 2.0, bw(b), bh(b));
-        if oval(b, r, look(b)) {
+        let (clicked, hint) = oval(b, r, look(b));
+        if clicked {
             pressed = Some(b);
         }
-        x += bw(b) - 4.0 * k;
+        hovered_hint = hint.or(hovered_hint);
+        // The original's silver side edges meet exactly; subtracting 4 px made adjacent
+        // ovals overlap and pushed them away from the ornamental backing's inner edge.
+        x += bw(b);
     }
     let mut x = w - 8.0 * k;
     for b in BarButton::RIGHT.iter().rev().copied() {
         x -= bw(b);
         let r = Rect::new(x, y + (row - bh(b)) / 2.0, bw(b), bh(b));
-        if oval(b, r, look(b)) {
+        let (clicked, hint) = oval(b, r, look(b));
+        if clicked {
             pressed = Some(b);
         }
-        x += 4.0 * k;
+        hovered_hint = hint.or(hovered_hint);
+        // Keep the right-hand group edge-to-edge as well.
+    }
+    if let Some(hint) = hovered_hint {
+        panel_hint(&[(hint, CREAM)]);
     }
     (pressed, timed)
 }
