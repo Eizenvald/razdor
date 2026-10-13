@@ -1,8 +1,12 @@
 /target
 /assets-local
-.claude/
+.claude/*
+!.claude/skills/
 /.env
 /dist
 
 # raw reverse-engineering notes and decompiler output: local only
 docs/notes/
+
+# this machine's own rules for Claude Code
+CLAUDE.local.md

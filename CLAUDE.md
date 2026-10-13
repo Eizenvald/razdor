@@ -1,0 +1,95 @@
+# Razdor — notes for Claude Code
+
+Razdor is an open engine for *Discord Times* (Времена раздора): it plays the original
+scenarios by the original rules, reading maps, ini data, text and art from the player's own
+install at runtime (`RAZDOR_DT_DIR`, set in `.env`). The repo ships the engine only. Player docs
+are in `README.md` (Russian).
+
+**Before working on a feature, read `docs/flows/README.md` and the flow for that area.**
+
+## Commands
+
+- Build: `cargo build --release`. Silent build (no sound, no ALSA): `--no-default-features`.
+- Tests: `cargo test --release`. Tests on the real game files and the difftests skip unless
+  `RAZDOR_DT_DIR` is set; set it (from `.env`, without quotes) before calling a change tested.
+- Lint: `cargo clippy --release`.
+- Release builds: `scripts/dist.sh` (Linux + Windows), `scripts/dist-macos.sh`.
+- Off-screen screens and profiling: the `offscreen-snapshot` skill.
+
+## Layout
+
+- `docs/flows/`: per-area flow docs (index in `README.md`).
+- `src/dt/`: reading the original's files (ini, `.DTm` maps, LIT/UGS pictures, sounds). No macroquad.
+- `src/rules/`: game rules, no macroquad, unit-tested (battle, AI, world, events, economy, saves).
+- `src/ui/`: macroquad screens and windows; `snapshot.rs` holds the off-screen scenes.
+- `src/editor/`: the map editor's model.
+- `src/difftest.rs`, `src/difftest/`, `tools/difftest/`: script mode and replays compared with
+  the original step by step.
+- `docs/reference/original-mechanics/*.md`: clean-room specs of the original, each ending with a
+  "Razdor now → original" table (the parity work list). `README.md` there is the index.
+- `docs/notes/`: raw RE notes and decompiler output. Local only (gitignored); may be missing.
+- `docs/PLAYTEST_NOTES.md`: player and owner reports, newest first.
+- `changelog/`: one file per version plus `unreleased.md`; `CHANGELOG.md` is generated from it.
+- `data/lang/ru/*.txt`: the Russian UI catalog.
+
+## Hard rules
+
+- Parity first: match the original one to one, its bugs included (comment each as original behaviour).
+- Deviations from the original only when the owner asks; they stay on main only.
+- Every parity change cites the original's addresses (`0x4…`) in code and commit, and has a test.
+- Never commit anything from the game (maps, ini data, texts, art, sounds, decoded assets,
+  screenshots of the original) or anything personal (saves, logs, settings, tokens, home paths).
+- The repo is public: every push is published at once.
+- Public text (README, changelog, release notes, site, docs) is in Russian; code, comments and
+  commit messages stay English.
+- Changelog lines are short plain player Russian: what changed for the player, no internals.
+- Git is plain trunk: commit straight to `main`, no feature branches or PRs.
+- Parity commits are also cherry-picked (`-x`) to `dt-original`; deviations never are.
+  `dt-feat` is frozen; `dt-editor` (map editor parity) is paused, untouched unless asked.
+- Player reports go to `docs/PLAYTEST_NOTES.md` (Russian), with what the original does.
+- Keep RE notes in our own words; never paste decompiled code into `docs/reference/`.
+
+## Definition of Done
+
+| Done when | Enforced by |
+|---|---|
+| `cargo test` and `cargo clippy` pass | CI (`.github/workflows/ci.yml`) |
+| Nothing from the game or personal data is staged | guard hook (`.claude/hooks/`) + review |
+| No push to frozen branches, no force push to `main` | guard hook |
+| Tests on real files pass with `RAZDOR_DT_DIR` set | review (CI has no install) |
+| A parity change cites addresses and has a test | review |
+| A deviation was asked for and stays off `dt-original` | review |
+| A player-visible change has a line in `changelog/unreleased.md` | review |
+| A player report has its `PLAYTEST_NOTES.md` entry | review |
+| A change that alters a flow updates its `docs/flows/` file | review |
+| Parity commits are cherry-picked to `dt-original` | review |
+| The release has its commit id and SHA-256 in the changelog | review (`release` skill) |
+
+## Generated or local: don't edit by hand
+
+| Path | Source |
+|---|---|
+| `target/`, `dist/` | cargo, `scripts/dist*.sh` |
+| `CHANGELOG.md` | `changelog/*.md` via `scripts/changelog.sh` |
+| `docs/notes/` | local RE workspace, never committed |
+| `.claude/worktrees/` | agent worktrees: other branches' code |
+
+## When I say…
+
+- "note it": add to `docs/PLAYTEST_NOTES.md` only; don't fix yet.
+- "release" / "make a release": the `release` skill.
+- "bring back X" / "as before": restore that one aspect on top of the current work; never revert the rest.
+- "minor version": bump the middle number (0.4.17 → 0.5.0); otherwise bump the last.
+- A Discord link, screenshot, video or save from a player: the `player-report` skill.
+- "check the original" / "is it parity": the `parity-check` skill.
+
+## Linked files
+
+- `docs/flows/README.md`: how each area works end to end (battle, AI, map steps, towns, campaign, UI, drawing, saves, testing); read first.
+- `.claude/skills/player-report/SKILL.md`: handling a player's report end to end.
+- `.claude/skills/parity-check/SKILL.md`: finding what the original does.
+- `.claude/skills/release/SKILL.md`: cutting a release.
+- `.claude/skills/offscreen-snapshot/SKILL.md`: screenshots and profiling without a window.
+- `docs/reference/original-mechanics/README.md`: the spec index.
+- `changelog/README.md`: changelog layout.
+- `CLAUDE.local.md` (not in git): this machine's own rules.

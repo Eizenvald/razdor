@@ -1,0 +1,58 @@
+---
+name: offscreen-snapshot
+description: Use to see or measure a Razdor screen without opening a window on the desktop - "take a screenshot", "render the window", "check how it looks", "snapshot", "profile", "why is it slow", "lag when a window opens", checking a UI fix at several resolutions. Covers Xvfb, the RAZDOR_SCENE scenes, RAZDOR_SNAPSHOT, RAZDOR_SCENE_OPEN, RAZDOR_PROFILE and perf.
+---
+
+# Off-screen snapshots and profiling
+
+Running Razdor at all, even hidden, needs the owner's go-ahead (see `CLAUDE.local.md`).
+Nothing appears on the desktop with this recipe.
+
+## Build
+
+`cargo build --release --no-default-features` (silent: no music on the speakers), into a
+scratch `CARGO_TARGET_DIR` outside the repo if the main target is in use. For profiling add
+`CARGO_PROFILE_RELEASE_DEBUG=true`.
+
+## Run
+
+```
+XDG_RUNTIME_DIR=<scratch dir, mode 700> \
+RAZDOR_LOG=<scratch>/razdor.log RAZDOR_SAVE_DIR=<scratch>/saves \
+RAZDOR_DT_DIR=<install> RAZDOR_SIZE=1280x800 \
+RAZDOR_SCENE=<scene> RAZDOR_SNAPSHOT=<scratch>/shot.png \
+xvfb-run -a -s "-screen 0 1280x800x24" <target>/release/razdor
+```
+
+- Its own `XDG_RUNTIME_DIR`: Razdor allows one copy (`razdor.lock` there); while the owner's
+  game is open a snapshot run would otherwise quit silently.
+- Its own `RAZDOR_LOG` and `RAZDOR_SAVE_DIR`: the owner's log, saves and settings stay untouched.
+- `RAZDOR_SNAPSHOT_FRAMES` (default 20): frames before the shot.
+- Check UI changes at 800x600, 1024x768 and 1280x800 at least.
+
+## Scenes
+
+Listed at the top of `src/ui/snapshot.rs` (the source of truth). Common ones: `title`,
+`load[:manual|auto[:<row>]]`, `options[:advanced]`, `map:<map>[:x,y]`,
+`building:<map>:<n>[:barracks|garrison|market|sanctuary]`, `army:<map>[:<n>…]`,
+`journal:<map>`, `spells:<map>`, `menu:<map>`, `settings:<map>[:advanced]`,
+`battle:<map>:<n>`, `custom-battle[:watch]`, `replay:<step>` with `RAZDOR_REPLAY`.
+`<map>` is the install's map file name without `.DTm`. Helpers: `RAZDOR_MOUSE=x,y`,
+`RAZDOR_SCENE_QUIET=1`, `RAZDOR_SCENE_SHOW`, `RAZDOR_SCENE_CONSOLE`, `RAZDOR_SCENE_FILTER`,
+`RAZDOR_SCENE_SPELLS`, `RAZDOR_SCENE_POTION`, `RAZDOR_SCENE_DEBUG`. A later campaign map started
+as a new game may end at once by its own defeat event; that is not a bug.
+
+No scene for what you need (a hover, a tab, a selection)? Add one to `snapshot.rs` rather than
+skipping the visual check.
+
+## Profiling
+
+- `RAZDOR_PROFILE=1`: frames whose work takes over 40 ms are logged with their screen, and
+  slow picture decodes as "slow load".
+- `RAZDOR_SCENE_OPEN=<frame>:<window>[,…]` (`load`, `army`, `spells`, `journal`, `menu`,
+  `building:<n>`, `map`): opens a window at that frame and logs the frames after it.
+- Many saves: point `RAZDOR_SAVE_DIR` at a scratch folder of copied saves (0, 85, 500).
+- CPU: `perf record -F 999 -g` (or `--call-graph dwarf`) on the run, then
+  `perf report --no-children`; I/O: `strace -c -f`.
+- Timings under Xvfb use Mesa's software renderer: compare before/after on the same setup, and
+  don't read render times as the player's GPU.
