@@ -1,0 +1,153 @@
+# Flow: the app, its screens and windows
+
+**Read this first.** Razdor is one macroquad program (`src/main.rs`) over a library
+(`src/lib.rs`: `dt`, `rules`, `difftest`, `editor`, …). The library holds every rule and
+decoder and has no macroquad; `src/ui/` is the only layer that draws or reads input. One
+`App` (`src/ui/mod.rs`) owns the game and a single `Screen` enum value; every frame
+`App::frame` runs the current screen's function, which draws *and* handles input
+immediate-mode style and returns `Option<Screen>` for the next one. Modal message windows
+are a queue (`App::dialogs`) drawn over the screen. Nothing is retained between frames
+except what the screen value, the `App` fields and a few `thread_local!`s hold.
+
+## Startup
+
+`src/main.rs`:
+
+1. `conf` (before the window exists): `razdor::difftest::cli` (the headless `--replay`
+   mode exits here), `razdor::diag::init` (the log `razdor.log`),
+   `razdor::dt::install::load_dotenv` (`.env` next to the program or in the working
+   folder), `single_instance` (a lock file), `razdor::update::init`, the window size
+   (`ui::snapshot::size`, `RAZDOR_SIZE`).
+2. `main`: `ui::widgets::load_font` (TrueType faces bundled in `data/fonts/`),
+   `ui::language::init` (EN/RU, `razdor::i18n`), `Content::builtin` (the demo content),
+   `Assets::load` (`src/ui/assets.rs`) which finds the install (`DtArt::from_env` →
+   `razdor::dt::install::locate`) and, when there is one, calls
+   `ui::chrome::set_install` (starts decoding window art ahead, see
+   [assets-and-drawing.md](assets-and-drawing.md)), `razdor::rules::save::set_install` and
+   `razdor::rules::save::warm_meta_cache` (see [saves.md](saves.md)).
+3. `App::new` (`src/ui/mod.rs`): the install's `Content` (`Content::from_dt`), every map of
+   the install parsed into `ScenarioEntry`s, `Audio::new` (settings are loaded here).
+4. `ui::snapshot::stage` (only with `RAZDOR_SCENE`), then the loop: `App::frame`,
+   `App::draw_fps`, `ui::cursor::draw` (the pointer is drawn last, over everything), and
+   `next_frame().await`. Quitting goes through `exit_now` (it skips C `atexit` handlers,
+   which crashed on exit).
+
+Install lookup order (`src/dt/install.rs` `locate_with`): `RAZDOR_DT_DIR`, the program's own
+folder when it is an install, the remembered folder (`config_file`), then a search under
+`search_roots`. Without an install Razdor runs the built-in demo.
+
+## The frame
+
+`App::frame` in order:
+
+- per-frame resets: `input::begin_frame`, `chrome::begin_frame`, `cursor::begin_frame`,
+  `widgets::track_held_key`; Alt+Enter display mode (`display::hotkey_pressed`);
+- settings pushed into the game each frame (`g.improved_ai`, `g.friends_let_pass`,
+  `g.pass_on_bridges`, animation speed, row width) — the settings live in the UI, the
+  rules only read plain fields;
+- the cheat console and the update window decide whether input is blocked:
+  `widgets::set_input_blocked(true)` while a dialog, the F1 overlay, the console or the
+  update window is on top. Screens still draw under them but must check
+  `widgets::input_blocked()` (most helpers do it for you);
+- `match (&mut self.screen, &mut self.game)` calls the screen's function, e.g.
+  `world_view::frame`, `building_view::frame`, `items_view::squad`, `BattleView::frame`,
+  `story::journal`, `spellbook::frame`, `saves::load_screen`, `main_menu::options_window`;
+- global hotkeys (`hotkeys::allowed`, F1 help, F5/F9 quick save/load, language);
+- the front dialog: `dialog::draw` returns `Some(Close)` when closed, then the closing is
+  routed (village offers → `building_view::answer_offer`, questions →
+  `Game::answer_question`, event windows → `Game::event_window_closed`; results go back
+  through `world_view::handle_events`);
+- a pending fight (`game.foe`) opens `saves::battle` once no dialog is open; script
+  victory/defeat ends the game; the noon autosave (`game.autosave_due`);
+- the screen change: bookkeeping that depends on *which* screen closed (window-closed
+  events after side windows, `Game::army_window_opened`, map camera reset or not).
+
+Trap: anything that must happen when a window opens or closes goes in that last block, not
+in the window's own function (the function does not know it is the first frame).
+
+## Screens and windows
+
+`Screen` (`src/ui/mod.rs`) has one variant per screen. Windows over the map
+(`Building`, `Squad`, `Journal`, `Spellbook`, `Menu`, `Settings`, `Save`, `Load`) draw the map
+under them with `world_view::window_backdrop` / `world_view::backdrop_lit` (the bottom bar
+stays live and lights the window's button).
+
+Building a window (`src/ui/chrome.rs`):
+
+- `chrome::k()` is the interface scale: screen pixels per pixel of the 960×720 reference
+  video. Every size and offset is written in reference pixels times `k`. `chrome::fit_k` is
+  the largest that fits; `chrome::bar_height` the bottom bar.
+- `chrome::window(r, title, skin, closable)` draws background, frame and title bar and
+  returns `(inner, closed)`. Skins: `chrome::Skin`.
+- Placement: windows over the map are centred over the view above the bar (as the
+  original's, over its 1024×682 view) — see `map_window` in `src/ui/main_menu.rs` (commit
+  77cf546). Never hang a tall window from a fixed top: its foot runs over the bar.
+- The original's layouts (army, building windows) use `src/ui/window_layout.rs`
+  (`window_layout::window`, `window_layout::at`, panel rects).
+- Buttons and text: `chrome::marble_button`, `chrome::pill_button`, `chrome::shadow_text`,
+  `chrome::hint_text`, `widgets::button`, `widgets::text_field`, `widgets::scrollbar`,
+  `widgets::tabs`. Clicks: `widgets::clicked` / `widgets::mouse_in` (they respect
+  `input_blocked`). Sounds: `audio::cue(Cue::Button)`.
+- Tooltips: `widgets::tooltip` (translucent, follows the mouse), `widgets::hint_box` (the
+  original's hint box), `widgets::panel_hint` (bottom panel). Clip with `widgets::Clip`.
+- Message windows: build a `dialog::Dialog` and push it on `App::dialogs` (screens get
+  `&mut VecDeque<Dialog>`); `story::show` turns rules outcomes into dialogs.
+
+Input goes through `src/ui/input.rs` (mouse/keys with gamepad emulation from
+`src/ui/gamepad.rs`), never macroquad directly, so the gamepad and the snapshot pointer
+(`RAZDOR_MOUSE`) work. Pointer shapes: `cursor::set(cursor::Shape::…)`; the map's choice is
+`cursor::map_pointer`, the battle's `cursor::battle_pointer`. Per-screen keys and the F1 list:
+`src/ui/hotkeys.rs` (`hotkeys::Place`, `hotkeys::screen_keys`).
+
+## Text
+
+- Razdor's own texts: `razdor::i18n::tr("English text")` and `trf!` with named
+  placeholders; the Russian is in `data/lang/ru/*.txt` (`English = Russian` lines). Mark
+  texts named in one place and translated elsewhere with `razdor::i18n::n_`. A catalog test checks every
+  key is used and translated.
+- The original's interface texts are read from the install, never copied:
+  `chrome::ui_text`, `chrome::ui_markup` (with the original's `#\ * | @ ^` marks, drawn by
+  `widgets::markup_rows`), `chrome::ui_line`, `chrome::options_value` (`[Options]`).
+- Fonts: TrueType (`widgets::load_font`) for Razdor's text; the original's bitmap fonts
+  (`src/ui/dt_font.rs`, `dt_font::with_face`) where the original uses them.
+
+## Settings
+
+`ui::audio::Settings` (`src/ui/audio.rs`, saved as `audio.json` in the save folder, all
+fields `#[serde(default)]`) holds every setting: volumes, display, scale, battle AI level,
+row width, and Razdor's own options (`friends_let_pass`, `pass_on_bridges`, `updates`,
+map zoom). The windows are `main_menu::options` / `main_menu::options_window` and
+`advanced_window` (Razdor's own options).
+
+Rule: a parity setting reads the install's value until the player chooses
+(`Option<bool>` = `None` → the install's `[Options]` value such as `OptValue9`, see `main_menu::expert_ai`). A Razdor
+extra defaults to the original's behaviour and its label says which choice is the
+original's ("Battle (original)").
+
+## How to add a window
+
+1. Add a `Screen` variant (or a field on an existing view) in `src/ui/mod.rs`.
+2. Write `fn frame(...) -> Option<Screen>` in its own module: draw with `chrome::window`
+   (over the map: centre above the bar), handle input with `widgets`, return the next screen.
+3. Route it in the `match` of `App::frame`; add open/close bookkeeping in the screen-change
+   block if the original does something there.
+4. Hotkeys in `hotkeys.rs` (`Place`), its texts in `data/lang/ru/`.
+5. A `RAZDOR_SCENE` for it in `src/ui/snapshot.rs` so it can be seen offscreen
+   ([testing-and-tools.md](testing-and-tools.md)).
+
+## How to add a setting
+
+Add a `#[serde(default)]` field to `ui::audio::Settings` (and to its `Default`), a button
+in `options_window` or `advanced_window`, a translation line, and push it into `Game` at
+the top of `App::frame` if the rules need it. Old `audio.json` files keep loading.
+
+## Traps
+
+- Draw order is call order: anything drawn after `dialog::draw` is over the dialog.
+- `thread_local!` state in `chrome`, `widgets`, `cursor`, `input` is reset per frame by
+  their `begin_frame`; do not keep per-window state there — put it in the screen value.
+- A screen function runs every frame; expensive work (decoding art, reading saves,
+  path-finding) must be cached or done ahead (see the profiling recipe in
+  [testing-and-tools.md](testing-and-tools.md)).
+
+<!-- refs verified by: python3 -I docs/flows/verify.py docs/flows/*.md -->
