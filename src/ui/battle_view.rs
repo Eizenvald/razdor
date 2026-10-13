@@ -517,19 +517,20 @@ impl BattleView {
     }
 
     /// Quick battle (Razdor extra): the rest of the battle is played at once by the battle AI
-    /// on both sides (`Battle::auto_play_to_end`); the result box follows. While watching it
-    /// skips to the end, with the result the watching would have reached.
+    /// on both sides, the hero's units by the hero's rules (`Battle::hero_auto_play_to_end`);
+    /// the result box follows. While watching it skips to the end, with the result the
+    /// watching would have reached.
     fn quick_battle(&mut self) {
         self.fx = None;
         self.news = None;
-        self.battle.auto_play_to_end();
+        self.battle.hero_auto_play_to_end();
         self.quick_played = true;
     }
 
     /// One move of the AI for the active unit, whichever side it is on: the quick battle's
-    /// step ([`Battle::auto_step`]), so a watched battle plays exactly as the instant one.
+    /// step ([`Battle::hero_auto_step`]), so a watched battle plays exactly as the instant one.
     fn ai_move(&mut self) -> Option<Step> {
-        let step = self.battle.auto_step();
+        let step = self.battle.hero_auto_step();
         self.note_log();
         step
     }

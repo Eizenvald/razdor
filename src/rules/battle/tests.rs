@@ -1434,6 +1434,61 @@ fn auto_battles_terminate_deterministically_and_never_use_the_reserve() {
     }
 }
 
+/// The hero's auto-battle (a Razdor extra): a blesser the player put in the front row's
+/// corner stays there and keeps blessing the warriors, where the original's AI steps it
+/// back; the enemy plays by the original's AI.
+#[test]
+fn hero_auto_battle_keeps_a_front_row_blesser_in_its_cell() {
+    let princess = acts(42, 2, mage(42, 20, MagicSchool::Life, MagicDirection::ToAlly));
+    let army = [(42, f(0)), (10, f(1)), (10, f(2)), (10, f(3))];
+    let foes = [(18, f(1)), (18, f(2)), (11, b(2))];
+    let c = content_with(vec![princess], Formation::WIDE);
+
+    let mut bt = battle_in(&c, &army, &foes);
+    turn_of(&mut bt, 0);
+    assert!(matches!(bt.ai_step(), Some(Step::Move { actor: 0, to, .. }) if to.row == Back), "the original's AI steps her back");
+
+    let mut bt = battle_in(&c, &army, &foes);
+    let mut blessed = 0;
+    let mut steps = 0;
+    while bt.outcome() == Outcome::Ongoing {
+        let actor = bt.active().unwrap();
+        let step = bt.hero_auto_step().unwrap();
+        if actor == 0 {
+            assert!(!matches!(step, Step::Move { .. }), "she keeps her cell: {step:?}");
+            if let Step::Act { hit, .. } = step {
+                blessed += i32::from(hit.kind == ActionKind::Bless);
+            }
+        }
+        steps += 1;
+        assert!(steps < 5000);
+    }
+    assert_eq!(bt.fighters[0].slot, f(0));
+    assert!(blessed > 0, "she blessed the warriors");
+}
+
+#[test]
+fn hero_auto_battle_leaves_the_enemy_to_the_original_s_ai() {
+    let army = [(10, f(1)), (10, f(2)), (11, b(1)), (12, b(2)), (13, b(3)), (14, b(4)), (11, r(2)), (10, r(3))];
+    for formation in [Formation::WIDE, Formation::VANILLA] {
+        let c = content_with(vec![], formation);
+        let mut bt = battle_in(&c, &army, &army);
+        let (mut steps, mut enemy) = (0, 0);
+        while bt.outcome() == Outcome::Ongoing {
+            if bt.fighters[bt.active().unwrap()].team == Team::Enemy {
+                assert_eq!(bt.plan(true), bt.plan(false), "the enemy's plan is the original's");
+                enemy += 1;
+            }
+            if let Some(Step::Move { from, to, .. }) = bt.hero_auto_step() {
+                assert!(to.row != Reserve || from.row == Reserve, "into the reserve");
+            }
+            steps += 1;
+            assert!(steps < 5000);
+        }
+        assert!(enemy > 0);
+    }
+}
+
 #[test]
 fn real_armies_auto_battle_terminates() {
     let Some(dir) = std::env::var_os(crate::dt::install::ENV_VAR) else { return };

@@ -2691,14 +2691,24 @@ impl Battle {
     }
 
     fn ai_plan(&self) -> Option<Plan> {
+        self.plan(false)
+    }
+
+    /// The battle AI's plan for the active fighter; with `hero`, the player's units follow
+    /// the hero's auto-battle rules ([`Battle::hero_auto_step`]), the enemy the original's.
+    fn plan(&self, hero: bool) -> Option<Plan> {
         let id = self.active()?;
+        let hero = hero && self.fighters[id].team == Team::Player;
         let opts = self.all_options(id);
         // A reserve unit goes straight to the moves (4864e0), a Ghost's cast included.
         if self.fighters[id].slot.row == Row::Reserve {
             return Some(self.ai_move(id, &opts));
         }
-        if let Some(plan) = self.ai_retreat(id, &opts) {
-            return Some(plan);
+        // The hero's units hold the line: no stepping back out of the front row.
+        if !hero {
+            if let Some(plan) = self.ai_retreat(id, &opts) {
+                return Some(plan);
+            }
         }
         let pick = |kinds: &[ActionKind], score: &dyn Fn(usize, ActionKind) -> i64| {
             self.pick(opts.iter().filter(|o| kinds.contains(&o.1)).map(|&(t, k)| (self.fighters[t].slot, score(t, k) as f64, (t, k))))
@@ -2770,6 +2780,11 @@ impl Battle {
         }
         if let Some(plan) = self.ai_magic(id, &opts) {
             return Some(plan);
+        }
+        // A hero's caster for its allies with nothing to cast keeps its cell.
+        let f = &self.fighters[id];
+        if hero && f.stats.is_mage() && f.stats.magic_direction().helps_allies() {
+            return Some(self.own_cell_plan(id));
         }
         Some(self.ai_move(id, &opts))
     }
@@ -3158,8 +3173,12 @@ impl Battle {
 
     /// Plays one action of the active fighter automatically.
     pub fn ai_step(&mut self) -> Option<Step> {
+        self.step_by(false)
+    }
+
+    fn step_by(&mut self, hero: bool) -> Option<Step> {
         let actor = self.active()?;
-        match self.ai_plan()? {
+        match self.plan(hero)? {
             Plan::Act(t, kind) => {
                 let hit = self.act_with(t, kind).ok()?;
                 Some(Step::Act { actor, hit })
@@ -3199,11 +3218,39 @@ impl Battle {
     /// watched quick battle plays these one by one on screen, so stopping to watch, or
     /// skipping to the end, ends as [`Battle::auto_play_to_end`] would have.
     pub fn auto_step(&mut self) -> Option<Step> {
+        self.auto_step_by(false)
+    }
+
+    fn auto_step_by(&mut self, hero: bool) -> Option<Step> {
         let actor = self.active()?;
-        self.ai_step().or_else(|| {
+        self.step_by(hero).or_else(|| {
             self.skip();
             Some(Step::Wait { actor })
         })
+    }
+
+    /// The hero's auto-battle (a Razdor extra the players asked for, main only): as
+    /// [`Battle::auto_play_to_end`], but the player's units play by the hero's rules
+    /// ([`Battle::hero_auto_step`]).
+    pub fn hero_auto_play_to_end(&mut self) -> Outcome {
+        self.begin();
+        for _ in 0..AUTO_PLAY_STEPS {
+            if self.outcome() != Outcome::Ongoing {
+                break;
+            }
+            self.hero_auto_step();
+        }
+        self.outcome()
+    }
+
+    /// One step of the hero's auto-battle. The enemy plays by the original's AI; the
+    /// player's units by the same AI with two changes, so a formation the player built
+    /// stays as it is: a front-row unit never steps back (the original's retreat of
+    /// shooters and mages, [`Battle::ai_retreat`]), and a healer or blesser with nothing to
+    /// cast keeps its cell instead of moving. Nobody enters the reserve, as before; a unit
+    /// in the reserve still comes out.
+    pub fn hero_auto_step(&mut self) -> Option<Step> {
+        self.auto_step_by(true)
     }
 
     // ------------------------------------------------------------------------------------
