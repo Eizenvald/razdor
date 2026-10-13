@@ -10,7 +10,7 @@ Nothing appears on the desktop with this recipe.
 
 ## Build
 
-`cargo build --release --no-default-features` (silent: no music on the speakers), into a
+`cargo build --release --no-default-features` (with the core pinning prefix from `CLAUDE.local.md`, if present; silent: no music on the speakers), into a
 scratch `CARGO_TARGET_DIR` outside the repo if the main target is in use. For profiling add
 `CARGO_PROFILE_RELEASE_DEBUG=true`.
 

@@ -14,11 +14,11 @@ update window shows those notes up to their first `## ` heading.
 ## Steps
 
 1. All work for the release is committed; `git status` is clean (other agents' files: ask).
-2. Run the full suite with the install: `RAZDOR_DT_DIR=… cargo test --release` (lib and bins;
+2. Run the full suite with the install: `RAZDOR_DT_DIR=… cargo test --release` (with the core pinning prefix from `CLAUDE.local.md`, if present, and `RAZDOR_PERF_BUDGET_SCALE` on slow cores; lib and bins;
    the lib failing stops cargo before the bins, so run `--bins` too if it does). Report any
    failure; a failure that also fails on the previous release's commit is pre-existing, say so.
 3. Version: the last number by default; "minor version" bumps the middle (0.4.17 → 0.5.0).
-   Set `version` in `Cargo.toml`, then `cargo build --release` so `Cargo.lock` follows.
+   Set `version` in `Cargo.toml`, then `cargo build --release` (same prefix) so `Cargo.lock` follows.
 4. Changelog (layout in `changelog/README.md`): move `changelog/unreleased.md`'s content to
    `changelog/X.Y.Z.md` under the heading `## X.Y.Z — YYYY-MM-DD`, leave `unreleased.md` empty
    (its header only), and regenerate `CHANGELOG.md` with `scripts/changelog.sh`. Sections inside
