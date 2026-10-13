@@ -1,6 +1,6 @@
 ---
 name: discord-reports
-description: Use when the owner asks to go through the Discord reports thread - "check reports", "check discord", "new reports", "что в дискорде", "разбери репорты", "any new bugs from players". Reads new messages with the discord-reports MCP server (read-only), sorts them into bug reports, feature requests and chatter, files English GitHub issues with links to the messages, fixes what is clear, closes issues by commit, and ends with a multiple-choice list of what the owner should decide.
+description: Use when the owner asks to go through the Discord reports thread - "check reports", "check discord", "new reports", "что в дискорде", "разбери репорты", "any new bugs from players". Reads new messages with the discord-reports MCP server, sorts them into bug reports, feature requests and chatter, files English GitHub issues with links to the messages, fixes what is clear, closes issues by commit, and ends with a multiple-choice list of what the owner should decide.
 ---
 
 # Discord reports → GitHub issues → fixes
