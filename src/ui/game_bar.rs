@@ -260,28 +260,19 @@ fn resources(game: &Game, y: f32, h: f32) {
         let base = y + h * 0.5 + value_size * 0.36;
         shadow_text(label, cx - lw - 16.0 * k, base, label_size, Color::new(0.75, 0.75, 0.75, 1.0));
         let icon = 24.0 * k;
-        if i == 0 {
-            // Use the original resource glyph as-is: converting it to additive glow
-            // changes its blue-and-cyan colors and makes the hand look damaged.
-            if let Some(t) = chrome::win("Res-Magic") {
+        // Each picture with its own alpha plane and nothing else, as the original's
+        // (0x4dcd8d loads them, 0x49d3e5 draws them through 0x476a3c).
+        match chrome::win(art) {
+            Some(t) => {
                 let iw = t.width() * icon / t.height();
                 tex(&t, Rect::new(cx - iw / 2.0, y + (h - icon) / 2.0, iw, icon), WHITE);
-            } else {
-                super::dialog::resource_icon(super::dialog::Resource::Mana, cx, y + h / 2.0, icon);
             }
-        } else {
-            match chrome::win_fx(art, Fx::KeyBlack) {
-                Some(t) => {
-                    let iw = t.width() * icon / t.height();
-                    tex(&t, Rect::new(cx - iw / 2.0, y + (h - icon) / 2.0, iw, icon), WHITE);
-                }
-                None => super::dialog::resource_icon(
-                    [super::dialog::Resource::Mana, super::dialog::Resource::Gold, super::dialog::Resource::Income, super::dialog::Resource::Wages][i],
-                    cx,
-                    y + h / 2.0,
-                    icon,
-                ),
-            }
+            None => super::dialog::resource_icon(
+                [super::dialog::Resource::Mana, super::dialog::Resource::Gold, super::dialog::Resource::Income, super::dialog::Resource::Wages][i],
+                cx,
+                y + h / 2.0,
+                icon,
+            ),
         }
         super::dt_font::with_face(super::dt_font::Face::Subtitle, || shadow_text(value, cx + 16.0 * k, base, value_size, *color));
     }
