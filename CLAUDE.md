@@ -36,6 +36,8 @@ are in `README.md` (Russian).
 
 - Parity first: match the original one to one, its bugs included (comment each as original behaviour).
 - Deviations from the original only when the owner asks; they stay on main only.
+- A feature tied to the original game is reverse engineered from the original first (specs, then
+  Ghidra; the `parity-check` skill) to learn how it really works; never guess its behaviour.
 - Every parity change cites the original's addresses (`0x4…`) in code and commit, and has a test.
 - Never commit anything from the game (maps, ini data, texts, art, sounds, decoded assets,
   screenshots of the original) or anything personal (saves, logs, settings, tokens, home paths).
@@ -44,7 +46,8 @@ are in `README.md` (Russian).
   commit messages stay English.
 - Changelog lines are short plain player Russian: what changed for the player, no internals.
 - Git is plain trunk: commit straight to `main`, no feature branches or PRs.
-- Parity commits are also cherry-picked (`-x`) to `dt-original`; deviations never are.
+- Everything that must work as in the original (parity fixes, specs) is also cherry-picked (`-x`)
+  to `dt-original` and pushed there; deviations never are.
   `dt-feat` is frozen; `dt-editor` (map editor parity) is paused, untouched unless asked.
 - Player reports go to `docs/PLAYTEST_NOTES.md` (Russian), with what the original does.
 - Keep RE notes in our own words; never paste decompiled code into `docs/reference/`.
@@ -57,12 +60,12 @@ are in `README.md` (Russian).
 | Nothing from the game or personal data is staged | guard hook (`.claude/hooks/`) + review |
 | No push to frozen branches, no force push to `main` | guard hook |
 | Tests on real files pass with `RAZDOR_DT_DIR` set | review (CI has no install) |
-| A parity change cites addresses and has a test | review |
+| A feature tied to the original was reverse engineered first; it cites addresses and has a test | review |
 | A deviation was asked for and stays off `dt-original` | review |
 | A player-visible change has a line in `changelog/unreleased.md` | review |
 | A player report has its `PLAYTEST_NOTES.md` entry | review |
 | A change that alters a flow updates its `docs/flows/` file | review |
-| Parity commits are cherry-picked to `dt-original` | review |
+| Parity commits are cherry-picked to `dt-original` and pushed | review |
 | The release has its commit id and SHA-256 in the changelog | review (`release` skill) |
 
 ## Generated or local: don't edit by hand

@@ -54,7 +54,7 @@ helper) usually breaks more than the one thing reported. List what else it fixes
   `### Изменено` or `### Исправлено`. No addresses, timings or internals.
 - Commit on `main` (English message: what changed, the addresses, "(a player's report)").
 - Parity fix: cherry-pick `-x` onto `dt-original` (its worktree, its own target dir); resolve
-  conflicts keeping dt-original's original-only behaviour; run its tests.
+  conflicts keeping dt-original's original-only behaviour; run its tests; push `dt-original`.
 
 ## 4. Report back
 
