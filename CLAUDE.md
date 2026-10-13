@@ -42,8 +42,9 @@ are in `README.md` (Russian).
 - Never commit anything from the game (maps, ini data, texts, art, sounds, decoded assets,
   screenshots of the original) or anything personal (saves, logs, settings, tokens, home paths).
 - The repo is public: every push is published at once.
-- Public text (README, changelog, release notes, site, docs) is in Russian; code, comments and
-  commit messages stay English.
+- Player-facing text (README, changelog, release notes, site, PLAYTEST_NOTES) is in Russian.
+  Developer text stays English: code, comments, commit messages, CLAUDE.md, skills,
+  `docs/flows/`, `docs/reference/`.
 - Changelog lines are short plain player Russian: what changed for the player, no internals.
 - Git is plain trunk: commit straight to `main`, no feature branches or PRs.
 - Everything that must work as in the original (parity fixes, specs) is also cherry-picked (`-x`)
