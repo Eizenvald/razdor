@@ -108,8 +108,10 @@ Input goes through `src/ui/input.rs` (mouse/keys with gamepad emulation from
 - The original's interface texts are read from the install, never copied:
   `chrome::ui_text`, `chrome::ui_markup` (with the original's `#\ * | @ ^` marks, drawn by
   `widgets::markup_rows`), `chrome::ui_line`, `chrome::options_value` (`[Options]`).
-- Fonts: TrueType (`widgets::load_font`) for Razdor's text; the original's bitmap fonts
-  (`src/ui/dt_font.rs`, `dt_font::with_face`) where the original uses them.
+- Fonts: the settings' «Шрифт» (`dt_font::FontMode`): the install's bitmap sheets by default,
+  or the bundled TrueType faces (`widgets::load_font`); see `assets-and-drawing.md` §Fonts.
+  Pick a face with `dt_font::with_face`; measure with `widgets::measure`, since widths
+  change with the mode.
 
 ## Settings
 

@@ -1399,26 +1399,12 @@ fn stock_caption(label: &str, stock: i32) -> String {
 /// yellow, "Магия + N" in blue) with a 1 px shadow. `Ok` (`Btn1`) centred 10 px from the
 /// bottom and the close box, both 0x4c6000. Razdor takes the tribute as the hero enters
 /// (economy.md §3), so the window shows what was taken ([`BuildingView::tribute`]).
-fn village_window(game: &mut Game, view: &BuildingView, message: &mut Option<String>) -> Option<Screen> {
+/// The village window's texts: the box and the two stock captions ([`village_window`]).
+fn village_texts(game: &Game, view: &BuildingView, l: usize, (x, y, o): (f32, f32, f32), size: f32, line_h: f32) {
     use razdor::dt::markup::Ink;
-    let l = game.location?;
-    let o = chrome::k() * 0.9375;
-    let (w, h) = ((634.0 * o).round(), (516.0 * o).round());
-    let (x, y) = (((screen_width() - w) / 2.0).round(), ((screen_height() - chrome::bar_height() - h) / 2.0).max(2.0).round());
     let loc = &game.world.locations[l];
-    let (_, closed) = chrome::window(Rect::new(x, y, w, h), &loc.name, chrome::Skin::Marble, true);
-    // The reference has a narrow marble gap around the picture and a separate framed
-    // footer. Stretch the complete village artwork to these bounds, without cropping it.
-    let picture = Rect::new(x + 4.0 * o, y + 31.0 * o, w - 8.0 * o, 428.0 * o);
-    if let Some(t) = chrome::win("S_Village") {
-        chrome::tex(&t, picture, WHITE);
-    }
-    chrome::silver_frame(picture, o.max(1.0));
-    let footer = Rect::new(x + 2.0 * o, y + 461.0 * o, w - 4.0 * o, h - 463.0 * o);
-    chrome::silver_frame(footer, o.max(1.0));
     let (gold, mana) = view.tribute;
-    let size = (15.0 * o).round();
-    let line_h = (17.0 * o).round();
+
     let (bx, by, bw) = (x + 18.0 * o, y + 45.0 * o, 598.0 * o);
     let lines_of = |t: &str| t.split('\n').flat_map(|p| if p.trim().is_empty() { vec![String::new()] } else { wrap(p, bw - 32.0 * o, size) }).collect::<Vec<_>>();
     let mut lines: Vec<(String, Color)> = Vec::new();
@@ -1458,6 +1444,28 @@ fn village_window(game: &mut Game, view: &BuildingView, message: &mut Option<Str
         let (label, ink) = if is_mana { (own_text("Building", "Mana", n_("Magic")), Ink::Bar) } else { (own_text("Building", "Gold", n_("Money")), Ink::Plain) };
         chrome::shadow_centered(&stock_caption(&label, stock), sx + 80.0 * o, sy - 24.0 * o + size, size, benguiat(ink.rgb()));
     }
+}
+
+fn village_window(game: &mut Game, view: &BuildingView, message: &mut Option<String>) -> Option<Screen> {
+    let l = game.location?;
+    let o = chrome::k() * 0.9375;
+    let (w, h) = ((634.0 * o).round(), (516.0 * o).round());
+    let (x, y) = (((screen_width() - w) / 2.0).round(), ((screen_height() - chrome::bar_height() - h) / 2.0).max(2.0).round());
+    let loc = &game.world.locations[l];
+    let (_, closed) = chrome::window(Rect::new(x, y, w, h), &loc.name, chrome::Skin::Marble, true);
+    // The reference has a narrow marble gap around the picture and a separate framed
+    // footer. Stretch the complete village artwork to these bounds, without cropping it.
+    let picture = Rect::new(x + 4.0 * o, y + 31.0 * o, w - 8.0 * o, 428.0 * o);
+    if let Some(t) = chrome::win("S_Village") {
+        chrome::tex(&t, picture, WHITE);
+    }
+    chrome::silver_frame(picture, o.max(1.0));
+    let footer = Rect::new(x + 2.0 * o, y + 461.0 * o, w - 4.0 * o, h - 463.0 * o);
+    chrome::silver_frame(footer, o.max(1.0));
+    let size = (15.0 * o).round();
+    let line_h = (17.0 * o).round();
+    // The original's texts here are Benguiat's tints (0x4dbb0c fonts ae24a0..ae24ac).
+    super::dt_font::with_original_face(super::dt_font::Face::Subtitle, || village_texts(game, view, l, (x, y, o), size, line_h));
     let (btn_w, btn_h) = chrome::win("Btn1Up").map_or((180.0, 40.0), |t| (t.width(), t.height()));
     let (btn_w, btn_h) = (btn_w * o, btn_h * o);
     let btn_x = x + (w - btn_w) / 2.0;

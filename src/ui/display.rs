@@ -154,6 +154,7 @@ pub fn draw_notice() {
 
 /// The settings' display mode and interface scale, taken in at the start of every frame.
 pub fn follow_settings(settings: &crate::ui::audio::Settings) {
+    crate::ui::dt_font::set_mode(settings.font);
     if crate::ui::snapshot::size().is_some() {
         return; // Offscreen snapshots keep their fixed size and the automatic scale.
     }

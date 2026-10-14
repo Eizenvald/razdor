@@ -190,11 +190,13 @@ pub struct Settings {
     /// The Community's battle animation speed (`AnimationSpeed`, percent 0..99); `None`
     /// until chosen: the install's.
     pub anim_speed: Option<f32>,
+    /// The interface's fonts (Razdor's choice): the original's sheets, modern or pixel.
+    pub font: super::dt_font::FontMode,
 }
 
 impl Default for Settings {
     fn default() -> Settings {
-        Settings { music_volume: 0.6, sfx_volume: 0.8, music_muted: false, sfx_muted: false, show_fps: false, expert_ai: None, wide_row: None, display: Default::default(), ui_scale: 0.0, minimap_size: None, minimap_corner: Default::default(), friends_let_pass: false, pass_on_bridges: false, updates: Default::default(), map_zoom: 1.0, zoom_locked: false, anim_speed: None }
+        Settings { music_volume: 0.6, sfx_volume: 0.8, music_muted: false, sfx_muted: false, show_fps: false, expert_ai: None, wide_row: None, display: Default::default(), ui_scale: 0.0, minimap_size: None, minimap_corner: Default::default(), friends_let_pass: false, pass_on_bridges: false, updates: Default::default(), map_zoom: 1.0, zoom_locked: false, anim_speed: None, font: Default::default() }
     }
 }
 
