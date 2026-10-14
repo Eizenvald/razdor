@@ -8,6 +8,12 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
 
 ## Open
 
+- **dt-original: the main hall's quest list** (2026-10-14). On main the list fills the lower
+  panel from the top with a full-width highlight (0x4bedec, 3ad3501); dt-original has its own
+  main hall layout, so only the button text, the market's first row, the descriptions, the
+  quest line, the village bar and the victory report were ported. Compare dt-original's hall
+  with the original and port the list.
+
 - **AI step clock: the tick banked at its start** (2026-10-14). `Game::ai_move` adds a hero
   tick's minutes to every army's bank at the tick's start, so a step can start at once; the
   original banks each frame's `dt` (0x4ade3c → 0x4a399c) and starts a step only in the frame
