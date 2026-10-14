@@ -15,6 +15,12 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
   the owner wants the recovery actions back, they are a deviation (main only), e.g. as extra
   buttons after the report or in the main menu; the PR's code is in its branch
   (work/ui-followup-2026-10-14: `screens::game_over`, `EndChoice`, `latest_save`).
+- **New hero window about 6% too large; scenario list without its scrollbar** (2026-10-14,
+  seen in PR #5's merge snapshots, older than the merge). The hero window is laid out in the
+  original's pixels times `chrome::k()` instead of `k × 0.9375` (632 × 516 → 658 × 536 at
+  1024×768 against the original's 616 × 500); its description is ragged, the original's
+  justified. The scenario list has no scrollbar track at its right (the original's always
+  shows one). Shots: /mnt/ai_models/razdor-scratch/pr5/pair/{classes,scenarios}.png.
 - **dt-original: PR #5's parity parts** (2026-10-14). Typography roles and colours, the
   sanctuary layout, the event pictures on the left, the save window's tabs and steel line, the
   new hero window's geometry: port to dt-original after checking each against the original.
