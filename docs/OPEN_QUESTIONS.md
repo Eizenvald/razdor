@@ -8,6 +8,21 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
 
 ## Open
 
+- **Menus (group 5 of the UI audit, 2026-10-14), approximations left.** (1) The new-hero
+  window's other portraits: the original builds them from the picture with 0x48db5c(100, 200,
+  100) and 0x48da5c colour shifts plus a 33-step vignette mask (0x4d7d30); Razdor tints with
+  one multiply colour. (2) The exit window: the standard window's size (`ae2520`) is taken as
+  634×512 from the screenshots, and the version line's place on `S_Exit_RUS` (which widget of
+  6750c0…675690 draws it, and where) is measured, not read. (3) Maps of one size in the new
+  game list keep Razdor's file order; the original's is its directory listing's. (4) The load
+  window's «Загрузить» with nothing picked: greyed in Razdor, looks enabled in the original
+  (pair 03): check 0x4c01fc's caller. (5) Hints now follow the install's `OptValue6` until the
+  checkbox is touched; the shipped ini has 1 (hints off), so the bar's button names are off
+  by default, as in the original.
+- **Menus on dt-original** (2026-10-14). The settings window, new hero window, scenario list,
+  exit window, credits and the menu's foot lines (main, group 5) are parity; dt-original's
+  settings and menus differ (no Razdor advanced window there): port by hand.
+
 - **dt-original: the main hall's quest list** (2026-10-14). On main the list fills the lower
   panel from the top with a full-width highlight (0x4bedec, 3ad3501); dt-original has its own
   main hall layout, so only the button text, the market's first row, the descriptions, the
