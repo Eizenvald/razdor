@@ -470,10 +470,15 @@ fn stat_strip_impl(strip: Rect, now: &Stats, base: &Stats, power: i32, caster: b
     let (x0, x1) = (strip.x + 3.0 * k, strip.x + strip.w - 3.0 * k);
     let (att, ac) = attack_piece(now, base, power, caster, place);
     let d = defence_piece(now, row2, building).map(|(blow, shot)| razdor::trf!("D: {blow}/{shot}", blow, shot));
-    // The two pieces of the first line kept apart: smaller when together they are too wide.
-    let room = x1 - x0 - 4.0 * k;
-    let wide = measure(&att, fs).width + d.as_ref().map_or(0.0, |d| measure(d, fs).width);
-    let fs1 = if wide > room { (fs * room / wide).floor().max(7.0) } else { fs };
+    // The two pieces of the first line: the original draws them at the other lines' size,
+    // the attack at the left edge and the defence against the right (0x49462c, no shrink).
+    // Here they keep that size when they fit with a gap between them, else only as much
+    // smaller as needed, each size measured as drawn (TrueType sizes are rounded, so a
+    // proportional guess overshot: tiny text in a small window, touching pieces in a large one).
+    let fs1 = first_line_size(fs, x1 - x0, |size| {
+        let gap = measure(" ", size).width.max(size * 0.3);
+        measure(&att, size).width + d.as_ref().map_or(0.0, |d| gap + measure(d, size).width)
+    });
     shadow_text(&att, x0, strip.y + lh - 2.0 * k, fs1, ac);
     if let Some(d) = d {
         let dc = strip_color(now[Stat::DefenceBlow] + now[Stat::DefenceShot], base[Stat::DefenceBlow] + base[Stat::DefenceShot]);
@@ -485,6 +490,16 @@ fn stat_strip_impl(strip: Rect, now: &Stats, base: &Stats, power: i32, caster: b
     let max = now.max_hp();
     let hits = if hp < max { razdor::trf!("Hits: {hp}/{max}", hp = hp.max(0), max) } else { razdor::trf!("Hits: {max}", max) };
     shadow_centered(&hits, strip.x + strip.w / 2.0, strip.y + 3.0 * lh - 2.5 * k, fs, if hp < max { Color::new(1.0, 0.6, 0.4, 1.0) } else { HITS_INK });
+}
+
+/// The size a card's first line is drawn at: `fs` when `width(fs)` (the two pieces and the gap
+/// between them) fits in `room`, else the largest size below it that fits, down to 7.
+fn first_line_size(fs: f32, room: f32, width: impl Fn(f32) -> f32) -> f32 {
+    let mut size = fs;
+    while size > 7.0 && width(size) > room {
+        size -= 0.5;
+    }
+    size.max(7.0)
 }
 
 /// Rects of the four item slots around the figure: two at the top left, two at the top
@@ -644,6 +659,16 @@ pub fn draw(assets: &Assets, content: &Content, r: Rect, s: &Sheet, slots: bool,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_first_line_keeps_its_size_when_it_fits_and_shrinks_only_as_needed() {
+        // A width growing in rounded steps, as TrueType sizes are drawn.
+        let width = |size: f32| (size as u16 & !1) as f32 * 6.0;
+        assert_eq!(first_line_size(16.0, 100.0, width), 16.0);
+        let s = first_line_size(16.0, 80.0, width);
+        assert!(width(s) <= 80.0 && s >= 13.0, "only as small as needed: {s}");
+        assert_eq!(first_line_size(16.0, 10.0, width), 7.0);
+    }
 
     fn ranged_defence(content: &Content, back_row: bool, building: i32) -> String {
         let kind = UnitId(content.units[0].id);
