@@ -7,8 +7,8 @@ description: Use when the owner asks to go through the Discord reports thread - 
 
 The `discord-reports` MCP server reads one channel or thread (`DISCORD_REPORTS_CHANNEL` in
 `.env`) with a bot. It posts only through `reports_post` (a preview first; sending needs the
-owner's approval and `DISCORD_ALLOW_POST=1`) — in this skill it posts nothing; the release
-announcement is the `release` skill's step 9. The cursor and the issue → reporter map are a
+owner's approval and `DISCORD_ALLOW_POST=1`). In this skill it posts only the replies to
+`needs-info` reports (section 3); the release announcement is the `release` skill's step 9. The cursor and the issue → reporter map are a
 local file.
 
 ## 1. Read
@@ -50,6 +50,14 @@ Every issue also gets `from-discord`. Deciding parity needs the original: `parit
   addresses once known), **Expected** and **Actual**.
 - Never attach screenshots or videos (they show the game's art) or saves. Describe them.
 - `gh` runs with `GH_TOKEN` of the owner's personal account (see `CLAUDE.local.md`).
+
+For every `needs-info` report, reply in Discord (the owner asked for this as standing practice,
+2026-10-14): `reports_post` with `reply_to` the report's message, pinging its author (link the
+issue first so the ping is allowed), in plain player Russian: thanks, then a short numbered list
+of exactly what is needed (the save from just before, the mod and where to get it, the map,
+a screenshot of the same place in the original, the settings…), and one line on what is being
+checked meanwhile. Show the preview, then send with `confirm=true`. This is the only post this
+skill makes.
 
 ## 4. Fix
 
