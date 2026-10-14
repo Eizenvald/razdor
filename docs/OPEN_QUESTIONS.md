@@ -8,6 +8,14 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
 
 ## Open
 
+- **AI step clock: the tick banked at its start** (2026-10-14). `Game::ai_move` adds a hero
+  tick's minutes to every army's bank at the tick's start, so a step can start at once; the
+  original banks each frame's `dt` (0x4ade3c → 0x4a399c) and starts a step only in the frame
+  its bank covers it. Even in the limit of short frames, which Razdor aims at, the bank then
+  grows through the tick: on C1014-181146 the 7.5-minute step after an arrival with 5 minutes
+  banked would start 2.5 minutes in, Razdor's about 1. Small, and every AI difftest leans on
+  the present model (FINDINGS §5), so changing it needs a run of all of them; the explorer's
+  candidates of 2026-10-14 are the original's frame noise either way.
 - **Button art picked by screen width** (2026-10-14). `chrome::defeat_button` and
   `marble_button` choose Btn1/2/3 by the screen's width, so on large screens a 95-px button is
   drawn from Btn3. Check which art the original uses for which button size and pick by the

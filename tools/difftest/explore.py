@@ -20,6 +20,8 @@ Per episode:
    downstream of one, the original's frame noise, or NEW;
 4. for the first NEW one: the original is run once more on the prefix up to that step (with
    the `ai` and `events` traces too); if it disagrees with itself the difference is noise.
+   A difference in the AI's fields alone gets one more run with the `ai` hooks only (another
+   frame pace): the original's AI follows its frame rate (FINDINGS §5, fourth part).
    Else the prefix is shrunk (chunks of actions dropped while the same field still differs
    as NEW, a few tries), and the repro, both states, both screenshots, the trace around the
    step and the classification go to `~/.cache/razdor-difftest/explore/<id>/`, and a short
@@ -1144,6 +1146,23 @@ def investigate(name, actions, info, hero, per, diff, ctx, razdor, exe, shrink_b
         res["class"] = "noise"
         res["self_diff"] = self_diff
         return res
+    # A difference in what the AI moves (armies, the generator, the clock, the buildings it
+    # visits): the original once more at another frame pace (the `ai` hooks alone, a lighter
+    # load than the rerun's). One rerun often agrees with itself while the result still
+    # follows the frame rate (FINDINGS §5): on C1014-181146's six actions the original's
+    # army 2 ended at (37,42) with the draw trace and the rerun's hooks, (38,44) with these.
+    ai_fields = all(re.match(r"armies\[|rng$|clock$|buildings\[id \d+\]\.(gold|mana|owner|goods)$|hero\.(gold|mana)$",
+                             e["path"]) for e in entries)
+    if ai_fields:
+        pace = run_both(prefix, f"{name}-rerun-pace", trace="random,ai")
+        o3 = {s["step"]: s for s in load_jsonl(os.path.join(pace, "original", "original.jsonl"))}
+        if step in o3:
+            pace_diff = [e["path"] for e in entries if get_path(o1[step], e["path"]) != get_path(o3[step], e["path"])]
+            if pace_diff:
+                res["class"] = "noise"
+                res["self_diff"] = pace_diff
+                res["noise_by"] = "another frame pace"
+                return res
     per2, _, _ = classify_run(rerun, info)
     paths = {e["path"] for e in entries}
     if not per2 or new_at(per2, paths) != step:

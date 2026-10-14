@@ -429,7 +429,10 @@ everything after a battle-formation difference or a screen desync), `noise` (an 
 cell off with the generator in step: §5's frame noise), `timing` (a result of the event the
 original still shows, which it applies at OK), `harness`, or `new`. For the first
 `new` one the original runs once more on the prefix up to it (trace `random,ai,events`): if
-it gives other values for those fields it was noise; else the prefix is shrunk by dropping
+it gives other values for those fields it was noise; when those fields are all the AI's
+(armies, the generator, the clock, a building's gold, mana, owner or goods, the hero's gold
+and mana) it runs once more with the `ai` hooks, another frame pace, and a change there is
+noise too (FINDINGS §5, fourth part); else the prefix is shrunk by dropping
 chunks of actions while the field still differs as `new` (`--shrink-budget` original runs),
 and `~/.cache/razdor-difftest/explore/<id>/` gets the repro, both states at the step, both
 screenshots, the trace of the step and the one before, and `candidate.json`; a short entry

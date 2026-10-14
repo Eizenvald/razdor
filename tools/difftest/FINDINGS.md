@@ -155,6 +155,19 @@ Three candidates of the explorer came down to §5's frames, not to a rule:
   limit of short frames). A frame landing in the midnight's own minute gives Razdor's
   result; economy.md §2. The "second order" noted with it (the restock before the barracks)
   is the original's too: 0x4a1998 restocks each building (0x4be178) before its barracks.
+**Fourth part (2026-10-14): the original's own result moves with its frame pace.**
+Candidates C1014-173722, C1014-180347 and C1014-181146 of a 30-minute explorer run were all
+§5. On C1014-181146 (ДС1, six actions, a 120-minute walk) the original's army 2 ended at
+(37,42) with the draw trace alone, (38,44) with the `ai` hooks and at (31,30), not moving,
+with `ai_frames,advance`; Razdor (39,45); the generator in step throughout. The `ai` trace
+(t in centi-minutes): the step clock banks each frame's `dt` and starts a step in the frame
+its bank covers it (the arrival at (33,32) at 45.00 with 5 minutes banked, the 7.5-minute
+diagonal step only at 55.38), where Razdor banks the hero's tick at its start and steps at
+once (51.62). On РК1 (C1014-180347) the wander boxes and draws were the original's draw for
+draw (17 × 14 for army 1, 40 × 40 for army 9; ai.md §7.2); only the order of the two armies'
+renewals differed. `explore.py` now reruns a difference in the AI's fields once more with
+the `ai` hooks (another frame pace) and classes it noise when the original changes.
+
 Not fixed: they follow the frame rate of the machine running the original. `known.py` now
 classes a midnight's draws against the AI's (or another midnight's) as §5, and an AI draw
 order difference as §5 only when the ranges at the first difference (a wander call's box, a

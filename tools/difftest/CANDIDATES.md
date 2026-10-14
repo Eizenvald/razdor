@@ -634,6 +634,7 @@ Results after the round's fixes (Razdor at the round's end against the recording
 
 ## C1014-173722: Проклятое озеро, step 10 `click_map 5 15`
 
+- **Explained 2026-10-14: frame noise, FINDINGS §5 (fourth part).** Army 9 heads another way (up in Razdor, left in the original) with the generator in step: its plans are deterministic, so their inputs differed, the other armies' positions at the moments it planned, which follow the original's frame pace. In the same step the hero's tribute of village 2 is the known timing (the original's village window is open). Not a rule; no code change.
 - Found 2026-10-14 by explore.py (hero 1); unconfirmed.
 - Repro: 11 actions (shrunk from 11, 0 tries): `~/.cache/razdor-difftest/explore/C1014-173722/repro.jsonl`; `python -m tools.difftest.run --actions <it> --trace random`.
 - Step-local run, fields classed NEW (Razdor / original):
@@ -642,6 +643,8 @@ Results after the round's fixes (Razdor at the round's end against the recording
 - The original gave the same values on a second run (trace `random,ai,events`). Files: states, screenshots, `trace-around.jsonl` in `~/.cache/razdor-difftest/explore/C1014-173722/`.
 
 ## C1014-180347: РК1-Начало пути, step 26 `click_map 47 27`
+
+- **Explained 2026-10-14: frame noise, FINDINGS §5 (fourth part).** The wander draws are the original's draw for draw: the same boxes (army 1's 17 × 14, army 9's 40 × 40; ai.md §7.2), eight draws per renewal, x then y (0x4a2550). What differs is *when* each army renews: the original banks each frame's time and starts a step in the frame its bank covers it (0x4a399c, 0x4ade3c), Razdor in the limit of short frames, so army 9's renewals interleave with army 1's in another order. The hero's walk time (930 against 1060 minutes) follows from the drifted armies crossing his route at other moments. Not a rule; no code change.
 
 - Found 2026-10-14 by explore.py (hero 1); unconfirmed.
 - Repro: 27 actions (shrunk from 33, 4 tries): `~/.cache/razdor-difftest/explore/C1014-180347/repro.jsonl`; `python -m tools.difftest.run --actions <it> --trace random`.
@@ -658,6 +661,8 @@ Results after the round's fixes (Razdor at the round's end against the recording
 - The original gave the same values on a second run (trace `random,ai,events`). Files: states, screenshots, `trace-around.jsonl` in `~/.cache/razdor-difftest/explore/C1014-180347/`.
 
 ## C1014-181146: ДС1-С чего все начиналось, step 5 `click_map 94 16`
+
+- **Explained 2026-10-14: frame noise, FINDINGS §5 (fourth part).** On these six actions the original itself puts army 2 at (37,42) with the draw trace alone, (38,44) with the `ai` hooks (run `aiprobe-181146b`) and (31,30) with `ai_frames,advance` (run `frames-181146`); Razdor (39,45); the generator agrees at every step. Not a rule; no code change. `explore.py` now reruns such a difference once more at another frame pace before calling it new.
 
 - Found 2026-10-14 by explore.py (hero 2); unconfirmed.
 - Repro: 6 actions (shrunk from 9, 1 tries): `~/.cache/razdor-difftest/explore/C1014-181146/repro.jsonl`; `python -m tools.difftest.run --actions <it> --trace random`.
