@@ -97,13 +97,15 @@ are in `README.md` (Russian).
 - "bring back X" / "as before": restore that one aspect on top of the current work; never revert the rest.
 - "minor version": bump the middle number (0.4.17 → 0.5.0); otherwise bump the last.
 - A Discord link, screenshot, video or save from a player: the `player-report` skill.
-- "check the original" / "is it parity": the `parity-check` skill.
+- "check the original" / "is it parity" / "reverse engineer X" / "RE it" / anything in Ghidra:
+  the `parity-check` skill (it is also the reverse-engineering skill; there is no separate one).
 
 ## Linked files
 
 - `docs/flows/README.md`: how each area works end to end (battle, AI, map steps, towns, campaign, UI, drawing, saves, testing); read first.
 - `.claude/skills/player-report/SKILL.md`: handling a player's report end to end.
-- `.claude/skills/parity-check/SKILL.md`: finding what the original does.
+- `.claude/skills/parity-check/SKILL.md`: finding what the original does: reverse engineering
+  (Ghidra, the original under Wine) and parity checks.
 - `.claude/skills/release/SKILL.md`: cutting a release.
 - `.claude/skills/offscreen-snapshot/SKILL.md`: screenshots and profiling without a window.
 - `docs/reference/original-mechanics/README.md`: the spec index.

@@ -1,6 +1,6 @@
 ---
 name: parity-check
-description: Use whenever you need to know what the original Discord Times does - "check the original", "is it parity", "как в оригинале", "does the original show/allow X", before fixing any game rule, window, picture or AI behaviour, or when a player's report needs the original's behaviour. Covers the specs, Ghidra (ghidra-dt for DiscordTimes.exe, ghidra-me for DTMapEdit.exe), the difftests and replays, and running the original under Wine.
+description: Use whenever you need to know what the original Discord Times does, and for any reverse engineering - "check the original", "is it parity", "reverse engineer", "RE it", "find it in Ghidra", "decompile", "как в оригинале", "does the original show/allow X", before fixing any game rule, window, picture or AI behaviour, or when a player's report needs the original's behaviour. Covers the specs, Ghidra (ghidra-dt for DiscordTimes.exe, ghidra-me for DTMapEdit.exe), the difftests and replays, and running the original under Wine.
 ---
 
 # Finding what the original does
