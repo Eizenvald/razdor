@@ -794,6 +794,25 @@ fn is_unit(sec: &Section) -> bool {
     ["Name", "StartExpirience", "Cost"].iter().all(|k| sec.get_nonempty(k).is_some())
 }
 
+/// Which frame of `Objects/Persones.ugs` (the engraving) and `Objects/Icons.ugs` (the bust)
+/// each unit type gets, as `(GlobalIndex, frame)`: the loader (0x4e0448) reads both files one
+/// frame after another, one frame per unit section in file order (a section with `Name`,
+/// `StartExpirience` and `Cost`, [`is_unit`]), and stores it at the section's `GlobalIndex`.
+/// So a type's pictures are those of its section's rank among the unit sections, not frame
+/// `GlobalIndex − 1`; the two agree only while the ids run 1, 2, 3… in file order, as in the
+/// shipped file. A section whose id is not usable still takes its frame; a later section with
+/// the same id overwrites the earlier one's pictures, as it overwrites its record.
+pub fn unit_picture_frames(ini: &Ini) -> Vec<(u32, usize)> {
+    let mut out: Vec<(u32, usize)> = Vec::new();
+    for (frame, sec) in ini.sections.iter().filter(|s| is_unit(s)).enumerate() {
+        let Some(id) = u32::try_from(sec.int("GlobalIndex")).ok().filter(|&id| id >= 1) else { continue };
+        out.retain(|&(i, _)| i != id);
+        out.push((id, frame));
+    }
+    out.sort_unstable();
+    out
+}
+
 /// The `NextUnitN` options of a section in their file slots, targets unresolved.
 fn upgrade_options(sec: &Section) -> Vec<Upgrade> {
     (1..=3u8)
@@ -1422,6 +1441,28 @@ Evasion=15\r\n";
         assert_eq!(s.bonus, Some(Bonus::Splash));
         assert_eq!(s.evasion, Some(15));
         assert!(s.extra.is_empty());
+    }
+
+    #[test]
+    fn unit_pictures_follow_the_unit_sections_order_not_the_id() {
+        // 0x4e0448 reads Persones.ugs and Icons.ugs one frame per unit section in file order
+        // and stores it at the section's GlobalIndex (issue #6: a mod's added units).
+        let unit = |id: &str| format!("[u{id}]\nGlobalIndex={id}\nName=n{id}\nStartExpirience=10\nCost=5\n");
+        let text = [
+            unit("1"),
+            "[Note]\nName=not a unit\n".to_string(), // no StartExpirience, no Cost: no frame
+            unit("5"),
+            unit("2"),
+            unit("0"), // an unusable id still takes its frame
+            unit("3"),
+            unit("2"), // the same id again: the later section's pictures win
+        ]
+        .concat();
+        let frames = unit_picture_frames(&Ini::parse(&text));
+        assert_eq!(frames, vec![(1, 0), (2, 5), (3, 4), (5, 1)]);
+        // The shipped layout (ids 1, 2, 3… in order) gives frame id − 1, as before.
+        let shipped = (1..=4).map(|i| unit(&i.to_string())).collect::<String>();
+        assert_eq!(unit_picture_frames(&Ini::parse(&shipped)), vec![(1, 0), (2, 1), (3, 2), (4, 3)]);
     }
 
     #[test]

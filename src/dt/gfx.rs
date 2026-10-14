@@ -570,7 +570,7 @@ fn decode_file_untimed(path: &Path) -> Result<Vec<Image>, DtError> {
 // Locating art in an install
 // ------------------------------------------------------------------------------------------
 
-/// Colour unit busts (92×92), frame = `GlobalIndex − 1`.
+/// Colour unit busts (92×92), one frame per unit section in file order ([`crate::dt::data::unit_picture_frames`]).
 pub const UNIT_PORTRAITS: &str = "Graphics/Objects/Icons.ugs";
 /// Sepia full-body unit portraits, same order as [`UNIT_PORTRAITS`].
 pub const UNIT_FIGURES: &str = "Graphics/Objects/Persones.ugs";
@@ -614,7 +614,8 @@ pub fn water_frame(ms: i64) -> usize {
     (ms.div_euclid(100)).rem_euclid(WATER_FRAMES as i64) as usize
 }
 
-/// Frame of [`UNIT_PORTRAITS`] / [`UNIT_FIGURES`] for a unit `GlobalIndex` (not `IconIndex`).
+/// Frame `GlobalIndex − 1`: the frame of a unit type while ids follow file order, as in the
+/// shipped file; the real rule is [`crate::dt::data::unit_picture_frames`].
 pub fn portrait_frame(unit_id: u32) -> Option<usize> {
     (unit_id as usize).checked_sub(1)
 }
@@ -710,12 +711,12 @@ impl DtInstall {
         std::fs::read(&path).map_err(|source| DtError::Io { path, source })
     }
 
-    /// All unit busts, indexed by [`portrait_frame`].
+    /// All unit busts, in file order; a type's frame is [`DtInstall::unit_picture_frame`].
     pub fn unit_portraits(&self) -> Result<Vec<Image>, DtError> {
         decode_file(&self.file(UNIT_PORTRAITS)?)
     }
 
-    /// All full-body unit portraits, indexed by [`portrait_frame`].
+    /// All full-body unit portraits, in file order; a type's frame is [`DtInstall::unit_picture_frame`].
     pub fn unit_figures(&self) -> Result<Vec<Image>, DtError> {
         decode_file(&self.file(UNIT_FIGURES)?)
     }

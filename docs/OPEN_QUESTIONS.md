@@ -8,6 +8,10 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
 
 ## Open
 
+- **dt-original: unit pictures by section order** (2026-10-14, issue #6). The engraving and
+  bust frame by the unit section's file position (0x4e0448) and the engraving at full alpha
+  (0x476a3c) are on main only so far; cherry-pick to dt-original.
+
 - **Defeat recovery screen from PR #5, owner's decision** (2026-10-14). Eizenvald's PR kept
   Razdor's screen after a defeat with the days played and three actions: new game, load the
   latest save of that map, restart the map. The merge kept main's parity instead (the

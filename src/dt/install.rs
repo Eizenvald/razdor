@@ -38,6 +38,9 @@ impl MapEntry {
 pub struct DtInstall {
     pub dir: PathBuf,
     pub units: Vec<UnitDef>,
+    /// `(GlobalIndex, frame)` of each unit type's engraving and bust
+    /// ([`data::unit_picture_frames`]), sorted by id.
+    pub unit_pictures: Vec<(u32, usize)>,
     pub artefacts: Vec<ArtefactDef>,
     pub spells: Vec<SpellDef>,
     pub options: GlobalOptions,
@@ -146,9 +149,11 @@ impl DtInstall {
         if settings.impossible {
             options.difficulty_factor = 100;
         }
+        let units_ini = read_ini(dir, UNITS_FILE)?;
         Ok(DtInstall {
             dir: dir.to_path_buf(),
-            units: logged(UNITS_FILE, data::parse_units(&read_ini(dir, UNITS_FILE)?)),
+            units: logged(UNITS_FILE, data::parse_units(&units_ini)),
+            unit_pictures: data::unit_picture_frames(&units_ini),
             artefacts: logged(ARTEFACTS_FILE, data::parse_artefacts(&read_ini(dir, ARTEFACTS_FILE)?)),
             spells: logged(SPELLS_FILE, data::parse_spells(&read_ini(dir, SPELLS_FILE)?)),
             options,
@@ -178,6 +183,12 @@ impl DtInstall {
     /// Unit type by `GlobalIndex`.
     pub fn unit(&self, id: u32) -> Option<&UnitDef> {
         self.units.iter().find(|u| u.id == id)
+    }
+
+    /// The frame of `Persones.ugs` / `Icons.ugs` showing unit type `id`
+    /// ([`data::unit_picture_frames`]).
+    pub fn unit_picture_frame(&self, id: u32) -> Option<usize> {
+        self.unit_pictures.binary_search_by_key(&id, |&(i, _)| i).ok().map(|k| self.unit_pictures[k].1)
     }
 
     /// Artefact by `GlobalIndex`.

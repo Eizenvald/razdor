@@ -579,7 +579,9 @@ fn draw_in_face(assets: &Assets, content: &Content, r: Rect, s: &Sheet, slots: b
             let body = assets.figure_center(s.kind).unwrap_or(0.5);
             let x = r.x + r.w / 2.0 - body * w;
             let x = if w <= r.w { x.clamp(r.x, r.x + r.w - w) } else { r.x + (r.w - w) / 2.0 };
-            chrome::tex(&t, Rect::new(x, top, w, h), Color::new(1.0, 1.0, 1.0, 0.92));
+            // Drawn with the picture's own alpha only, at full strength (492f24 → 0x476a3c);
+            // an extra overall transparency washed every engraving out.
+            chrome::tex(&t, Rect::new(x, top, w, h), WHITE);
         }
         None => silhouette(Rect::new(r.x + r.w * 0.2, r.y + 12.0 * k, r.w * 0.6, fig_h * 0.95)),
     }

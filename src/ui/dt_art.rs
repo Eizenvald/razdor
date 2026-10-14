@@ -125,7 +125,7 @@ impl DtArt {
     pub fn unit_portrait(&self, unit_id: u32) -> Option<Texture2D> {
         self.cached(Key::Portrait(unit_id), || {
             let sheet = self.portraits.get_or_init(|| or_log("unit portraits", self.install.unit_portraits()));
-            let mut img = sheet.get(gfx::portrait_frame(unit_id)?)?.clone();
+            let mut img = sheet.get(self.install.unit_picture_frame(unit_id)?)?.clone();
             img.rgba.chunks_exact_mut(4).for_each(|p| p[3] = 255);
             texture(&img)
         })
@@ -136,7 +136,7 @@ impl DtArt {
     pub fn unit_portrait_locked(&self, unit_id: u32) -> Option<Texture2D> {
         self.cached(Key::LockedPortrait(unit_id), || {
             let sheet = self.portraits.get_or_init(|| or_log("unit portraits", self.install.unit_portraits()));
-            let mut img = sheet.get(gfx::portrait_frame(unit_id)?)?.clone();
+            let mut img = sheet.get(self.install.unit_picture_frame(unit_id)?)?.clone();
             img.rgba.chunks_exact_mut(4).for_each(|p| p[3] = 255);
             super::chrome::lock_portrait(&mut img);
             texture(&img)
@@ -147,7 +147,7 @@ impl DtArt {
     pub fn unit_figure(&self, unit_id: u32) -> Option<Texture2D> {
         self.cached(Key::Figure(unit_id), || {
             let sheet = self.figures.get_or_init(|| or_log("unit figures", self.install.unit_figures()));
-            texture(sheet.get(gfx::portrait_frame(unit_id)?)?)
+            texture(sheet.get(self.install.unit_picture_frame(unit_id)?)?)
         })
     }
 
@@ -159,7 +159,7 @@ impl DtArt {
             return *c;
         }
         let sheet = self.figures.get_or_init(|| or_log("unit figures", self.install.unit_figures()));
-        let c = gfx::portrait_frame(unit_id).and_then(|i| sheet.get(i)).and_then(gfx::opaque_center_x);
+        let c = self.install.unit_picture_frame(unit_id).and_then(|i| sheet.get(i)).and_then(gfx::opaque_center_x);
         self.figure_centers.borrow_mut().insert(unit_id, c);
         c
     }

@@ -125,6 +125,25 @@ Traps: never call `widgets::measure`/`text` from inside a `with_current` closure
 sheet cache's borrow; use `measure_ttf`). Sheet widths change with the mode, so lay text out
 by `measure`, not by fixed pixel widths.
 
+## What a mod can replace
+
+The original finds a unit's and an ability's pictures as follows, and Razdor does the same
+(issue #6):
+
+- **Engravings and busts.** `Objects/Persones.ugs` (sepia full figure) and `Objects/Icons.ugs`
+  (92×92 bust) hold one frame per unit section of `Rus_Units.ini` *in file order*: a section
+  counts when its `Name`, `StartExpirience` and `Cost` are non-empty (0x4e0448). The k-th such
+  section gets frame k, whatever its `GlobalIndex`; the loader stores it at that id
+  (`data::unit_picture_frames`, `DtInstall::unit_picture_frame`). A mod that adds units must
+  add their frames at the same positions; frames are `[u16 w][u16 h][u16 w][u16 h]` then
+  w·h scrambled ARGB4444 pixels (Persones) and `[u16 w][u16 h]` + 92·92 pixels (Icons).
+- **Engraving blend.** Drawn with the frame's own alpha at full strength (492f24 → 0x476a3c);
+  a frame whose opaque pixels carry a low alpha nibble looks faded in the original too.
+- **Ability icons.** `Windows/Bonus<N>.lit` for N = 1…52, N being the bonus's place among the
+  52 names the unit loader knows (0x48efd0); a missing file is a blank 25×25 picture in the
+  original (0x4dca8f–0x4dcb13). New bonus *names* are not possible: an unknown `Bonus=` is no
+  bonus. A mod changes an icon by replacing the `Bonus<N>.lit` of an existing bonus.
+
 ## How to add a picture
 
 1. Find the file and how the original draws it (Ghidra / `docs/reference/graphics-formats.md`;
