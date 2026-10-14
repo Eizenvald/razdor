@@ -8,6 +8,11 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
 
 ## Open
 
+- **Button art picked by screen width** (2026-10-14). `chrome::defeat_button` and
+  `marble_button` choose Btn1/2/3 by the screen's width, so on large screens a 95-px button is
+  drawn from Btn3. Check which art the original uses for which button size and pick by the
+  button's own size.
+
 ## Settled
 
 - **Event window text size, position, red button; victory with no next map** (2026-10-14).
