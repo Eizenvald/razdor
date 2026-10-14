@@ -164,6 +164,11 @@ Linux зависит ещё и от системы, на которой она �
 конвейер собирает её на Ubuntu 22.04, благодаря чему она работает и на более старых
 дистрибутивах, поэтому выпуски берут её оттуда.
 
+Значок в меню приложений Linux: положите `razdor` в папку из `PATH` (например, `~/.local/bin`) и
+выполните
+`install -Dm644 data/icon/razdor-256.png ~/.local/share/icons/hicolor/256x256/apps/razdor.png`
+и `install -Dm644 data/icon/razdor.desktop ~/.local/share/applications/razdor.desktop`.
+
 `scripts/dist-macos.sh` собирает `razdor-macos` на Mac (нужен SDK от Apple из Xcode или его
 Command Line Tools): одна универсальная программа для Apple Silicon и Intel, macOS 11 и
 новее, добавляется в `dist/SHA256SUMS`. Конвейер собирает её на раннере GitHub с macOS 15. Как

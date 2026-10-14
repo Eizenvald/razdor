@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Раздор
+Comment=Движок для «Времён раздора»
+Exec=razdor
+Icon=razdor
+Terminal=false
+Categories=Game;StrategyGame;
+StartupWMClass=razdor

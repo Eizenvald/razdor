@@ -73,7 +73,17 @@ fn conf() -> Conf {
         window_height,
         high_dpi: true,
         platform,
+        icon: Some(window_icon()),
         ..Default::default()
+    }
+}
+
+/// The window's and the taskbar's icon: `data/icon/window-*.rgba`, made by `scripts/icon.py`.
+fn window_icon() -> macroquad::miniquad::conf::Icon {
+    macroquad::miniquad::conf::Icon {
+        small: *include_bytes!("../data/icon/window-16.rgba"),
+        medium: *include_bytes!("../data/icon/window-32.rgba"),
+        big: *include_bytes!("../data/icon/window-64.rgba"),
     }
 }
 
