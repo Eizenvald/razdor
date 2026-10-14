@@ -150,3 +150,6 @@ block	clean	ls | xargs -n1 sh -c "rm -rf x"
 allow	clean	cd /mnt/ai_models/razdor-scratch/manaicon/dumper && CARGO_BUILD_JOBS=4 taskset -c 16-19 cargo run --release
 allow	clean	CARGO_BUILD_JOBS=4 taskset -c 16-19 cargo run --manifest-path /mnt/ai_models/razdor-scratch/manaicon/dumper/Cargo.toml
 block	clean	CARGO_BUILD_JOBS=4 taskset -c 16-19 cargo run -p razdor --release
+block	clean	CARGO_BUILD_JOBS=4 taskset -c 16-19 cargo run -p helper
+block	clean	CARGO_BUILD_JOBS=4 taskset -c 16-19 cargo run --manifest-path ./Cargo.toml
+block	clean	CARGO_BUILD_JOBS=4 taskset -c 16-19 cargo run --manifest-path $X/Cargo.toml

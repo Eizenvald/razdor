@@ -555,39 +555,34 @@ def check_find(argv, cwd):
 # ---------------------------------------------------------------- the checks
 
 
-def cargo_package(rest, cwd):
-    """The package a cargo command builds: `-p`/`--package`, else the `[package] name` of
-    `--manifest-path` or of the nearest Cargo.toml above `cwd`; None when unknown."""
-    for i, a in enumerate(rest):
-        if a in ("-p", "--package") and i + 1 < len(rest):
-            return rest[i + 1]
-        if a.startswith("--package="):
-            return a.split("=", 1)[1]
+def cargo_outside_repo(rest, cwd):
+    """True only when the cargo command's manifest (`--manifest-path`, else the nearest
+    Cargo.toml above `cwd`) lies outside this repository and its worktrees: a helper crate.
+    Names (`-p`, `[package] name`) are not trusted; anything unclear counts as the game."""
     manifest = None
     for i, a in enumerate(rest):
         if a == "--manifest-path" and i + 1 < len(rest):
             manifest = rest[i + 1]
         elif a.startswith("--manifest-path="):
             manifest = a.split("=", 1)[1]
+    base = cwd or os.getcwd()
     if manifest is None:
-        d = cwd or os.getcwd()
+        d = base
         while True:
             if os.path.isfile(os.path.join(d, "Cargo.toml")):
                 manifest = os.path.join(d, "Cargo.toml")
                 break
             up = os.path.dirname(d)
             if up == d:
-                return None
+                return False
             d = up
-    elif cwd and not os.path.isabs(manifest):
-        manifest = os.path.join(cwd, manifest)
-    try:
-        with open(manifest, encoding="utf-8") as f:
-            text = f.read()
-    except OSError:
-        return None
-    m = re.search(r'^\[package\][^\[]*?^name\s*=\s*"([^"]+)"', text, re.M | re.S)
-    return m.group(1) if m else None
+    elif not os.path.isabs(manifest):
+        manifest = os.path.join(base, manifest)
+    if any(ch in manifest for ch in "$`*?[{"):
+        return False
+    real = os.path.realpath(manifest)
+    repo = os.path.realpath(os.environ.get("CLAUDE_PROJECT_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    return os.path.isfile(real) and not (real == repo or real.startswith(repo + os.sep))
 
 
 def launches_game(argv, cwd=None):
@@ -599,8 +594,8 @@ def launches_game(argv, cwd=None):
         if sub in ("run", "r"):
             if "--example" in rest or any(a.startswith("--example=") for a in rest):
                 return False
-            # A helper crate (a scratch decoder, a tool) is not the game.
-            if cargo_package(rest, cwd) not in (None, "razdor"):
+            # A helper crate outside the repository (a scratch decoder, a tool) is not the game.
+            if cargo_outside_repo(rest, cwd):
                 return False
             if "--bin" in rest:
                 i = rest.index("--bin")
