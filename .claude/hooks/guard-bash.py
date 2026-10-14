@@ -555,7 +555,42 @@ def check_find(argv, cwd):
 # ---------------------------------------------------------------- the checks
 
 
-def launches_game(argv):
+def cargo_package(rest, cwd):
+    """The package a cargo command builds: `-p`/`--package`, else the `[package] name` of
+    `--manifest-path` or of the nearest Cargo.toml above `cwd`; None when unknown."""
+    for i, a in enumerate(rest):
+        if a in ("-p", "--package") and i + 1 < len(rest):
+            return rest[i + 1]
+        if a.startswith("--package="):
+            return a.split("=", 1)[1]
+    manifest = None
+    for i, a in enumerate(rest):
+        if a == "--manifest-path" and i + 1 < len(rest):
+            manifest = rest[i + 1]
+        elif a.startswith("--manifest-path="):
+            manifest = a.split("=", 1)[1]
+    if manifest is None:
+        d = cwd or os.getcwd()
+        while True:
+            if os.path.isfile(os.path.join(d, "Cargo.toml")):
+                manifest = os.path.join(d, "Cargo.toml")
+                break
+            up = os.path.dirname(d)
+            if up == d:
+                return None
+            d = up
+    elif cwd and not os.path.isabs(manifest):
+        manifest = os.path.join(cwd, manifest)
+    try:
+        with open(manifest, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return None
+    m = re.search(r'^\[package\][^\[]*?^name\s*=\s*"([^"]+)"', text, re.M | re.S)
+    return m.group(1) if m else None
+
+
+def launches_game(argv, cwd=None):
     head = argv[0]
     base = os.path.basename(head)
     if base == "cargo":
@@ -563,6 +598,9 @@ def launches_game(argv):
         sub = next((a for a in rest if not a.startswith("-")), "")
         if sub in ("run", "r"):
             if "--example" in rest or any(a.startswith("--example=") for a in rest):
+                return False
+            # A helper crate (a scratch decoder, a tool) is not the game.
+            if cargo_package(rest, cwd) not in (None, "razdor"):
                 return False
             if "--bin" in rest:
                 i = rest.index("--bin")
@@ -628,7 +666,7 @@ def check_segment(words, cwd, exported, depth):
         sub = next((a for a in rest if not a.startswith("-")), "")
         if sub in CARGO_PINNED and not pinned:
             raise Block(f"cargo {sub} must run on the E-cores: {PIN_HINT} (cores 0–15 are the owner's and other sessions').")
-    if launches_game(argv):
+    if launches_game(argv, cwd):
         display = allenv.get("DISPLAY")
         if not (xvfb or allenv.get("RAZDOR_ALLOW_WINDOW") == "1" or (display and display not in (":0", ":0.0", os.environ.get("DISPLAY", ":0")))):
             raise Block("This starts Razdor in a window on the owner's desktop. Run it off-screen under xvfb-run (see the offscreen-snapshot skill), or add RAZDOR_ALLOW_WINDOW=1 only when the owner asked for a visible run.")

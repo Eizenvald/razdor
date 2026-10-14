@@ -29,6 +29,7 @@ are in `README.md` (Russian).
   "Razdor now → original" table (the parity work list). `README.md` there is the index.
 - `docs/notes/`: raw RE notes and decompiler output. Local only (gitignored); may be missing.
 - `docs/PLAYTEST_NOTES.md`: player and owner reports, newest first.
+- `docs/OPEN_QUESTIONS.md`: unresolved parity questions and known differences (loose ends).
 - `changelog/`: one file per version plus `unreleased.md`; `CHANGELOG.md` is generated from it.
 - `data/lang/ru/*.txt`: the Russian UI catalog.
 
@@ -52,6 +53,14 @@ are in `README.md` (Russian).
   `dt-feat` is frozen; `dt-editor` (map editor parity) is paused, untouched unless asked.
 - Player reports go to `docs/PLAYTEST_NOTES.md` (Russian), with what the original does.
 - Keep RE notes in our own words; never paste decompiled code into `docs/reference/`.
+- Parallel agents each work in their own git worktree (Agent `isolation: "worktree"`), never in
+  the shared tree; each lands its commits on `main` itself (`git fetch`, `git rebase
+  origin/main`, tests, `git push origin HEAD:main`) and the main session pulls.
+- When a task is done, clean up after it: remove its worktrees and their branches (once the
+  commits are on `main`), stop the processes it started (Xvfb, Wine, servers), and delete its
+  scratch files and temporary probes; leave nothing untracked in the repo.
+- Anything left unresolved (a question about the original, a known difference, a parity fix not
+  ported to `dt-original`) goes into `docs/OPEN_QUESTIONS.md`.
 
 ## Definition of Done
 
@@ -66,7 +75,9 @@ are in `README.md` (Russian).
 | A player-visible change has a line in `changelog/unreleased.md` | review |
 | A player report has its `PLAYTEST_NOTES.md` entry | review |
 | A change that alters a flow updates its `docs/flows/` file | review |
-| Parity commits are cherry-picked to `dt-original` and pushed | review |
+| Parity commits are cherry-picked to `dt-original` and pushed (or listed in `docs/OPEN_QUESTIONS.md`) | review |
+| Unresolved questions are in `docs/OPEN_QUESTIONS.md`; settled ones moved to its Settled list | review |
+| The task's worktrees, branches, processes and scratch files are cleaned up | review |
 | The release has its commit id and SHA-256 in the changelog | review (`release` skill) |
 
 ## Generated or local: don't edit by hand
