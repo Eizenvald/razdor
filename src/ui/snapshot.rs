@@ -7,7 +7,7 @@
 //! `title`, `update` (a made-up release on offer), `authors[:<seconds>]`, `options[:advanced]`, `scenarios`, `tutorial`, `load[:manual|auto[:<row>]]`, `editor[:<map>[:<text to find>]]`, `classes:<map>`, `map:<map>[:x,y]`, `minimap:<map>`, `walk:<map>:dx,dy` (the
 //! hero sets off that many cells away), `building:<map>:<n>`
 //! (the hero in the n-th building; `:barracks`, `:garrison`, `:market`, `:sanctuary` open that tab; `:market-pack` the market's pack list), `army:<map>[:<n>[:<unit id>[:<level>]]]` (squad member n selected, made that unit at that level), `journal:<map>`, `spells:<map>`,
-//! `menu:<map>`, `settings:<map>[:advanced]`, `battle:<map>:<n>` (against the n-th army), `custom` (the custom battle
+//! `menu:<map>`, `defeat:<map>` (the lost battle's report), `settings:<map>[:advanced]`, `battle:<map>:<n>` (against the n-th army), `custom` (the custom battle
 //! setup), `custom-battle` (its first round; `custom-battle:watch` watches the AI play it). `RAZDOR_SCENE_DEBUG=1` turns the map's debug overlay (F3) on; `RAZDOR_SCENE_SHOW=x,y,r` shows
 //! a place as a lantern event does; `RAZDOR_SCENE_CONSOLE=help;gold 100` opens the cheat
 //! console after those commands; `RAZDOR_SCENE_FILTER=text` fills the inventory filter
@@ -369,6 +369,11 @@ fn try_stage(app: &mut App, scene: &str) -> Result<(), String> {
             Screen::Spellbook { selected: 0 }
         }
         "menu" => Screen::Menu(false),
+        "defeat" => {
+            // `defeat:<map>`: the report after a lost battle over the map (Dialog::defeat).
+            app.dialogs.push_back(super::dialog::Dialog::defeat());
+            Screen::WorldMap
+        }
         "settings" => {
             // `settings:<map>[:advanced]`: the settings over the map (the bar's gears), with
             // Razdor's advanced settings over them.

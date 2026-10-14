@@ -125,8 +125,9 @@ act_with(target, kind) / move_active(to) / pass() / own_cell() / skip()
 2. `Game::battle_write_back(&battle)` after every frame's action (0x4c4f8c / 0x4c57bc): HP
    into the squad and into the enemy army's troops (`ai::write_hp`).
 3. `draw`, `controls` (Quick battle / Finish automatically / Watch / Speed / Take over).
-4. Over: a victory holds 2.5 s (`BATTLE_END_HOLD_MS`) then `close_won`; a defeat or a
-   draw shows `result_overlay`. Both call `Game::resolve_battle`.
+4. Over: a victory holds 2.5 s (`BATTLE_END_HOLD_MS`) then `close_won`; a defeat closes at
+   once (`close_lost`: the defeat report `Dialog::defeat` 250 ms later, its OK to the main
+   menu); a draw shows `result_overlay`. All call `Game::resolve_battle`.
 
 `player_input`: a click on a card → first entry of `options(active, t)` → `act_with`; a click
 on the active card with no option → `pass`; Space = own-cell action (`own_cell` semantics);

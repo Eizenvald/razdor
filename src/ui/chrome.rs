@@ -39,12 +39,15 @@ pub enum Fx {
     ShadeStrong,
     /// The original trait icons use an opaque violet matte (RGB 129, 0, 127).
     KeyPurple,
+    /// Red takes green, green takes blue, blue takes red (0x48dd40 with 2, 3, 1): the green
+    /// buttons made the defeat window's red ones (0x4dba90).
+    RotateRgb,
 }
 
 struct Chrome {
     dir: PathBuf,
     /// By path, then by [`Fx`] (its index).
-    textures: HashMap<String, [Option<Option<Texture2D>>; 8]>,
+    textures: HashMap<String, [Option<Option<Texture2D>>; 9]>,
     /// By key: the tuning it was made with and the texture (`None`: its file is missing).
     visual_textures: HashMap<&'static str, ([f32; 4], Option<Texture2D>)>,
     /// The pictures of [`visual_texture`] as decoded, by path: the light and the brown paper
@@ -178,6 +181,10 @@ pub fn transform(img: &mut Image, fx: Fx) {
                 p[3] = a.min(p[3]);
             }
             Fx::SwapGreenBlue => p.swap(1, 2),
+            Fx::RotateRgb => {
+                let (r, g, b) = (p[0], p[1], p[2]);
+                p[..3].copy_from_slice(&[g, b, r]);
+            }
             Fx::ShadeStrong => {
                 let a = (lum(p) * 5 / 2).min(255) as u8;
                 p[..3].copy_from_slice(&[60, 20, 0]);
@@ -1328,6 +1335,20 @@ pub fn marble_button(r: Rect, label: &str, enabled: bool, hover: bool) {
     marble_button_tinted(r, label, enabled, hover, false);
 }
 
+/// The event window's buttons in its defeat look: the green ones with their channels turned
+/// (red takes green: 0x4dba90 → 0x48dd40(2, 3, 1); 0x4aa263 swaps them in).
+pub fn defeat_button(r: Rect, label: &str, enabled: bool, hover: bool) {
+    let name = if r.w < 110.0 { "Btn1" } else if r.w < 145.0 { "Btn2" } else { "Btn3" };
+    let state = if hover && enabled { "Down" } else { "Up" };
+    match win_fx(&format!("{name}{state}"), Fx::RotateRgb) {
+        Some(t) if enabled => {
+            three_slice(&t, r, 14.0, WHITE);
+            button_label(r, label, enabled, hover, false);
+        }
+        _ => marble_button(r, label, enabled, hover),
+    }
+}
+
 /// The quest action uses the same button art, with the original's red enabled state.
 pub fn quest_button(r: Rect, label: &str, enabled: bool, hover: bool) {
     marble_button_tinted(r, label, enabled, hover, true);
@@ -1352,6 +1373,11 @@ fn marble_button_tinted(r: Rect, label: &str, enabled: bool, hover: bool, quest_
         draw_rectangle_lines(r.x, r.y, r.w, r.h, 2.0, if enabled { SILVER } else { SILVER_DARK });
         draw_rectangle_lines(r.x + 2.0, r.y + 2.0, r.w - 4.0, r.h - 4.0, 1.0, Color::new(0.0, 0.0, 0.0, 0.5));
     }
+    button_label(r, label, enabled, hover, quest_red);
+}
+
+/// A button's label, centred, smaller if it must be to fit.
+fn button_label(r: Rect, label: &str, enabled: bool, hover: bool, quest_red: bool) {
     let color = if !enabled {
         Color::new(0.6, 0.6, 0.58, 1.0)
     } else if quest_red {
