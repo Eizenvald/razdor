@@ -43,8 +43,10 @@ folder when it is an install, the remembered folder (`config_file`), then a sear
 - per-frame resets: `input::begin_frame`, `chrome::begin_frame`, `cursor::begin_frame`,
   `widgets::track_held_key`; Alt+Enter display mode (`display::hotkey_pressed`);
 - settings pushed into the game each frame (`g.improved_ai`, `g.friends_let_pass`,
-  `g.pass_on_bridges`, animation speed, row width) — the settings live in the UI, the
-  rules only read plain fields;
+  `g.pass_on_bridges`, `g.pursue`, `g.walk_pace`, animation speed, row width) — the settings
+  live in the UI, the rules only read plain fields; `main_menu::apply_options` puts the
+  scroll speed and the autosave where the interface reads the install's `[Options]`
+  (`chrome::set_option_override`) and turns the hint boxes on or off (`widgets::set_hints`);
 - the cheat console and the update window decide whether input is blocked:
   `widgets::set_input_blocked(true)` while a dialog, the F1 overlay, the console or the
   update window is on top. Screens still draw under them but must check
@@ -118,8 +120,12 @@ Input goes through `src/ui/input.rs` (mouse/keys with gamepad emulation from
 `ui::audio::Settings` (`src/ui/audio.rs`, saved as `audio.json` in the save folder, all
 fields `#[serde(default)]`) holds every setting: volumes, display, scale, battle AI level,
 row width, and Razdor's own options (`friends_let_pass`, `pass_on_bridges`, `updates`,
-map zoom). The windows are `main_menu::options` / `main_menu::options_window` and
-`advanced_window` (Razdor's own options).
+map zoom). The windows are `main_menu::options` / `main_menu::options_window` (the
+original's: five slider rows, eight checkboxes, «Принять» keeps, «Отмена» restores what the
+window opened with) and `advanced_window` («Ещё…»: Razdor's own options, the screen, scale,
+font and language). Two options are read at start only, as the original's: «no music and
+sounds» (`Audio::new`) and «impossible difficulty» (the content's difficulty factor in
+`App::new`).
 
 Rule: a parity setting reads the install's value until the player chooses
 (`Option<bool>` = `None` → the install's `[Options]` value such as `OptValue9`, see `main_menu::expert_ai`). A Razdor
@@ -139,8 +145,9 @@ original's ("Battle (original)").
 
 ## How to add a setting
 
-Add a `#[serde(default)]` field to `ui::audio::Settings` (and to its `Default`), a button
-in `options_window` or `advanced_window`, a translation line, and push it into `Game` at
+Add a `#[serde(default)]` field to `ui::audio::Settings` (and to its `Default`), a checkbox
+or slider in `options_window` (an original option) or a button in `advanced_window` (a
+Razdor one), a translation line, and push it into `Game` at
 the top of `App::frame` if the rules need it. Old `audio.json` files keep loading.
 
 ## Traps

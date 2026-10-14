@@ -374,11 +374,26 @@ pub fn panel_hint(lines: &[(String, Color)]) {
     tooltip_at_alpha(lines, 1.0);
 }
 
+thread_local! {
+    /// The hint boxes are shown: off with "Отключить всплывающие подсказки" (`OptValue6`).
+    static HINTS: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+}
+
+/// Shows or hides the hint boxes (the settings window's "hints off").
+pub fn set_hints(on: bool) {
+    HINTS.with(|h| h.set(on));
+}
+
+/// Whether hint boxes are shown (interface.md §16: on unless `OptValue6` is 1).
+pub fn hints_on() -> bool {
+    HINTS.with(|h| h.get())
+}
+
 /// The hint box that follows the mouse (kind 7, 0x49e9b8): `w` wide, its lines centred, at
 /// the mouse +21, +37, put on the other side of the mouse where it would leave the screen,
 /// at full opacity (0x49ee4b).
 pub fn hint_box(lines: &[(String, Color)], w: f32) {
-    if lines.is_empty() {
+    if lines.is_empty() || !hints_on() {
         return;
     }
     let k = super::chrome::k();

@@ -192,11 +192,26 @@ pub struct Settings {
     pub anim_speed: Option<f32>,
     /// The interface's fonts (Razdor's choice): the original's sheets, modern or pixel.
     pub font: super::dt_font::FontMode,
+    /// The original's settings window (interface.md §16), each `None` until chosen there:
+    /// then the install's `[Options]` value. "Скорость скроллинга карты" (`ScrollSpeed`, 0..100).
+    pub scroll_speed: Option<f32>,
+    /// "Скорость перемещения героя" (`WalkSpeed`, 0..100).
+    pub walk_speed: Option<f32>,
+    /// "Не загружать музыку и звуки" (`OptValue4`; read at start, as the original).
+    pub no_sound: Option<bool>,
+    /// "Отключить всплывающие подсказки" (`OptValue6`).
+    pub hints_off: Option<bool>,
+    /// "Автоматически преследовать выбранную армию" (`OptValue7`).
+    pub pursue: Option<bool>,
+    /// "Автоматически сохранять текущую игру" (`OptValue8`).
+    pub autosave: Option<bool>,
+    /// "Невозможный уровень сложности игры" (`OptValue10`; read at start, as the original).
+    pub impossible: Option<bool>,
 }
 
 impl Default for Settings {
     fn default() -> Settings {
-        Settings { music_volume: 0.6, sfx_volume: 0.8, music_muted: false, sfx_muted: false, show_fps: false, expert_ai: None, wide_row: None, display: Default::default(), ui_scale: 0.0, minimap_size: None, minimap_corner: Default::default(), friends_let_pass: false, pass_on_bridges: false, updates: Default::default(), map_zoom: 1.0, zoom_locked: false, anim_speed: None, font: Default::default() }
+        Settings { music_volume: 0.6, sfx_volume: 0.8, music_muted: false, sfx_muted: false, show_fps: false, expert_ai: None, wide_row: None, display: Default::default(), ui_scale: 0.0, minimap_size: None, minimap_corner: Default::default(), friends_let_pass: false, pass_on_bridges: false, updates: Default::default(), map_zoom: 1.0, zoom_locked: false, anim_speed: None, font: Default::default(), scroll_speed: None, walk_speed: None, no_sound: None, hints_off: None, pursue: None, autosave: None, impossible: None }
     }
 }
 
@@ -224,7 +239,8 @@ impl Settings {
         let (lo, hi) = super::world_view::ZOOM_RANGE;
         let map_zoom = if self.map_zoom.is_finite() { self.map_zoom.clamp(lo, hi) } else { 1.0 };
         let anim_speed = self.anim_speed.filter(|s| s.is_finite()).map(|s| s.clamp(0.0, 99.0));
-        Settings { music_volume: fix(self.music_volume), sfx_volume: fix(self.sfx_volume), ui_scale, map_zoom, anim_speed, ..self }
+        let pct = |v: Option<f32>| v.filter(|s| s.is_finite()).map(|s| s.clamp(0.0, 100.0));
+        Settings { music_volume: fix(self.music_volume), sfx_volume: fix(self.sfx_volume), ui_scale, map_zoom, anim_speed, scroll_speed: pct(self.scroll_speed), walk_speed: pct(self.walk_speed), ..self }
     }
 
     fn save(&self) {
@@ -386,6 +402,9 @@ impl Audio {
             _ if !cfg!(feature = "audio") => "built without the audio feature",
             _ if env_flag("RAZDOR_NO_AUDIO") => "RAZDOR_NO_AUDIO is set",
             None => "no install",
+            // "Не загружать музыку и звуки" (`OptValue4`, interface.md §16): read at start, as
+            // the original's, so a change waits for the next start.
+            Some(dt) if audio.settings.no_sound.unwrap_or_else(|| razdor::dt::install::PlayOptions::read(&dt.dir).no_sound) => "no music and sounds, as the settings say",
             Some(_) if !device_ok() => "no sound device",
             Some(dt) => match (std::time::Instant::now(), Backend::load(&dt.dir)) {
                 (t0, Ok(b)) => {
