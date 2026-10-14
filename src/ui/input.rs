@@ -118,7 +118,17 @@ pub fn is_mouse_button_pressed(b: MouseButton) -> bool {
 }
 
 pub fn is_mouse_button_down(b: MouseButton) -> bool {
-    mq::is_mouse_button_down(b) || button(b).down
+    mq::is_mouse_button_down(b) || button(b).down || (b == MouseButton::Right && SNAPSHOT_RIGHT.with(|r| r.get()))
+}
+
+thread_local! {
+    /// Debug snapshots: the right button is held (`RAZDOR_MOUSE_RIGHT=1`, `ui::snapshot`).
+    static SNAPSHOT_RIGHT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Holds the right button down for good (debug snapshots only: the map's tooltips).
+pub fn hold_right_for_snapshot(on: bool) {
+    SNAPSHOT_RIGHT.with(|r| r.set(on));
 }
 
 pub fn is_key_pressed(k: KeyCode) -> bool {

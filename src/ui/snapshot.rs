@@ -13,7 +13,7 @@
 //! console after those commands; `RAZDOR_SCENE_FILTER=text` fills the inventory filter
 //! (army screen, market); `RAZDOR_SCENE_QUIET=1` drops
 //! the scenario's messages every frame, to see the screen under them; `RAZDOR_MOUSE=x,y`
-//! puts the pointer there; `RAZDOR_SCENE_SPELLS=<id>,…` puts those spells on every unit; `RAZDOR_SCENE_POTION=1` gives every unit of the army a
+//! puts the pointer there (`RAZDOR_MOUSE_RIGHT=1` also holds the right button there: the map's tooltips); `RAZDOR_SCENE_SPELLS=<id>,…` puts those spells on every unit; `RAZDOR_SCENE_POTION=1` gives every unit of the army a
 //! drunk potion. `replay:<step>` with `RAZDOR_REPLAY=<actions.jsonl>`: the diff
 //! test's action list played to that step.
 //!
@@ -136,6 +136,9 @@ pub fn open_later(app: &mut App, frame: u64) -> bool {
 /// Sets up the scene of `RAZDOR_SCENE`, if any; a scene that cannot be set up is reported.
 pub fn stage(app: &mut App) {
     super::widgets::set_pointer(pointer());
+    // `RAZDOR_MOUSE_RIGHT=1`: the right button held where `RAZDOR_MOUSE` stands (the map's
+    // tooltips, as the original shows them while it is held).
+    super::input::hold_right_for_snapshot(std::env::var("RAZDOR_MOUSE_RIGHT").is_ok_and(|v| v == "1"));
     let Ok(scene) = std::env::var("RAZDOR_SCENE") else { return };
     if let Err(e) = try_stage(app, &scene) {
         razdor::diag!("RAZDOR_SCENE={scene}: {e}");
