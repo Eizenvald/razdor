@@ -1071,6 +1071,36 @@ pub fn scrollbar(r: Rect, first: &mut usize, shown: usize, total: usize) -> bool
     *first != before
 }
 
+/// [`scrollbar`], drawn even when everything fits: then idle, the knob at the top and the
+/// clicks doing nothing, as the original's lists that always show their bar (the building
+/// window's quests, 0x4bedec).
+pub fn scrollbar_always(r: Rect, first: &mut usize, shown: usize, total: usize) -> bool {
+    use super::chrome;
+    if total > shown {
+        return scrollbar(r, first, shown, total);
+    }
+    let w = r.w;
+    let track = Rect::new(r.x, r.y + w, w, r.h - 2.0 * w);
+    match chrome::win("VSTexture") {
+        Some(t) => chrome::tex(&t, track, WHITE),
+        None => draw_rectangle(track.x + w / 3.0, track.y, w / 3.0, track.h, chrome::SILVER_DARK),
+    }
+    for (name, rect) in [("VArrowUp", Rect::new(r.x, r.y, w, w)), ("VArrowDown", Rect::new(r.x, r.y + r.h - w, w, w))] {
+        match chrome::win(name) {
+            Some(t) => chrome::tex(&t, rect, WHITE),
+            None => draw_rectangle(rect.x, rect.y, rect.w, rect.h, chrome::SILVER),
+        }
+    }
+    let knob_h = chrome::win("VSlider").map_or(w * 1.8, |t| w * t.height() / t.width()).min(track.h / 2.0);
+    let knob = Rect::new(track.x, track.y, w, knob_h);
+    match chrome::win("VSlider") {
+        Some(t) => chrome::tex(&t, knob, WHITE),
+        None => draw_rectangle(knob.x, knob.y, knob.w, knob.h, chrome::SILVER),
+    }
+    *first = 0;
+    false
+}
+
 /// A pixel scroll of `scroll` (of `most`, with `view` in sight) as a scrollbar's (first,
 /// shown, total) in steps of `step`: the content's end is the bar's end.
 fn bar_steps(scroll: f32, most: f32, view: f32, step: f32) -> (usize, usize, usize) {

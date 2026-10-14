@@ -368,10 +368,9 @@ fn hall_offers(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mu
         if wh > 0.0 { view.hall_scroll = view.hall_scroll.saturating_sub(1); }
     }
     view.hall_scroll = view.hall_scroll.min(max_scroll);
-    if max_scroll > 0 {
-        scrollbar(Rect::new(list.x + list.w - 14.0 * k, list.y + 2.0 * k, 12.0 * k, list.h - 4.0 * k), &mut view.hall_scroll, rows, entries.len());
-    }
-    let row_w = list.w - if max_scroll > 0 { 16.0 * k } else { 0.0 };
+    // The bar is always there, idle while the list fits, as the original's (0x4bedec).
+    scrollbar_always(Rect::new(list.x + list.w - 14.0 * k, list.y + 2.0 * k, 12.0 * k, list.h - 4.0 * k), &mut view.hall_scroll, rows, entries.len());
+    let row_w = list.w - 16.0 * k;
     let visible_rows = entries.len().saturating_sub(view.hall_scroll).min(rows);
     let first_y = list.y + (list.h - visible_rows as f32 * row_h) / 2.0;
     for (n, entry) in entries.iter().enumerate().skip(view.hall_scroll).take(rows) {
@@ -1115,16 +1114,27 @@ fn next_pick(k: usize, left: usize) -> Option<usize> {
     (left > 0).then(|| k.min(left - 1))
 }
 
-/// Market: the goods (or, in the sell shop, the pack) with prices, the selected item's
-/// description, and the buy / sell buttons.
+/// Which of the market's list buttons are on, ("Инвентарь", "Торговая лавка"), with the
+/// pack (`selling`) or the goods shown (0x4bca8c): the shown list's own button is off, and
+/// the goods' also while the shop has none (its +0x0d = goods count > 0).
+fn market_switches(selling: bool, goods: usize) -> (bool, bool) {
+    if selling { (false, goods > 0) } else { (true, false) }
+}
+
+/// Market (0x4bca8c): the goods (mode 1) or the pack (mode 0, "Инвентарь") with prices,
+/// the selected item's description, and the trade button. The goods list stands right of the
+/// description, the pack list left of it (the original moves both panes with the mode).
+/// "Инвентарь" (0x4b9be0) shows the pack and "Торговая лавка" (0x4b9be8) the goods: both
+/// always shown, the current list's one off, "Торговая лавка" also off while the shop is empty.
 fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, message: &mut Option<String>, dialogs: &mut VecDeque<Dialog>) -> Option<Screen> {
     let k = chrome::k();
     let (x, y, w) = (f.cx, f.cy, f.cw);
     let c = game.content.clone();
     let dw = w * 0.492;
-    let (lx, lw) = (x + dw + 8.0 * k, w - dw - 8.0 * k);
+    let lw = w - dw - 8.0 * k;
+    let (dx, lx) = if view.selling { (x + lw + 8.0 * k, x) } else { (x, x + dw + 8.0 * k) };
     let heading = own_text("Building", "ItemInfo", n_("Item description"));
-    chrome::shadow_centered(&heading, x + dw / 2.0, y + 13.0 * k, 17.0 * k, ACCENT);
+    chrome::shadow_centered(&heading, dx + dw / 2.0, y + 13.0 * k, 17.0 * k, ACCENT);
     // The sell list holds only the pack items worth more than 1 (personal items and the
     // cheapest are not bought); a buy price above the gold is red (0x4bca8c).
     let sellable: Vec<usize> = (0..game.pack.len()).filter(|&k| game.can_sell(game.pack[k])).collect();
@@ -1134,14 +1144,19 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
     } else {
         goods.iter().map(|&i| (Some(i), c.item(i).name.clone(), game.buy_price(i).to_string(), game.buy_price(i) > game.gold)).collect()
     };
-    // The title on the left of its row, the filter line on the right: the list keeps the
-    // items that match what is typed, their matched part lit; Enter picks the first.
-    let head = if view.selling { tr("Your pack: what the market pays") } else { tr("Goods for sale") };
-    text_fit(head, lx, y + 18.0 * k, lw * 0.5 - 6.0 * k, 18.0 * k, ACCENT);
+    // Over the list the original's column titles, "Название" and "Цена" (0x4bca8c). The
+    // filter (Razdor's) takes their line only while it is used: a letter typed over the list,
+    // Ctrl+F or a click on the titles starts it; the list keeps the items that match, their
+    // matched part lit; Enter picks the first.
     let all: Vec<(usize, ItemId)> = rows.iter().enumerate().filter_map(|(n, r)| r.0.map(|i| (n, i))).collect();
     let before = item_filter::keep(&c, all.iter().copied(), &view.filter).len();
-    let filter_rect = Rect::new(lx + lw * 0.5, y, lw * 0.5, 18.0 * k);
-    let reply = item_filter::field(FILTER_KEY, &mut view.filter, filter_rect, &[KeyCode::N], before, rows.len());
+    let filter_rect = Rect::new(lx, y, lw, 18.0 * k);
+    let reply = item_filter::field_with(FILTER_KEY, &mut view.filter, filter_rect, &[KeyCode::N], before, rows.len(), false);
+    if view.filter.is_empty() && !has_focus(FILTER_KEY) {
+        let (name_head, price_head) = (own_text("Building", "ItemName", n_("Name")), own_text("Building", "ItemCost", n_("Price")));
+        chrome::shadow_centered(&name_head, lx + 32.0 * k + (lw - 110.0 * k) / 2.0, y + 13.0 * k, 17.0 * k, ACCENT);
+        chrome::shadow_centered(&price_head, lx + lw - 58.0 * k, y + 13.0 * k, 17.0 * k, ACCENT);
+    }
     let kept = item_filter::keep(&c, all, &view.filter);
     let shown: Vec<(Option<ItemId>, String, String, bool)> = kept.iter().map(|(n, _)| rows[*n].clone()).collect();
     let marks: Vec<Option<std::ops::Range<usize>>> = kept.iter().map(|(_, m)| m.name_range.clone()).collect();
@@ -1162,23 +1177,26 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
     let dh = 186.0 * k;
     let card_y = y + 21.0 * k;
     match view.pick.and_then(|k| rows.get(k)).and_then(|r| r.0) {
-        Some(item) => item_description(game, assets, item, x, card_y, dw, dh),
+        Some(item) => item_description(game, assets, item, dx, card_y, dw, dh),
         None => {
-            chrome::text_box(Rect::new(x, card_y, dw, dh));
-            text_centered(tr("Pick an item from the list."), x + dw / 2.0, card_y + dh / 2.0, 18.0 * k, BOX_INK);
+            chrome::text_box(Rect::new(dx, card_y, dw, dh));
+            text_centered(tr("Pick an item from the list."), dx + dw / 2.0, card_y + dh / 2.0, 18.0 * k, BOX_INK);
         }
     }
     let by = f.y + 249.0 * k;
     for (offset, width) in [(0.0, 166.0), (166.0, 134.0), (300.0, 108.0), (408.0, 164.0)] {
         chrome::silver_frame(Rect::new(x + offset * k, f.y + 241.0 * k, width * k, 50.0 * k), k.max(1.0));
     }
-    let mut next = None;
-    if button(x + 8.0 * k, by, 150.0 * k, 34.0 * k, tr("Inventory"), true) {
-        next = Some(Screen::Squad { selected: Default::default(), scroll: 0, back: Some(view.clone()) });
+    let (invent_on, market_on) = market_switches(view.selling, goods.len());
+    let (invent, shop) = (own_text("Building", "Invent", n_("Inventory")), own_text("Building", "Market", n_("Trading shop")));
+    if button(x + 8.0 * k, by, 150.0 * k, 34.0 * k, &invent, invent_on) {
+        view.selling = true;
+        view.pick = None;
+        view.scroll = 0;
     }
-    // The money between "Снаряжение" and the trade button, its label over the amount.
+    // The money between "Инвентарь" and the trade button, its label over the amount.
     gold_group(game, Rect::new(x + 174.0 * k, by - 2.0 * k, 118.0 * k, 40.0 * k));
-    let label = if view.selling { tr("Sell") } else { tr("Buy") };
+    let label = if view.selling { own_text("Building", "Trade", n_("Sell")) } else { own_text("Building", "Buy", n_("Buy")) };
     // Sell is always on; Buy only when the price is at most the gold, the purchase's test.
     let can = match (view.selling, view.pick) {
         (true, Some(k)) => k < sellable.len(),
@@ -1186,7 +1204,7 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
         _ => false,
     };
     // The trade button plays the gold sound (interface.md §14).
-    if button_sounding(x + 308.0 * k, by, 90.0 * k, 34.0 * k, label, can, Cue::Gold) {
+    if button_sounding(x + 308.0 * k, by, 90.0 * k, 34.0 * k, &label, can, Cue::Gold) {
         let k = view.pick.unwrap_or(0);
         let mut done = false;
         *message = Some(if view.selling {
@@ -1216,15 +1234,13 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
             view.pick = next_pick(k, left);
         }
     }
-    // The way back to the goods is offered only while the shop has some.
-    let toggle = if view.selling { tr("Back to the goods") } else { tr("Sell shop") };
-    if button(x + 416.0 * k, by, 148.0 * k, 34.0 * k, toggle, !view.selling || !goods.is_empty()) {
-        view.selling = !view.selling;
+    if button(x + 416.0 * k, by, 148.0 * k, 34.0 * k, &shop, market_on) {
+        view.selling = false;
         view.pick = None;
         view.scroll = 0;
     }
     FILTER_KEYS.with(|f| f.set(reply.keys_taken));
-    next.or_else(|| hall_offers(game, f, view, message, dialogs))
+    hall_offers(game, f, view, message, dialogs)
 }
 
 /// Sanctuary: spells for sale; a spell bought goes into the hero's book.
@@ -1732,7 +1748,7 @@ fn with_back(bar: Option<Screen>, view: &BuildingView) -> Option<Screen> {
 
 #[cfg(test)]
 mod tests {
-    use super::{next_pick, offer_picture, recruit_x, screen_line, stock_caption, stock_picture};
+    use super::{market_switches, next_pick, offer_picture, recruit_x, screen_line, stock_caption, stock_picture};
     use razdor::rules::economy::VillageOffer;
     use razdor::rules::formation::{Formation, Row, Slot};
 
@@ -1783,6 +1799,16 @@ mod tests {
         assert_eq!(next_pick(2, 5), Some(2), "the item below moved up into row 2");
         assert_eq!(next_pick(4, 4), Some(3), "the last one bought: the one above");
         assert_eq!(next_pick(0, 0), None, "nothing left");
+    }
+
+    /// The original's two list buttons (0x4bca8c): "Инвентарь" shows the pack and is off
+    /// while it is shown; "Торговая лавка" shows the goods and is off while they are shown
+    /// or the shop has none. Neither opens another window.
+    #[test]
+    fn the_market_s_list_buttons_are_the_original_s() {
+        assert_eq!(market_switches(false, 5), (true, false), "goods shown: only Инвентарь");
+        assert_eq!(market_switches(true, 5), (false, true), "pack shown: only Торговая лавка");
+        assert_eq!(market_switches(true, 0), (false, false), "an empty shop: no way to the goods");
     }
 }
 

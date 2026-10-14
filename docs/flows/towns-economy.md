@@ -73,7 +73,10 @@ wage to take back.
 
 **Markets** (economy.md §2, §5). Stock is redrawn at every midnight, building by building, before
 the barracks' draws (random order matters for the difftests). Buy/sell prices go through
-`relation_price` and `merchant_price`.
+`relation_price` and `merchant_price`. The market tab (`building_view::market`, 0x4bca8c) shows
+the goods or the pack (`BuildingView::selling`): «Инвентарь» and «Торговая лавка» switch them
+(`market_switches`), the description pane swaps sides with the list; the filter (Razdor's) takes
+the column titles' line only while it is used (`item_filter::field_with`).
 
 **Villages** (economy.md §3). Entering a village takes it (no attitude test) and collects the
 waiting gold and mana, unless it makes an offer: then the tribute waits for the answer. A village
