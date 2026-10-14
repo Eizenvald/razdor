@@ -15,13 +15,13 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
   Wine at 1024×768: the event window laid out in the original's pixels times the interface
   scale, centred over the map view, its text in Benguiat at the sheet's own size (the lines
   break as the original's); the red button darkened by (0, 64, 128) inside its 1 px rim; a
-  victory with no next map goes to the main menu. main: «Event window as the original's
-  (0x4a8ae8) …», dt-original: its cherry-pick.
+  victory with no next map goes to the main menu. main 1866ec2, dt-original a1f2444 (ported by
+  hand: that branch has no scrolling in the window).
 - **Market goods order** (2026-10-14). Measured under Wine on «Проклятое озеро» (78 stocks): the
   window lists the stock's places in order and the draws walk down the price window, so the
   original shows most expensive first (economy.md §2, «Display order»). The player's original
   that showed cheapest first is likely another build. Razdor keeps cheapest first by the
-  owner's choice (35374ff). Same commit as above.
+  owner's choice (35374ff). Recorded in 1866ec2 / a1f2444.
 - **Original fonts on dt-original** (2026-10-14). Ported as dt-original's only mode (sheets,
   shadow sheets, scale rule, Benguiat for event and village texts; no «Шрифт» setting):
   dt-original 8b94705.
