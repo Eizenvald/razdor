@@ -24,6 +24,7 @@ pub enum Place {
     Army,
     Battle,
     Journal,
+    Hero,
     Spellbook,
     Menu,
     Save,
@@ -101,7 +102,7 @@ pub fn allowed(place: Place, key: Global, g: Guard) -> bool {
     match key {
         Global::Help => true,
         Global::QuickSave => {
-            g.game && !g.foe && !g.endless && matches!(place, Place::WorldMap | Place::Building | Place::Army | Place::Journal | Place::Spellbook | Place::Menu)
+            g.game && !g.foe && !g.endless && matches!(place, Place::WorldMap | Place::Building | Place::Army | Place::Journal | Place::Hero | Place::Spellbook | Place::Menu)
         }
         Global::QuickLoad | Global::Language => true,
     }
@@ -169,6 +170,13 @@ pub fn screen_keys(place: Place) -> Vec<(&'static str, &'static str)> {
             ("F5", n_("quick save")),
             ("J / Esc", n_("close")),
         ],
+        Place::Hero => vec![
+            (n_("Click an item"), n_("wear it or take it off")),
+            (n_("Drag an item"), n_("onto a slot of the hero")),
+            (n_("Click a quest"), n_("read the diary entry")),
+            ("F5", n_("quick save")),
+            ("Esc", n_("close")),
+        ],
         Place::Spellbook => vec![(n_("Click"), n_("pick a spell")), ("Enter", n_("cast on your army")), ("F5", n_("quick save")), ("B / Esc", n_("close"))],
         Place::Menu => vec![("F5", n_("quick save")), ("Esc", n_("back to the game"))],
         Place::Save => vec![(n_("Type"), n_("the save's name")), ("Enter", n_("save")), ("Esc", n_("cancel"))],
@@ -207,6 +215,7 @@ fn place_name(place: Place) -> &'static str {
         Place::Army => tr("Hero and army"),
         Place::Battle => tr("Battle"),
         Place::Journal => tr("Journal"),
+        Place::Hero => tr("Hero"),
         Place::Spellbook => tr("Spell book"),
         Place::Menu => tr("Game menu"),
         Place::Save => tr("Save"),
@@ -254,7 +263,7 @@ pub fn help_overlay(place: Place) -> bool {
 mod tests {
     use super::*;
 
-    const ALL_PLACES: [Place; 14] = [
+    const ALL_PLACES: [Place; 15] = [
         Place::Title,
         Place::ClassSelect,
         Place::WorldMap,
@@ -262,6 +271,7 @@ mod tests {
         Place::Army,
         Place::Battle,
         Place::Journal,
+        Place::Hero,
         Place::Spellbook,
         Place::Menu,
         Place::Save,

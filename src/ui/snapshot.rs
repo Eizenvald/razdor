@@ -111,6 +111,7 @@ pub fn open_later(app: &mut App, frame: u64) -> bool {
         "army" => Some(Screen::Squad { selected: Default::default(), scroll: 0, back: None }),
         "spells" => Some(Screen::Spellbook { selected: 0 }),
         "journal" => Some(Screen::Journal(JournalView::default())),
+        "hero" => Some(Screen::Hero(Default::default())),
         "menu" => Some(Screen::Menu(false)),
         "map" => Some(Screen::WorldMap),
         "building" => app.game.as_mut().and_then(|game| {
@@ -372,6 +373,7 @@ fn try_stage(app: &mut App, scene: &str) -> Result<(), String> {
             Screen::Squad { selected, scroll: 0, back: None }
         }
         "journal" => Screen::Journal(JournalView::default()),
+        "hero" => Screen::Hero(Default::default()),
         "spells" => {
             // A book full of the install's spells, to see their pictures.
             game.spells = game.content.spells.iter().filter_map(|s| u8::try_from(s.id).ok()).take(15).collect();

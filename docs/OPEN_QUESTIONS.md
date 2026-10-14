@@ -68,6 +68,20 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
   them equal at every scale.
 - **Battle button labels** (2026-10-14). The leave-battle window's button labels come out a
   little larger and heavier than the original's (its buttons' font); check the button font.
+- **Fog edge darkness** (2026-10-14, UI audit). Razdor's fog falloff looked slightly darker
+  than the original's on screenshot 14/26 at 1024×768. Not checked against the fog renderer's
+  code; compare the falloff ramp with the original's before changing it.
+- **Hint box placement** (2026-10-14). Hint boxes now fade in as the original's (300 ms), but
+  `widgets::tooltip` still sits at the mouse +18 px; the original's are at +21, +37, flipped and
+  clamped inside the owner window (interface.md hint boxes, 49e710).
+- **Learnt spell cells** (2026-10-14). The empty spell-book cell is now the original's
+  (`Win-paper` less 180, 140, 113); a learnt one is `Win-paper` less 148, 132, 148, the picked
+  one less 128, 112, 128 and one without the mana less 208, 208, 250 then greyed (0x4dc118).
+  Razdor still draws learnt cells as its brown text box: compare with a screenshot of the
+  original's book with spells.
+- **Army window strip text size** (2026-10-14, UI audit). The text in the army window's middle
+  strip is Razdor's (the original's strip is an ornament; its hints are hint boxes): the audit
+  found it large. A Razdor choice to settle with the owner, not a parity fix.
 
 - **Button art picked by screen width** (2026-10-14). `chrome::defeat_button` and
   `marble_button` choose Btn1/2/3 by the screen's width, so on large screens a 95-px button is

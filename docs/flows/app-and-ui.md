@@ -53,7 +53,7 @@ folder when it is an install, the remembered folder (`config_file`), then a sear
   `widgets::input_blocked()` (most helpers do it for you);
 - `match (&mut self.screen, &mut self.game)` calls the screen's function, e.g.
   `world_view::frame`, `building_view::frame`, `items_view::squad`, `BattleView::frame`,
-  `story::journal`, `spellbook::frame`, `saves::load_screen`, `main_menu::options_window`;
+  `items_view::hero_window`, `story::journal`, `spellbook::frame`, `saves::load_screen`, `main_menu::options_window`;
 - global hotkeys (`hotkeys::allowed`, F1 help, F5/F9 quick save/load, language);
 - the front dialog: `dialog::draw` returns `Some(Close)` when closed, then the closing is
   routed (village offers → `building_view::answer_offer`, questions →
@@ -70,9 +70,13 @@ in the window's own function (the function does not know it is the first frame).
 ## Screens and windows
 
 `Screen` (`src/ui/mod.rs`) has one variant per screen. Windows over the map
-(`Building`, `Squad`, `Journal`, `Spellbook`, `Menu`, `Settings`, `Save`, `Load`) draw the map
+(`Building`, `Squad`, `Hero`, `Journal`, `Spellbook`, `Menu`, `Settings`, `Save`, `Load`) draw the map
 under them with `world_view::window_backdrop` / `world_view::backdrop_lit` (the bottom bar
-stays live and lights the window's button).
+stays live and lights the window's button). The bar's flag (`BarButton::Hero`) opens the
+original's hero window (`Screen::Hero`, `items_view::hero_window`: the hero's panel, the pack,
+the item description, the four resource lines and the diary of the quests under way); J opens
+Razdor's own journal (`Screen::Journal`), which lights no bar button. Hint boxes
+(`widgets::tooltip`, `panel_hint`) fade in over 300 ms as the original's.
 
 Building a window (`src/ui/chrome.rs`):
 

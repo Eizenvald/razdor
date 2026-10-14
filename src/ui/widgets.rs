@@ -363,15 +363,50 @@ impl Drop for Clip {
     }
 }
 
-/// A translucent panel of lines next to the mouse.
+/// A translucent panel of lines next to the mouse: the original's ordinary hint box, which
+/// fades in to 160/255 over 300 ms (49ee4b–49ef0d: `elapsed × 160 / 300`).
+/// Not shown with the hints off (interface.md hint boxes: only pushed and spell-target hints
+/// stay).
 pub fn tooltip(lines: &[(String, Color)]) {
-    tooltip_at_alpha(lines, 0.72);
+    if !hints_on() {
+        return;
+    }
+    tooltip_at_alpha(lines, hint_fade(lines, 160.0 / 255.0));
 }
 
-/// The bottom panel's hint box (49d5ac): a pushed hint, which the original draws at full
-/// opacity (49ee4b), so the bar under it does not show through.
+/// The bottom panel's hint box (49d5ac): a pushed hint (kind 4), which the original fades in
+/// to full opacity over 300 ms (49ee4b: `elapsed × 255 / 300`), so the bar under it does not
+/// show through once it is up.
 pub fn panel_hint(lines: &[(String, Color)]) {
-    tooltip_at_alpha(lines, 1.0);
+    tooltip_at_alpha(lines, hint_fade(lines, 1.0));
+}
+
+thread_local! {
+    /// The hint box shown: its text, when it appeared and when it was last drawn (the same
+    /// text is not restarted while it stays up).
+    static HINT_SHOWN: std::cell::RefCell<(String, f64, f64)> = const { std::cell::RefCell::new((String::new(), 0.0, 0.0)) };
+}
+
+/// The opacity of a hint box `ms` after it appeared, fading in to `full` over 300 ms.
+pub fn hint_alpha(ms: f64, full: f32) -> f32 {
+    ((ms / 300.0).clamp(0.0, 1.0) as f32) * full
+}
+
+/// The opacity of the hint box with these lines now: its fade restarts when its text changes or
+/// when it was not drawn for a moment (it closed in between).
+fn hint_fade(lines: &[(String, Color)], full: f32) -> f32 {
+    let text: String = lines.iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>().join("\n");
+    let now = get_time() * 1000.0;
+    let start = HINT_SHOWN.with(|h| {
+        let mut h = h.borrow_mut();
+        if h.0 != text || now - h.2 > 100.0 {
+            *h = (text, now, now);
+        } else {
+            h.2 = now;
+        }
+        h.1
+    });
+    hint_alpha(now - start, full)
 }
 
 thread_local! {
@@ -430,10 +465,13 @@ fn tooltip_at_alpha(lines: &[(String, Color)], alpha: f32) {
     let y = (my + 18.0).min(screen_height() - h - 4.0);
     let r = Rect::new(x, y, w, h);
     super::chrome::surface_alpha(r, super::chrome::Skin::Marble, alpha);
-    draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.0, 0.05, 0.03, 0.2));
-    super::chrome::silver_frame(r, 1.5);
+    draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.0, 0.05, 0.03, 0.2 * alpha));
+    let edge = Color { a: super::chrome::SILVER.a * alpha, ..super::chrome::SILVER };
+    draw_rectangle_lines(r.x, r.y, r.w, r.h, 1.5, edge);
+    // The box and its text fade together (the whole box is blended, 49ee4b).
+    let ink = alpha / alpha.max(160.0 / 255.0).max(f32::EPSILON);
     for (i, (s, c)) in lines.iter().enumerate() {
-        super::chrome::shadow_text(s, x + 12.0, y + 24.0 + i as f32 * 21.0, 17.0, *c);
+        super::chrome::shadow_text(s, x + 12.0, y + 24.0 + i as f32 * 21.0, 17.0, Color { a: c.a * ink.min(1.0), ..*c });
     }
 }
 
@@ -474,6 +512,18 @@ pub fn tooltip_panel_styled(r: Rect, style: TipStyle) {
 /// Draws a button and returns true when it was clicked this frame.
 pub fn button(x: f32, y: f32, w: f32, h: f32, label: &str, enabled: bool) -> bool {
     button_sounding(x, y, w, h, label, enabled, super::audio::Cue::Button)
+}
+
+/// [`button`] in the original's red (its buttons with their channels turned, 0x4dba90): the
+/// army window's Dismiss and its confirmation, the defeat report.
+pub fn red_button(x: f32, y: f32, w: f32, h: f32, label: &str, enabled: bool) -> bool {
+    let hover = enabled && mouse_in(x, y, w, h);
+    super::chrome::defeat_button(Rect::new(x, y, w, h), label, enabled, hover);
+    let pressed = hover && clicked();
+    if pressed {
+        super::audio::cue(super::audio::Cue::Button);
+    }
+    pressed
 }
 
 /// [`button`] with its own press sound (the money buttons play `Item-Gold`).
@@ -614,12 +664,17 @@ pub fn ink_color(ink: razdor::dt::markup::Ink) -> Color {
 /// (TextDrawJustified 0x478a9c) or, the last row of a justified line, left aligned. No
 /// shadow: these lists get no shadow font (0x48e1cc passes 0). `_` draws as a space.
 pub fn draw_markup_row(row: &MarkupRow, x: f32, y: f32, room: f32, size: f32) {
-    super::dt_font::with_original_face(super::dt_font::Face::Subtitle, || draw_markup_row_in_face(row, x, y, room, size));
+    draw_markup_row_face(row, x, y, room, size, super::dt_font::Face::Subtitle, None);
 }
 
-fn draw_markup_row_in_face(row: &MarkupRow, x: f32, y: f32, room: f32, size: f32) {
+/// [`draw_markup_row`] in another of the original's fonts (the hero window's diary draws its
+/// entry in SanSerif, 0x49c388).
+pub fn draw_markup_row_face(row: &MarkupRow, x: f32, y: f32, room: f32, size: f32, face: super::dt_font::Face, color: Option<Color>) {
+    super::dt_font::with_original_face(face, || draw_markup_row_in_face(row, x, y, room, size, color.unwrap_or_else(|| ink_color(row.ink))));
+}
+
+fn draw_markup_row_in_face(row: &MarkupRow, x: f32, y: f32, room: f32, size: f32, color: Color) {
     use razdor::dt::markup::Align;
-    let color = ink_color(row.ink);
     let shown = row.text.replace('_', " ");
     match row.align {
         Align::Centre => {
@@ -1201,6 +1256,17 @@ pub fn scrollbar_px(r: Rect, scroll: &mut f32, most: f32, view: f32, step: f32) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The hint box fades in over 300 ms (49ee4b–49ef0d): to 160/255 for an ordinary hint, to
+    /// full for a pushed one, and stays there.
+    #[test]
+    fn a_hint_box_fades_in_over_300_ms() {
+        let ordinary = 160.0 / 255.0;
+        assert_eq!(hint_alpha(0.0, ordinary), 0.0);
+        assert!((hint_alpha(150.0, 1.0) - 0.5).abs() < 1e-6);
+        assert!((hint_alpha(300.0, ordinary) - ordinary).abs() < 1e-6);
+        assert!((hint_alpha(5000.0, ordinary) - ordinary).abs() < 1e-6);
+    }
 
     #[test]
     fn a_pixel_scrollbar_spans_the_whole_content() {

@@ -1719,9 +1719,11 @@ fn draw_tooltip(game: &Game, assets: &Assets, t: &Tooltip) {
     let lines_h: f32 = t.lines.iter().chain(&t.footer).map(|(_, c)| lh(*c)).sum();
     let bar = 24.0 * k;
     let h = bar + 8.0 * k + lines_h + grid_h + 8.0 * k;
+    // Centred on the mouse and kept inside the map's view, above the bottom bar (interface.md
+    // §7.4; 0x4ca8ac).
     let (mx, my) = crate::ui::widgets::pointer();
-    let x = (mx + 18.0).min(screen_width() - w - 4.0);
-    let y = (my + 18.0).min(screen_height() - bar_h() - h - 4.0).max(2.0);
+    let x = (mx - w / 2.0).min(screen_width() - w).max(0.0);
+    let y = (my - h / 2.0).min(screen_height() - bar_h() - h).max(0.0);
     tooltip_panel_styled(Rect::new(x, y, w, h), t.style);
     // The title strip with the ornaments at its ends.
     draw_rectangle(x + 2.0, y + 2.0, w - 4.0, bar - 2.0, Color::new(0.0, 0.0, 0.0, 0.25));
@@ -2116,7 +2118,7 @@ pub fn window_backdrop(game: &Game, assets: &Assets, lit: Option<BarButton>) -> 
         BarButton::Settings => Screen::Settings,
         BarButton::Save => Screen::Save(SaveView::new(game, Back::Map)),
         BarButton::Load => Screen::Load(LoadView::new(Back::Map)),
-        BarButton::Journal => Screen::Journal(Default::default()),
+        BarButton::Hero => Screen::Hero(Default::default()),
         BarButton::Squad => Screen::Squad { selected: Default::default(), scroll: 0, back: None },
         BarButton::Spells => Screen::Spellbook { selected: 0 },
         BarButton::Map => Screen::WorldMap,
@@ -2135,16 +2137,16 @@ fn bottom_bar(game: &mut Game, message: &mut Option<String>, minimap_open: bool,
         _ => Look::Normal,
     };
     let (mut pressed, timed) = game_bar::draw_with_time(game, look, time_buttons);
+    // J opens Razdor's journal (its own window; the bar's flag is the original's hero window).
+    let journal = pressed.is_none() && key(KeyCode::J);
     // The bar's keys (Razdor's) act as its buttons, also while the hero walks or waits: the
     // key held has cut his walk (`frame`), as the original's any key does.
-    if pressed.is_none() {
+    if pressed.is_none() && !journal {
         // Esc closes the minimap first (Razdor's); the menu only when nothing else is open.
         pressed = if key(KeyCode::Escape) {
             Some(esc_on_map(minimap_open))
         } else if idle && key(KeyCode::B) {
             Some(BarButton::Spells)
-        } else if key(KeyCode::J) {
-            Some(BarButton::Journal)
         } else if key(KeyCode::A) {
             Some(BarButton::Squad)
         } else {
@@ -2156,7 +2158,7 @@ fn bottom_bar(game: &mut Game, message: &mut Option<String>, minimap_open: bool,
         Some(BarButton::Settings) => Some(Screen::Settings),
         Some(BarButton::Save) => Some(Screen::Save(SaveView::new(game, Back::Map))),
         Some(BarButton::Load) => Some(Screen::Load(LoadView::new(Back::Map))),
-        Some(BarButton::Journal) => Some(Screen::Journal(Default::default())),
+        Some(BarButton::Hero) => Some(Screen::Hero(Default::default())),
         Some(BarButton::Squad) => {
             *message = None;
             Some(Screen::Squad { selected: Default::default(), scroll: 0, back: None })
@@ -2165,7 +2167,9 @@ fn bottom_bar(game: &mut Game, message: &mut Option<String>, minimap_open: bool,
             *message = None;
             Some(Screen::Spellbook { selected: 0 })
         }
-        Some(BarButton::Map) | None => None,
+        Some(BarButton::Map) => None,
+        None if journal => Some(Screen::Journal(Default::default())),
+        None => None,
     };
     // A press while the hero walks has cut his route (`frame`): as in the original, where
     // a window opens over the walk and the wait without stopping them, he finishes the step
