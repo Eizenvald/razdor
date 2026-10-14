@@ -671,3 +671,14 @@ Results after the round's fixes (Razdor at the round's end against the recording
   - `armies[id 2].y`: 45 / 42
 - The original gave the same values on a second run (trace `random,ai,events`). Files: states, screenshots, `trace-around.jsonl` in `~/.cache/razdor-difftest/explore/C1014-181146/`.
 
+## C1014-212558: Устье Трейна, step 15 `wait 4`
+
+- Found 2026-10-14 by explore.py (hero 1); unconfirmed.
+- Repro: 16 actions (shrunk from 21, 4 tries): `~/.cache/razdor-difftest/explore/C1014-212558/repro.jsonl`; `python -m tools.difftest.run --actions <it> --trace random`.
+- Step-local run, fields classed NEW (Razdor / original):
+  - `screen`: "razdor applied" / "original skipped: on screen village, this acti...
+- rng: Razdor is 153 draw(s) ahead of the original
+- rng: draws this step: Razdor 153, original 0; the n agree for the first 0
+- rng: Razdor from there: Random(21) rules/ai.rs:1820, Random(21) rules/ai.rs:1821, Random(21) rules/ai.rs:1820, Random(21) rules/ai.rs:1821, Random(21) rules/ai.rs:1820, Random(21) rules/ai.rs:1821, Random(21) rules/ai.rs:1820, Random(21) rules/ai.rs:1821 ...
+- The original gave the same values on a second run (trace `random,ai,events`). Files: states, screenshots, `trace-around.jsonl` in `~/.cache/razdor-difftest/explore/C1014-212558/`.
+

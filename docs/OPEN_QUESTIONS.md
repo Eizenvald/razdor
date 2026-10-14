@@ -8,6 +8,12 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
 
 ## Open
 
+- **Village window open in the original, not in Razdor** (2026-10-14, explorer C1014-212558,
+  Устье Трейна, step 15 `wait 4`). The original had a village window on screen and skipped the
+  wait; Razdor had no window and applied it (153 AI draws). Reproduced twice on the original.
+  Find which earlier step opens the village window in the original but not in Razdor (repro in
+  `~/.cache/razdor-difftest/explore/C1014-212558/`).
+
 - **UI audit round 2: still to compare** (2026-10-14). Original-only shots with no Razdor scene
   yet (`/mnt/ai_models/razdor-scratch/audit/index.md`): village question and its item reward
   (63, 64), quest taken (58), market bought (61), map hover on an enemy after walking (28, 29),
