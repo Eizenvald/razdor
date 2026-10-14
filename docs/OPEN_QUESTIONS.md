@@ -21,6 +21,11 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
   ornaments at its ends; Razdor draws the brown text box. Find which picture the original
   draws there (`HSTexture` is a scrollbar's; `HintFrame` is the main hall's dark divider) and
   use it.
+- **Battle screen parity not on dt-original** (2026-10-14). fa63292 (the original's card
+  highlight `chrome::card_highlight`, the red bold ExitHint, the leave-battle window as
+  4d3620) conflicts with dt-original's older `battle_view.rs` (8 hunks), `saves.rs`,
+  `chrome.rs` and `snapshot.rs`; port it by hand (on dt-original the exit window's warning can
+  be the install's `[ExitBattle] Warning`, its restart being the original's).
 - **Battle strip art** (2026-10-14). The original's strip between the formations spans the
   right side between two silver lines (4d1fb0: y 319 and 346, x 266…894) with dark scroll
   ornaments at both ends; Razdor draws `chrome::text_box` (parchment with corner pieces), a
