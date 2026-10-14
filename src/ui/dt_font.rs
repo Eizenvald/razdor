@@ -135,11 +135,13 @@ pub fn glyph_boxes(img: &Image) -> Vec<Glyph> {
     boxes
 }
 
-/// The pixel-sharp scale for an exact one (`BitmapFont::scale`).
+/// The pixel-sharp scale for an exact one (`BitmapFont::scale`): the nearest whole number
+/// when it changes the size by little (at most 15% smaller or 12% bigger), else the exact
+/// scale, drawn smoothed. Snapping further down made text shrunk a little to fit come out
+/// half its size (×1.6 → ×1: a card's "A: 49  D: 29/23", a player's report).
 fn whole_scale(raw: f32) -> f32 {
     let near = raw.round();
-    let k = if near > raw * 1.12 { raw.floor() } else { near };
-    if k >= 1.0 { k } else { raw }
+    if near >= 1.0 && near >= raw * 0.85 && near <= raw * 1.12 { near } else { raw }
 }
 
 /// A sheet turned into a font: white glyphs whose alpha is their brightness, the blue boxes
@@ -335,17 +337,19 @@ mod tests {
     }
 
     #[test]
-    fn sheets_scale_by_whole_numbers_and_never_grow_a_text_much() {
+    fn sheets_scale_by_whole_numbers_only_near_them() {
         assert_eq!(whole_scale(1.0), 1.0);
-        assert_eq!(whole_scale(1.3), 1.0);
+        assert_eq!(whole_scale(1.1), 1.0);
         assert_eq!(whole_scale(1.95), 2.0);
-        // 1.6 to 2 would grow it by a quarter: down to 1.
-        assert_eq!(whole_scale(1.6), 1.0);
         assert_eq!(whole_scale(2.8), 3.0);
+        // Far from a whole number: its own scale, never halved (1.6 used to become 1).
+        assert_eq!(whole_scale(1.6), 1.6);
+        assert_eq!(whole_scale(1.3), 1.3);
         // Under 1 (shrunk to fit): its own scale.
         assert_eq!(whole_scale(0.8), 0.8);
-        for raw in [0.5_f32, 0.9, 1.1, 1.5, 2.2, 3.4] {
-            assert!(whole_scale(raw) <= raw * 1.12 + 1e-6, "{raw}");
+        for raw in [0.5_f32, 0.9, 1.1, 1.3, 1.5, 1.6, 2.2, 2.45, 3.4] {
+            let k = whole_scale(raw);
+            assert!(k <= raw * 1.12 + 1e-6 && k >= raw * 0.85 - 1e-6, "{raw} -> {k}");
         }
     }
 
