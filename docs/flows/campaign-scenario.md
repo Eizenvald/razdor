@@ -36,9 +36,12 @@ ui/screens.rs    start_game(demo, Some((entry, content)), class, name)
 … play (map-step.md, towns-economy.md, battles) …
 scenario end:
   EventOutcome::Victory / Defeat → Game::script_end() → ScriptEnd
-  ui/screens.rs  victory(): hand_over() → Game::next_map() → NextMap
+  ui/mod.rs      ScriptEnd::Victory: screens::hand_over() → Game::next_map() → NextMap
                    campaign_game() → Game::from_campaign(content, scenario, &prev)
                                        → apply_carry_over(&prev); journal.next_chapter()
+                 no next map (not a campaign map, or not in the install) → the main menu,
+                   as the original (0x4aba30 → 0x4bfb34); ui/screens.rs victory() only for
+                   the editor's test play
                  ScriptEnd::Defeat: its window was the last thing shown → the main menu (ui/mod.rs)
 battle defeat:  ui/battle_view.rs close_lost(): the screen closes at once → Dialog::defeat()
                   250 ms later on the map; its OK drops the game → the main menu
