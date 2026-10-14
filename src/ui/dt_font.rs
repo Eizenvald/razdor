@@ -139,7 +139,7 @@ pub fn glyph_boxes(img: &Image) -> Vec<Glyph> {
 /// when it changes the size by little (at most 15% smaller or 12% bigger), else the exact
 /// scale, drawn smoothed. Snapping further down made text shrunk a little to fit come out
 /// half its size (×1.6 → ×1: a card's "A: 49  D: 29/23", a player's report).
-fn whole_scale(raw: f32) -> f32 {
+pub fn whole_scale(raw: f32) -> f32 {
     let near = raw.round();
     if near >= 1.0 && near >= raw * 0.85 && near <= raw * 1.12 { near } else { raw }
 }
@@ -277,6 +277,22 @@ pub fn with_face<R>(face: Face, f: impl FnOnce() -> R) -> R {
 /// event and village windows' texts, interface.md §9.8, §11).
 pub fn with_original_face<R>(face: Face, f: impl FnOnce() -> R) -> R {
     if mode() == FontMode::Original { with_face(face, f) } else { f() }
+}
+
+/// Capital height of the original's Benguiat sheet, in sheet pixels, when the install's sheet
+/// cannot be read (measured on the original's event window at 1024×768).
+const BENGUIAT_CAP: f32 = 11.0;
+
+/// The font size at which `face`'s sheet is drawn at `scale` screen pixels per sheet pixel:
+/// the original's own size when `scale` is the original's pixel. Other font modes get the
+/// TrueType size whose capitals stand as tall, so a layout in the original's pixels fits.
+pub fn sheet_size(face: Face, scale: f32) -> f32 {
+    let cap = FONTS.with(|fonts| {
+        let mut fonts = fonts.borrow_mut();
+        let font = fonts.entry(face).or_insert_with(|| super::chrome::image(face.file()).and_then(BitmapFont::from_sheet));
+        font.as_ref().map(|f| f.cap)
+    });
+    scale * cap.unwrap_or(BENGUIAT_CAP) / TTF_CAP
 }
 
 /// The TrueType font of the current face, if the mode draws it in one: a `RAZDOR_FONT*`

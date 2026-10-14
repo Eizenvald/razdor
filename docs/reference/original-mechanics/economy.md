@@ -261,6 +261,13 @@ runs on its first arrival on a new cell after noon (0x4a5534). In order:
      (nothing is overwritten), but steps 4–6 have already run and used their random rolls.
 - Finally ids outside the item range are cleared. **The list is not sorted**: the Community exe
   jumps over the sort loop (0x4be9a0), so goods stay in the order drawn.
+- **Display order** (data, 2026-10-14: the original under Wine on Проклятое озеро, every market's
+  12 places read from memory at the start and after eleven 12-hour restocks, 78 stocks): the
+  window lists the places in order (0x4bbc84 packs places 1..12 into 0x670e18, which 0x4bca8c
+  lists from the top), so the bands walking down the window show **most expensive first**: 17
+  stocks fell strictly, the other 61 fell but for fixed goods in their own places, a town's
+  potions, or a widened band; none rose. A player's screenshot of the original (another build)
+  showed a market cheapest first, which fits a build that does not jump over the sort.
 
 **Barracks regrowth** (code, 0x4a1998, every midnight, buildings with byte 294 set):
 - Each of the 6 slots with a unit, a max above 0 and count < max gains +1 when
@@ -579,7 +586,7 @@ Razdor's code as read for this pass: `src/rules/economy.rs`, `town.rs`, `world.r
 | Garrison moves | Hero and named units refused, the selection kept; `Card-Move` on swaps and moves; corpses move both ways; a cross-grid swap exchanges the records with no price, last pay refreshed only in one click order (`swap_with_garrison`) | Hero and named units refused; corpses move both ways; a cross-grid swap exchanges records with no price (unpaid stays unpaid) and is the only way into a full army | Matches |
 | Dismiss / Bury | A confirm step; no refund; worn items lost; the pack untouched; only the hero protected; the hero selected after | A confirm step; no refund; **worn items are lost**; the pack is untouched; only the hero is protected | Matches |
 | Hire timing | Immediate | The unit, gold and slot count change when the card slide ends | Yes (no visible difference) |
-| Market display | Prices as charged; the sell list only Cost > 1; unaffordable buy prices red; Buy enabled iff price ≤ gold, no pack test; opens on the goods when there are some | Prices as charged; sell list only Cost > 1; unaffordable buy prices red; Buy enabled iff price ≤ gold, no pack test | Matches |
+| Market display | Prices as charged; the sell list only Cost > 1; unaffordable buy prices red; Buy enabled iff price ≤ gold, no pack test; opens on the goods when there are some; both lists sorted cheapest first (the owner's choice, 35374ff) | Prices as charged; sell list only Cost > 1; unaffordable buy prices red; Buy enabled iff price ≤ gold, no pack test; places listed in order (most expensive first, as drawn) | Order differs by the owner's choice; the rest matches |
 | Village offers | Every roll drawn until one passes, the last kind's included (it cannot pass); "last" becomes none after an empty visit; innkeeper and priest against army size div 2, the priest counting the living; all options are questions (`Game::visit_village`) | Rolls every step; "last" becomes none after an empty visit; all options are questions | Matches |
 | Village offer window | The event window's Yes/No question before the village window, its `Village_Bonus_N` picture (1 blessing … 5 innkeeper) left of the text; Yes to 3–5 shows the result window, No opens the village window (`building_view::offer_dialog`, `answer_offer`) | 0x4aca80 (picture +0xa7), 0x4c2100, 0x4c2378; interface.md §9.8 | Matches |
 | Village window | The original's small window: `S_Village`, its texts, `Village_Gold`/`Village_Mana` (or `_Empty` at 0) with "+ N" / "= 0" captions, `Ok` (`building_view::village_window`); shows what was taken on entering | 0x4d3a38, 0x4d0e28, 0x4d11ef, 0x4d1247; shows the stocks, pays them on closing | Look matches; the tribute's moment differs (row below) |

@@ -995,8 +995,10 @@ impl App {
         if next.is_none() && self.dialogs.is_empty() && !unshown && !self.in_custom() {
             let end = self.game.as_ref().and_then(Game::script_end);
             match end {
-                // A campaign map: the next map starts at once (0x4b5b64), as in the original;
-                // Razdor's victory screen only when there is none (or in the editor's test play).
+                // A campaign map: the next map starts at once (0x4b5b64), as in the original.
+                // With no next map (not a campaign map, or its next map not in the install)
+                // the original goes to the main menu once the window is read (0x4aba30 →
+                // 0x4bfb34); Razdor's victory screen stays for the editor's test play.
                 Some(ScriptEnd::Victory(_)) if !matches!(self.screen, Screen::Victory) => {
                     let handed = (!self.test_play).then(|| screens::hand_over(&self.game, &self.scenarios, self.dt_content.clone())).flatten();
                     match handed {
@@ -1007,7 +1009,11 @@ impl App {
                             self.game = Some(g);
                             next = Some(Screen::WorldMap);
                         }
-                        None => next = Some(Screen::Victory),
+                        None if self.test_play => next = Some(Screen::Victory),
+                        None => {
+                            self.game = None;
+                            next = Some(Screen::MainMenu);
+                        }
                     }
                 }
                 // The map's defeat event: its window was the last thing shown; the game
