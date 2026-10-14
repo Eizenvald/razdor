@@ -632,3 +632,12 @@ Results after the round's fixes (Razdor at the round's end against the recording
   states, and run `a` has Razdor's generator state and army 5's purchases unit for unit
   (army 26 one cell off). Nothing to fix.
 
+## C1014-173722: Проклятое озеро, step 10 `click_map 5 15`
+
+- Found 2026-10-14 by explore.py (hero 1); unconfirmed.
+- Repro: 11 actions (shrunk from 11, 0 tries): `~/.cache/razdor-difftest/explore/C1014-173722/repro.jsonl`; `python -m tools.difftest.run --actions <it> --trace random`.
+- Step-local run, fields classed NEW (Razdor / original):
+  - `armies[id 9].x`: 24 / 17
+  - `armies[id 9].y`: 50 / 54
+- The original gave the same values on a second run (trace `random,ai,events`). Files: states, screenshots, `trace-around.jsonl` in `~/.cache/razdor-difftest/explore/C1014-173722/`.
+
