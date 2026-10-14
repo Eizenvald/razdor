@@ -8,6 +8,12 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
 
 ## Open
 
+- **dt-original: the start garrisons' arrangement** (2026-10-14). main e834147 arranges the
+  garrison of the hero's own start buildings (his stationed units) at load like every garrison
+  (0x4b2504 → 0x49855c, 0x4988c0). Not cherry-picked yet: dt-original's worktree was in the
+  middle of another agent's conflicted cherry-pick. Cherry-pick e834147 (`src/rules/game.rs`
+  hunk and the `start_garrisons` test in `src/rules/world.rs`) once it is free.
+
 - **Menus (group 5 of the UI audit, 2026-10-14), approximations left.** (1) The new-hero
   window's other portraits: the original builds them from the picture with 0x48db5c(100, 200,
   100) and 0x48da5c colour shifts plus a 33-step vignette mask (0x4d7d30); Razdor tints with
