@@ -144,3 +144,6 @@ block	clean	rm -rf {target,docs}
 allow	clean	cargo clean --profile dev
 allow	clean	cargo clean
 block	clean	rm -rf target/debug
+allow	clean	find . -iname "*.lit" | xargs -n1 basename | grep -i font
+allow	clean	ls | xargs -I{} echo {}
+block	clean	ls | xargs -n1 sh -c "rm -rf x"

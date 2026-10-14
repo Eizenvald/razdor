@@ -619,7 +619,7 @@ def check_segment(words, cwd, exported, depth):
             rest = rest[1:]
             if flag in ("-I", "-n", "-P", "-L", "-d", "-E", "-s", "-a") and rest:
                 rest = rest[1:]
-        if rest and os.path.basename(rest[0]) in ("git", "rm", "unlink", "shred", "find") | SHELLS:
+        if rest and os.path.basename(rest[0]) in {"git", "rm", "unlink", "shred", "find"} | SHELLS:
             raise Unknown(f"xargs into {rest[0]} (its arguments come from stdin)")
         return
     allenv = {**exported, **env}
