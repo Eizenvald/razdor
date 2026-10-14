@@ -153,8 +153,14 @@ with `Surrender > 0` units gives up while both stand; its values become the winn
 - the foe is cleared, the AI rescoring is marked dirty (`mark_dirty`, `recount_hero`);
 - victory over a garrison: building captured (`give_to_player`), treasure, worn items, loot
   rolls (`take_items`); over an army: gold and wages (`player_victory_gold`), its items;
-- returns `BattleResult` (Victory / Defeat / Withdrew); then `run_script` runs the
-  scenario events (an army beaten), their results queue in `Game::pending`.
+- returns `BattleResult` (Victory / Defeat / Withdrew); a victory carries `over: Beat` (the
+  army's shown name, or the garrison's place with its owner's name and whether it is ruins)
+  for the report's first line; then `run_script` runs the scenario events (an army beaten),
+  their results queue in `Game::pending`.
+- The victory report (`Dialog::victory`, text by `dialog::victory_markup`) is built from the
+  install's `[Event]` lines as 0x4a9d88 builds it: `Victory` / `VictoryBuilding` /
+  `VictoryRuines` (or the `NoName` ones) in white, then `VictoryEmpty`, `VictoryGold`,
+  `VictoryItems`, `VictoryMana` after empty rows.
 
 XP (`experience.md` §3): `Battle::pool` from the enemy's starting strength, own HP lost, the
 pre-simulation's predicted loss and the worst turn; `Battle::xp_awards` splits it by row and

@@ -114,7 +114,6 @@ Lv {level} = Ур. {level}
 
 # Building window: main hall
 Quests and rumours: = Предлагаемые задания и слухи:
-Hear rumour = Выслушать слух
 Take quest = Взять задание
 
 # Building window: barracks

@@ -47,10 +47,13 @@ fn quest_selection_row(r: Rect) {
     draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.72, 0.07, 0.04, 0.34));
 }
 
-/// The quest panel's button: "Hear rumour" with a rumour picked, else "Take quest".
+/// The quest panel's button: `[Building] TakeQuest` («Взять задание») whatever is picked,
+/// quest or rumour; the original sets its caption once when it builds the window
+/// (0x4d98b0) and never changes it.
 fn take_quest_button(r: Rect, picked: Option<HallEntry>) -> bool {
     let enabled = picked.is_some();
-    let label = if matches!(picked, Some(HallEntry::Rumour(_))) { tr("Hear rumour") } else { tr("Take quest") };
+    let label = own_text("Building", "TakeQuest", n_("Take quest"));
+    let label = label.as_str();
     let hover = enabled && mouse_in(r.x, r.y, r.w, r.h);
     chrome::quest_button(r, label, enabled, hover);
     let pressed = hover && clicked();
@@ -258,13 +261,20 @@ fn tab_button(label: &str, tab: Option<Tab>, r: Rect, active: bool) -> bool {
 }
 
 /// The red-brown text box with the building's description.
+/// The building's description in its box, as the original's (the castle's main hall at
+/// 1024×768): a marked-up text in Benguiat's plain tint at the sheet's own size, centred,
+/// with no shadow, rows 19 of the original's pixels apart (the event window's text list).
 fn description_box(desc: &str, x: f32, y: f32, w: f32, h: f32) {
     let k = chrome::k();
     chrome::text_box(Rect::new(x, y, w, h));
-    let lines = wrap(desc, w - 60.0 * k, 19.0 * k);
-    let top = y + (h - lines.len() as f32 * 23.0 * k) / 2.0 + 16.0 * k;
-    for (i, line) in lines.iter().enumerate() {
-        chrome::shadow_centered(line, x + w / 2.0, top + i as f32 * 23.0 * k, 19.0 * k, BOX_INK);
+    let o = super::dt_font::whole_scale(k * 0.9375);
+    let size = super::dt_font::sheet_size(super::dt_font::Face::Subtitle, o);
+    let room = w - 60.0 * k;
+    let rows = markup_rows(&format!("^{desc}"), room, size);
+    let line = 19.0 * o;
+    let top = y + (h - rows.len() as f32 * line) / 2.0 + 14.0 * o;
+    for (i, row) in rows.iter().enumerate() {
+        draw_markup_row(row, x + 30.0 * k, top + i as f32 * line, room, size);
     }
 }
 
@@ -355,11 +365,12 @@ fn hall_offers(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mu
     let title_size = fit_size(title, title_area.w, 20.0 * k);
     chrome::shadow_centered(title, title_area.center().x, title_area.y + (title_area.h + title_size * 0.36) / 2.0, title_size, chrome::GOLD);
 
-    let rows = 3usize;
-    let row_h = 24.0 * k;
-    let list_h = rows as f32 * row_h + 12.0 * k;
+    // The list fills the rest of the lower panel, its entries from the top, a picked one lit
+    // across the whole row (0x4bedec); the building's description is not shown under it.
+    let row_h = 20.0 * k;
     let list_y = (quest_border.y + quest_border.h).max(take.y + take.h) + 5.0*k;
-    let list = Rect::new(panel.x, list_y, panel.w, list_h);
+    let list = Rect::new(panel.x, list_y, panel.w, (panel.y + panel.h - list_y).max(row_h + 8.0 * k));
+    let rows = (((list.h - 8.0 * k) / row_h).floor() as usize).max(1);
     chrome::parchment_fill(list, true);
     let max_scroll = entries.len().saturating_sub(rows);
     if mouse_in(list.x, list.y, list.w, list.h) {
@@ -371,8 +382,7 @@ fn hall_offers(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mu
     // The bar is always there, idle while the list fits, as the original's (0x4bedec).
     scrollbar_always(Rect::new(list.x + list.w - 14.0 * k, list.y + 2.0 * k, 12.0 * k, list.h - 4.0 * k), &mut view.hall_scroll, rows, entries.len());
     let row_w = list.w - 16.0 * k;
-    let visible_rows = entries.len().saturating_sub(view.hall_scroll).min(rows);
-    let first_y = list.y + (list.h - visible_rows as f32 * row_h) / 2.0;
+    let first_y = list.y + 4.0 * k;
     for (n, entry) in entries.iter().enumerate().skip(view.hall_scroll).take(rows) {
         let y = first_y + (n - view.hall_scroll) as f32 * row_h;
         let id = match *entry { HallEntry::Rumour(id) | HallEntry::Quest(id) => id };
@@ -384,12 +394,6 @@ fn hall_offers(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mu
         let shown = ellipsize(&name, row_w - 20.0 * k, size);
         text_centered(&shown, list.x + row_w / 2.0, y + row_h / 2.0 + size * 0.36, size, quest_text_color());
         if mouse_in(list.x, y, row_w, row_h) && clicked() { view.hall_pick = Some(n); }
-    }
-
-    let desc_y = list.y + list.h + 10.0 * k;
-    if let Some(l) = game.location {
-        let desc = &game.world.locations[l].description;
-        description_box(desc, panel.x, desc_y, panel.w, panel.y + panel.h - desc_y);
     }
 
     let mut next = None;
@@ -1122,6 +1126,11 @@ fn cheapest_first<P: Ord>(prices: &[P]) -> Vec<usize> {
     order
 }
 
+/// The row a market list opens with: its first, if it has any (0x4bca8c).
+fn first_pick(rows: usize) -> Option<usize> {
+    (rows > 0).then_some(0)
+}
+
 /// The row to select after row `k` left a list that now has `left` rows: the one that
 /// moved up into it, else the one above, else none.
 fn next_pick(k: usize, left: usize) -> Option<usize> {
@@ -1179,6 +1188,11 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
     let kept = item_filter::keep(&c, all, &view.filter);
     let shown: Vec<(Option<ItemId>, String, String, bool)> = kept.iter().map(|(n, _)| rows[*n].clone()).collect();
     let marks: Vec<Option<std::ops::Range<usize>>> = kept.iter().map(|(_, m)| m.name_range.clone()).collect();
+    // The original opens either list with its first row picked and described (0x4bca8c),
+    // the market tab and each switch between the goods and the pack alike.
+    if view.pick.is_none() && view.filter.trim().is_empty() {
+        view.pick = first_pick(rows.len());
+    }
     let at_pick = view.pick.and_then(|p| kept.iter().position(|(n, _)| *n == p));
     if let Some(k) = price_list(Some(assets), &shown, &marks, at_pick, &mut view.scroll, lx, y + 21.0 * k, lw, 7) {
         view.pick = Some(kept[k].0);
@@ -1208,7 +1222,10 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
     }
     let (invent_on, market_on) = market_switches(view.selling, goods.len());
     let (invent, shop) = (own_text("Building", "Invent", n_("Inventory")), own_text("Building", "Market", n_("Trading shop")));
-    if button(x + 8.0 * k, by, 150.0 * k, 34.0 * k, &invent, invent_on) {
+    // A list button that is off keeps its normal look in the original (the audit's capture
+    // of the market with the goods shown: «Торговая лавка» is not greyed); it only does
+    // nothing.
+    if button(x + 8.0 * k, by, 150.0 * k, 34.0 * k, &invent, true) && invent_on {
         view.selling = true;
         view.pick = None;
         view.scroll = 0;
@@ -1253,7 +1270,7 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
             view.pick = next_pick(k, left);
         }
     }
-    if button(x + 416.0 * k, by, 148.0 * k, 34.0 * k, &shop, market_on) {
+    if button(x + 416.0 * k, by, 148.0 * k, 34.0 * k, &shop, true) && market_on {
         view.selling = false;
         view.pick = None;
         view.scroll = 0;
@@ -1679,7 +1696,14 @@ fn ship_window(game: &mut Game) -> Option<Screen> {
 
 /// The building window. `Exit` (or Escape) returns to the map.
 pub fn frame(game: &mut Game, assets: &Assets, view: &mut BuildingView, message: &mut Option<String>, dialogs: &mut VecDeque<Dialog>) -> Option<Screen> {
-    let bar = world_view::window_backdrop(game, assets, None);
+    // The village window is modal, the bar's buttons greyed under it, as the original's
+    // (the audit's capture of «Деревня Замковая»); the building window keeps the bar live.
+    let bar = if game.tabs_here().contains(&Tab::Tribute) {
+        world_view::backdrop(game, assets);
+        None
+    } else {
+        world_view::window_backdrop(game, assets, None)
+    };
     // Events that happened meanwhile (an answer's follow-ups …).
     let pending = game.drain_events();
     let early = world_view::handle_events(game, pending, message, dialogs);
@@ -1780,6 +1804,13 @@ mod tests {
     fn market_rows_go_cheapest_first_ties_in_stock_order() {
         assert_eq!(super::cheapest_first(&[2750, 605, 110, 495, 110]), vec![2, 4, 3, 1, 0]);
         assert!(super::cheapest_first::<i32>(&[]).is_empty());
+    }
+
+    /// 0x4bca8c: a market list opens with its first row picked, an empty one with none.
+    #[test]
+    fn a_market_list_opens_on_its_first_row() {
+        assert_eq!(super::first_pick(7), Some(0));
+        assert_eq!(super::first_pick(0), None);
     }
 
     use super::{market_switches, next_pick, offer_picture, recruit_x, screen_line, stock_caption, stock_picture};

@@ -16,6 +16,12 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
   banked would start 2.5 minutes in, Razdor's about 1. Small, and every AI difftest leans on
   the present model (FINDINGS §5), so changing it needs a run of all of them; the explorer's
   candidates of 2026-10-14 are the original's frame noise either way.
+- **The band under the barracks and garrison pictures** (2026-10-14, UI audit pairs 51, 53).
+  The original's strip between the building picture and the army cards is ochre with black
+  ornaments at its ends; Razdor draws the brown text box. Find which picture the original
+  draws there (`HSTexture` is a scrollbar's; `HintFrame` is the main hall's dark divider) and
+  use it.
+
 - **Button art picked by screen width** (2026-10-14). `chrome::defeat_button` and
   `marble_button` choose Btn1/2/3 by the screen's width, so on large screens a 95-px button is
   drawn from Btn3. Check which art the original uses for which button size and pick by the
