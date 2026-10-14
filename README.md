@@ -339,10 +339,8 @@ macOS и почти любом Linux). Сборка через `cargo` (в `targ
 - **Современный:** **PT Serif** (ParaType, SIL Open Font License 1.1) для текста,
   **Becker Medium** (свободен для личного и коммерческого использования) для заголовков,
   **Kurale** (SIL Open Font License 1.1) для кнопок и имён.
-- **Пиксельный:** **Handjet** (SIL Open Font License 1.1) для текста, **Press Start 2P**
-  (SIL Open Font License 1.1) для заголовков, кнопок и имён.
 
-Шрифты для «Современного» и «Пиксельного» идут вместе с Раздором (`data/fonts/`, лицензии
+Шрифты «Современного» идут вместе с Раздором (`data/fonts/`, лицензии
 лежат рядом с файлами) и встроены в программу. `RAZDOR_FONT`, `RAZDOR_FONT_BOLD`,
 `RAZDOR_FONT_TITLE` и `RAZDOR_FONT_SUBTITLE` указывают на другие файлы шрифтов (например,
 купленный Benguiat Cyrillic) и действуют при любой настройке.

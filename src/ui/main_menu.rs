@@ -752,7 +752,6 @@ pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool, ov
     let font_label = match audio.font {
         super::dt_font::FontMode::Original => tr("As in the original"),
         super::dt_font::FontMode::Modern => tr("Modern"),
-        super::dt_font::FontMode::Pixel => tr("Pixel"),
     };
     let over_font = fr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
     chrome::marble_button(fr, font_label, true, over_font);

@@ -25,30 +25,29 @@ const TTF_CAP: f32 = 0.72;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FontMode {
-    /// The original's bitmap sheets from the install, pixel-sharp, with their shadow sheets.
-    #[default]
-    Original,
     /// PT Serif for text, Becker for titles, Kurale for buttons and names.
     Modern,
-    /// Handjet for text, Press Start 2P for titles, buttons and names.
-    Pixel,
+    /// The original's bitmap sheets from the install, pixel-sharp, with their shadow sheets.
+    /// Also what an unknown saved value (the removed "pixel" mode) reads as (serde's
+    /// `other` must be the last variant).
+    #[default]
+    #[serde(other)]
+    Original,
 }
 
 impl FontMode {
     pub fn next(self) -> FontMode {
         match self {
             FontMode::Original => FontMode::Modern,
-            FontMode::Modern => FontMode::Pixel,
-            FontMode::Pixel => FontMode::Original,
+            FontMode::Modern => FontMode::Original,
         }
     }
 
-    /// `RAZDOR_FONT_MODE` (original, modern, pixel) for off-screen snapshots.
+    /// `RAZDOR_FONT_MODE` (original, modern) for off-screen snapshots.
     pub fn from_env() -> Option<FontMode> {
         match std::env::var("RAZDOR_FONT_MODE").ok()?.trim() {
             "original" => Some(FontMode::Original),
             "modern" => Some(FontMode::Modern),
-            "pixel" => Some(FontMode::Pixel),
             _ => None,
         }
     }
@@ -322,12 +321,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_font_mode_defaults_to_the_original_s_and_cycles_through_three() {
+    fn the_font_mode_defaults_to_the_original_s_and_toggles() {
         assert_eq!(FontMode::default(), FontMode::Original);
         assert_eq!(FontMode::Original.next(), FontMode::Modern);
-        assert_eq!(FontMode::Modern.next(), FontMode::Pixel);
-        assert_eq!(FontMode::Pixel.next(), FontMode::Original);
-        assert_eq!(serde_json::to_string(&FontMode::Pixel).unwrap(), "\"pixel\"");
+        assert_eq!(FontMode::Modern.next(), FontMode::Original);
+        assert_eq!(serde_json::to_string(&FontMode::Modern).unwrap(), "\"modern\"");
+        // The pixel mode of 0.4.18 was removed: a saved "pixel" reads as the original's.
+        assert_eq!(serde_json::from_str::<FontMode>("\"pixel\"").unwrap(), FontMode::Original);
         assert_eq!(serde_json::from_str::<FontMode>("\"modern\"").unwrap(), FontMode::Modern);
         // Settings saved before the font mode existed keep the original's sheets.
         let old: super::super::audio::Settings = serde_json::from_str(r#"{"music_volume":0.5}"#).unwrap();

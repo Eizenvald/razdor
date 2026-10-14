@@ -12,8 +12,8 @@ thread_local! {
     /// A TrueType font with Cyrillic, for text the built-in pixel font cannot draw (the
     /// original's names and descriptions).
     static FONT: RefCell<Option<Font>> = const { RefCell::new(None) };
-    /// The faces of the modern and the pixel font modes: text, bold, titles, buttons and names.
-    static FACE_FONTS: RefCell<[[Option<Font>; 4]; 2]> = const { RefCell::new([[None, None, None, None], [None, None, None, None]]) };
+    /// The faces of the modern font mode: text, bold, titles, buttons and names.
+    static FACE_FONTS: RefCell<[[Option<Font>; 4]; 1]> = const { RefCell::new([[None, None, None, None]]) };
     /// `RAZDOR_FONT*` files, which win in every mode.
     static OWN_FONTS: RefCell<[Option<Font>; 4]> = const { RefCell::new([None, None, None, None]) };
 }
@@ -23,31 +23,18 @@ thread_local! {
 /// mode draws the install's own bitmap sheets and needs none of them.
 /// Modern: PT Serif (OFL) for text and bold, Becker Medium (free for personal and commercial
 /// use) for titles, Kurale (OFL) for buttons and names.
-/// Pixel: Handjet (OFL; regular and bold instances, element shape 16: continuous strokes,
-/// whose 0 does not read as 8 at small sizes) for text and bold, Press Start 2P
-/// (OFL) for titles, buttons and names.
-const MODE_FILES: [[&[u8]; 4]; 2] = [
+const MODE_FILES: [[&[u8]; 4]; 1] = [
     [
         include_bytes!("../../data/fonts/PT_Serif-Regular.ttf"),
         include_bytes!("../../data/fonts/PT_Serif-Bold.ttf"),
         include_bytes!("../../data/fonts/Becker-Medium.ttf"),
         include_bytes!("../../data/fonts/Kurale-Regular.ttf"),
     ],
-    [
-        include_bytes!("../../data/fonts/Handjet-Regular.ttf"),
-        include_bytes!("../../data/fonts/Handjet-Bold.ttf"),
-        include_bytes!("../../data/fonts/PressStart2P-Regular.ttf"),
-        include_bytes!("../../data/fonts/PressStart2P-Regular.ttf"),
-    ],
 ];
 
 /// Characters each mode's face lacks (checked against the Russian catalog and the install's
-/// texts), drawn as a near look-alike instead. Handjet's zero carries a dot that reads as an
-/// 8 at the interface's sizes ("70" as "78"): its plain capital O stands in.
-const MODE_MISSING: [[&[(char, &str)]; 4]; 2] = [
-    [&[('→', "->")], &[('→', "->")], &[], &[]],
-    [&[('0', "O")], &[('0', "O")], &[('−', "-"), ('→', "->")], &[('−', "-"), ('→', "->")]],
-];
+/// texts), drawn as a near look-alike instead.
+const MODE_MISSING: [[&[(char, &str)]; 4]; 1] = [[&[('→', "->")], &[('→', "->")], &[], &[]]];
 
 /// `RAZDOR_FONT`, `RAZDOR_FONT_BOLD`, `RAZDOR_FONT_TITLE` and `RAZDOR_FONT_SUBTITLE` name
 /// other files (e.g. a bought Benguiat), used in every mode.
@@ -87,24 +74,14 @@ pub fn face_font(i: usize, mode: super::dt_font::FontMode) -> Option<Font> {
     let m = match mode {
         super::dt_font::FontMode::Original => return None,
         super::dt_font::FontMode::Modern => 0,
-        super::dt_font::FontMode::Pixel => 1,
     };
     FACE_FONTS.with(|f| f.borrow()[m].get(i).cloned().flatten())
 }
 
-/// How much bigger or smaller the current mode's face is drawn than the size asked for, so
-/// its capitals stand about as tall as the layouts expect: Press Start 2P is a large, wide
-/// face, Handjet a small, narrow one.
+/// How much bigger or smaller the current mode's face is drawn than the size asked for
+/// (every bundled face is drawn at the size asked for).
 fn face_scale() -> f32 {
-    use super::dt_font::{Face, FontMode};
-    if OWN_FONTS.with(|f| f.borrow()[super::dt_font::face().index()].is_some()) {
-        return 1.0;
-    }
-    match (super::dt_font::mode(), super::dt_font::face()) {
-        (FontMode::Pixel, Face::Title | Face::Subtitle) => 0.72,
-        (FontMode::Pixel, Face::Body | Face::Bold) => 1.25,
-        _ => 1.0,
-    }
+    1.0
 }
 
 /// `s` with the characters the current mode's face lacks replaced by look-alikes.
@@ -112,7 +89,6 @@ fn with_missing(s: &str) -> std::borrow::Cow<'_, str> {
     let m = match super::dt_font::mode() {
         super::dt_font::FontMode::Original => return s.into(),
         super::dt_font::FontMode::Modern => 0,
-        super::dt_font::FontMode::Pixel => 1,
     };
     let missing = MODE_MISSING[m][super::dt_font::face().index()];
     if !s.chars().any(|c| missing.iter().any(|(m, _)| *m == c)) {

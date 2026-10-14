@@ -49,5 +49,4 @@ Interface scale = Масштаб интерфейса
 Font = Шрифт
 As in the original = Как в оригинале
 Modern = Современный
-Pixel = Пиксельный
 Auto = Авто

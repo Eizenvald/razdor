@@ -116,8 +116,8 @@ All text goes through `widgets::measure` / `widgets::text` in the current face
   pixels. `chrome::shadow_text` draws the face's shadow sheet (`Face::shadow_file`) 1 sheet
   pixel down-right first (`dt_font::draw_shadow`). Glyphs a sheet lacks come from PT Sans
   (`widgets::measure_ttf`).
-- `Modern` / `Pixel`: `widgets::face_font` gives the bundled TrueType face (`MODE_FILES`:
-  PT Serif, Becker, Kurale / Handjet, Press Start 2P); `MODE_MISSING` swaps the few
+- `Modern`: `widgets::face_font` gives the bundled TrueType face (`MODE_FILES`:
+  PT Serif, Becker, Kurale); `MODE_MISSING` swaps the few
   characters a face lacks for look-alikes.
 - `RAZDOR_FONT*` files win in every mode.
 
