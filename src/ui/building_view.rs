@@ -1108,6 +1108,14 @@ pub(super) fn item_description(game: &Game, assets: &Assets, item: ItemId, x: f3
     }
 }
 
+/// The market rows' order: indices of `prices`, cheapest first; equal prices keep their
+/// stock or pack order (a stable sort).
+fn cheapest_first<P: Ord>(prices: &[P]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..prices.len()).collect();
+    order.sort_by_key(|&n| &prices[n]);
+    order
+}
+
 /// The row to select after row `k` left a list that now has `left` rows: the one that
 /// moved up into it, else the one above, else none.
 fn next_pick(k: usize, left: usize) -> Option<usize> {
@@ -1139,10 +1147,15 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
     // cheapest are not bought); a buy price above the gold is red (0x4bca8c).
     let sellable: Vec<usize> = (0..game.pack.len()).filter(|&k| game.can_sell(game.pack[k])).collect();
     let goods = game.market_here().unwrap_or_default();
+    // Both lists cheapest first, whatever the item's kind (the owner's choice; the original
+    // shows them unsorted, in stock and pack order: 0x4be9a0 jumps over its sort). `order[row]`
+    // is the row's index in `sellable` or in the goods, which the trade takes.
+    let prices: Vec<_> = if view.selling { sellable.iter().map(|&n| game.sell_price(game.pack[n])).collect() } else { goods.iter().map(|&i| game.buy_price(i)).collect() };
+    let order = cheapest_first(&prices);
     let rows: Vec<(Option<ItemId>, String, String, bool)> = if view.selling {
-        sellable.iter().map(|&k| game.pack[k]).map(|i| (Some(i), c.item(i).name.clone(), game.sell_price(i).to_string(), false)).collect()
+        order.iter().map(|&n| game.pack[sellable[n]]).map(|i| (Some(i), c.item(i).name.clone(), game.sell_price(i).to_string(), false)).collect()
     } else {
-        goods.iter().map(|&i| (Some(i), c.item(i).name.clone(), game.buy_price(i).to_string(), game.buy_price(i) > game.gold)).collect()
+        order.iter().map(|&n| goods[n]).map(|i| (Some(i), c.item(i).name.clone(), game.buy_price(i).to_string(), game.buy_price(i) > game.gold)).collect()
     };
     // Over the list the original's column titles, "Название" and "Цена" (0x4bca8c). The
     // filter (Razdor's) takes their line only while it is used: a letter typed over the list,
@@ -1199,7 +1212,7 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
     let label = if view.selling { own_text("Building", "Trade", n_("Sell")) } else { own_text("Building", "Buy", n_("Buy")) };
     // Sell is always on; Buy only when the price is at most the gold, the purchase's test.
     let can = match (view.selling, view.pick) {
-        (true, Some(k)) => k < sellable.len(),
+        (true, Some(k)) => k < order.len(),
         (false, Some(k)) => rows.get(k).and_then(|r| r.0).is_some_and(|i| game.gold >= game.buy_price(i)),
         _ => false,
     };
@@ -1208,7 +1221,7 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
         let k = view.pick.unwrap_or(0);
         let mut done = false;
         *message = Some(if view.selling {
-            let pack_index = sellable[k];
+            let pack_index = sellable[order[k]];
             let name = c.item(game.pack[pack_index]).name.clone();
             match game.sell(pack_index) {
                 Ok(g) => {
@@ -1218,7 +1231,7 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
                 Err(e) => trade_error(e),
             }
         } else {
-            match game.buy(k) {
+            match game.buy(order[k]) {
                 Ok(item) => {
                     done = true;
                     trf!("Bought {item}. It is in your pack.", item = c.item(item).name)
@@ -1748,6 +1761,13 @@ fn with_back(bar: Option<Screen>, view: &BuildingView) -> Option<Screen> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn market_rows_go_cheapest_first_ties_in_stock_order() {
+        assert_eq!(super::cheapest_first(&[2750, 605, 110, 495, 110]), vec![2, 4, 3, 1, 0]);
+        assert!(super::cheapest_first::<i32>(&[]).is_empty());
+    }
+
     use super::{market_switches, next_pick, offer_picture, recruit_x, screen_line, stock_caption, stock_picture};
     use razdor::rules::economy::VillageOffer;
     use razdor::rules::formation::{Formation, Row, Slot};
