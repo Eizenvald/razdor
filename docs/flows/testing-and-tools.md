@@ -54,12 +54,16 @@ xvfb-run -a -s "-screen 0 1280x800x24" target/release/razdor
   `load[:manual|auto[:<row>]]`, `map:<map>[:x,y]`, `walk:<map>:dx,dy`,
   `building:<map>:<n>[:barracks|garrison|market|sanctuary]`, `army:<map>[:<n>…]`,
   `journal:<map>`, `spells:<map>`, `menu:<map>`, `settings:<map>[:advanced]`,
-  `battle:<map>:<n>`, `custom`, `custom-battle[:watch]`, `replay:<step>` (with
-  `RAZDOR_REPLAY=<actions.jsonl>`). The full list is the module's doc comment.
+  `battle:<map>:<n>`, `save:<map>`, `victory:<map>[:<gold>]`, `defeat:<map>`, `custom`,
+  `custom-battle[:watch]`, `replay:<step>` (with `RAZDOR_REPLAY=<actions.jsonl>`). The full
+  list is the module's doc comment. A window pushed by the scene (victory, defeat, a hall
+  entry taken with `RAZDOR_SCENE_TAKE=1`) needs `RAZDOR_SCENE_QUIET` off: quiet drops every
+  dialog each frame.
 - `RAZDOR_SNAPSHOT=<png>` saves the frame after `RAZDOR_SNAPSHOT_FRAMES` (default 20) and
   quits. Helpers: `RAZDOR_MOUSE=x,y` (hover looks, tooltips), `RAZDOR_SCENE_QUIET=1` (drop
   the scenario's messages), `RAZDOR_SCENE_DEBUG=1`, `RAZDOR_SCENE_SPELLS`,
-  `RAZDOR_SCENE_POTION`, `RAZDOR_SCENE_FILTER`, `RAZDOR_SCENE_CONSOLE`.
+  `RAZDOR_SCENE_POTION`, `RAZDOR_SCENE_FILTER`, `RAZDOR_SCENE_CONSOLE`,
+  `RAZDOR_SCENE_ITEMS=<id>,…` (items in the hero's pack).
 - A map scene starts its map as a new game: later campaign maps may end at once by their
   own defeat event (nothing carried over) — not a bug.
 - Add a scene for every new window (`try_stage` in `src/ui/snapshot.rs`).

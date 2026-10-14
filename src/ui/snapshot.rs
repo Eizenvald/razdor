@@ -288,6 +288,11 @@ fn try_stage(app: &mut App, scene: &str) -> Result<(), String> {
             u.potions.extend(potion);
         }
     }
+    // `RAZDOR_SCENE_ITEMS=<id>,<id>…`: those items in the hero's pack (the army window's
+    // pack, its item hover and pick).
+    if let Ok(v) = std::env::var("RAZDOR_SCENE_ITEMS") {
+        game.pack.extend(v.split(',').filter_map(|p| p.trim().parse::<u32>().ok()).map(razdor::rules::content::ItemId));
+    }
     // `RAZDOR_SCENE_DEBUG=1`: the map's debug overlay (F3) on.
     if std::env::var("RAZDOR_SCENE_DEBUG").is_ok_and(|v| !v.is_empty()) {
         app.map_view.debug = true;
@@ -347,6 +352,15 @@ fn try_stage(app: &mut App, scene: &str) -> Result<(), String> {
             let row = parts.next().and_then(|p| p.parse().ok());
             if tab == razdor::rules::town::Tab::MainHall {
                 view.hall_pick = row;
+                // `RAZDOR_SCENE_TAKE=1`: that row taken («Взять задание»), its windows shown.
+                if std::env::var_os("RAZDOR_SCENE_TAKE").is_some() {
+                    if let Some(id) = row.and_then(|r| game.hall_here().get(r).copied()) {
+                        let events = game.take_hall_entry(id).map_err(|e| format!("{e:?}"))?;
+                        let mut message = None;
+                        super::world_view::handle_events(&mut game, events, &mut message, &mut app.dialogs);
+                        view.hall_pick = None;
+                    }
+                }
             } else {
                 view.pick = row;
             }
@@ -381,6 +395,28 @@ fn try_stage(app: &mut App, scene: &str) -> Result<(), String> {
             Screen::Spellbook { selected: 0 }
         }
         "menu" => Screen::Menu(false),
+        "save" => {
+            // `save:<map>`: the save window over the map (the bar's save button).
+            Screen::Save(super::saves::SaveView::new(&game, Back::Map))
+        }
+        "victory" => {
+            // `victory:<map>[:<gold>]`: the report after a won battle over the map
+            // (Dialog::victory), the map's first army beaten, `gold` won (default 160).
+            let gold = arg.and_then(|a| a.parse::<i32>().ok()).unwrap_or(160);
+            let name = game.world.armies.first().map(|a| a.name.clone()).unwrap_or_default();
+            let result = razdor::rules::game::BattleResult::Victory {
+                reward: gold,
+                mana: 0,
+                lost: 0,
+                loot: Vec::new(),
+                left_behind: 0,
+                level_ups: Vec::new(),
+                captured: None,
+                over: razdor::rules::game::Beat::Army(name),
+            };
+            app.dialogs.extend(super::dialog::Dialog::victory(&game, &result));
+            Screen::WorldMap
+        }
         "defeat" => {
             // `defeat:<map>`: the report after a lost battle over the map (Dialog::defeat).
             app.dialogs.push_back(super::dialog::Dialog::defeat());

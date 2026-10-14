@@ -8,6 +8,22 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
 
 ## Open
 
+- **UI audit round 2: still to compare** (2026-10-14). Original-only shots with no Razdor scene
+  yet (`/mnt/ai_models/razdor-scratch/audit/index.md`): village question and its item reward
+  (63, 64), quest taken (58), market bought (61), map hover on an enemy after walking (28, 29),
+  barracks recruit hover (52, the pointer missed the recruit), mid-battle turns (83, 84),
+  second battle start (86), new game / new hero selections (09, 11, 12), credits later (06b).
+- **Save window's slots** (2026-10-14). The original's save window shows 12 fixed rows,
+  «(сохранить заново)» in blue for the empty ones; Razdor lists its own named saves with a new
+  entry on top. Decide whether Razdor keeps its save model (its saves are per file, not 12
+  slots) or draws the original's 12 rows over it.
+- **Victory window ~6 px lower** (2026-10-14). At 1024×768 the original's «Победа над врагом!»
+  window's top is at y ≈ 187, Razdor's at ≈ 193 (the event window's layout from 1866ec2).
+- **dt-original: round 2 of the UI audit** (2026-10-14). The resource captions from
+  `[Event] Resource0..3` in the event window's face and green (dialog.rs `resource_word`), the
+  load and save windows centred over the map (saves.rs `book_top`) and the question's Yes/No at
+  0.24 W / 0.76 W (dialog.rs `question_buttons_x`) are parity; port them to dt-original.
+
 - **dt-original: the hero window and group 4** (2026-10-14). main bdc0c96 (the bar's flag opens
   the original's hero window, map tooltips centred on the mouse, the spell book's empty cells,
   the red Dismiss buttons, the 300 ms hint fade) is parity but was not cherry-picked: it

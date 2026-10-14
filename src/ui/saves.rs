@@ -288,6 +288,16 @@ fn own(section: &str, key: &str, ours: &'static str) -> String {
     t.unwrap_or_else(|| tr(ours).to_string())
 }
 
+/// The top of the load or save window of height `h` on a screen `sh` tall with a bottom bar
+/// `bar` tall: over the map centred over the view above the bar, else at the video's y 190.
+fn book_top(sh: f32, bar: f32, h: f32, k: f32, over_map: bool) -> f32 {
+    if over_map {
+        ((sh - bar - h) / 2.0).max(0.0)
+    } else {
+        (190.0 * k).min(sh - h)
+    }
+}
+
 /// Layout of the book window: the video's load window (18:12), 594×482 pixels of the
 /// 960×720 frame, scaled by `chrome::k`.
 struct Book {
@@ -300,11 +310,14 @@ impl Book {
     const H: f32 = 482.0;
     const ROWS: usize = 12;
 
-    fn at(title: &str) -> (Book, bool) {
+    fn at(title: &str, over_map: bool) -> (Book, bool) {
         let k = super::chrome::k();
         let (w, h) = (Book::W * k, Book::H * k);
-        // The video's window stands low (y 190 of 720), clear of the menu's logo.
-        let win = Rect::new((screen_width() - w) / 2.0, (190.0 * k).min(screen_height() - h), w, h);
+        // Over the menu the video's window stands low (y 190 of 720), clear of the logo; over
+        // the map the original centres it over the view above the bottom bar, as its other
+        // map windows (its in-game load and save at y 104 of 768).
+        let y = book_top(screen_height(), super::chrome::bar_height(), h, k, over_map);
+        let win = Rect::new((screen_width() - w) / 2.0, y, w, h);
         let (_, closed) = super::chrome::window(win, title, super::chrome::Skin::Marble, true);
         (Book { win, k }, closed)
     }
@@ -449,7 +462,7 @@ impl Book {
 /// anew)"; a click on a save takes its name to replace it, typing edits the name.
 pub fn save_screen(game: &Game, assets: &Assets, view: &mut SaveView, message: &mut Option<String>) -> Option<Screen> {
     world_view::backdrop(game, assets);
-    let (book, closed) = Book::at(&own("SaveGame", "Title", n_("Save the game")));
+    let (book, closed) = Book::at(&own("SaveGame", "Title", n_("Save the game")), true);
     book.page(&own("SaveGame", "GameName", n_("Name of the saved game")), &own("SaveGame", "ScenarioName", n_("Name of the scenario")));
     while let Some(c) = get_char_pressed() {
         if !c.is_control() && view.name.chars().count() < 60 {
@@ -511,7 +524,7 @@ pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pe
         Some(g) if view.back != Back::Title => world_view::backdrop(g, assets),
         _ => super::main_menu::backdrop(),
     }
-    let (book, closed) = Book::at(&own("LoadGame", "Title", n_("Load a saved game")));
+    let (book, closed) = Book::at(&own("LoadGame", "Title", n_("Load a saved game")), game.is_some() && view.back != Back::Title);
     book.page(&own("LoadGame", "GameName", n_("Name of the saved game")), &own("LoadGame", "ScenarioName", n_("Name of the scenario")));
     fill_metas(&mut view.entries, &mut view.asked, &mut view.settled, view.scroll, Some(&mut view.selected));
     let rows: Vec<Row> = view.entries.iter().map(row_of).collect();
@@ -886,6 +899,15 @@ fn question_box(title: &str, text: &str, marked: bool) -> Option<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn over_the_map_the_book_stands_centred_over_the_view() {
+        // 1024×768 with the 86 px bar: the original's in-game load and save stand at y ~104.
+        let top = book_top(768.0, 86.0, 482.0 * 1.0667, 1.0667, true);
+        assert!((top - 84.0).abs() < 25.0, "{top}");
+        // Over the menu: the video's y 190.
+        assert_eq!(book_top(768.0, 86.0, 482.0, 1.0, false), 190.0);
+    }
 
     #[test]
     fn a_loaded_map_games_row_width_holds_for_the_session() {

@@ -148,10 +148,10 @@ impl Dialog {
         d.chord = true;
         d.text.push(tr("The report shows your gold, the daily income of your castles and the wages paid to your army.").into());
         d.resources = vec![
-            (Resource::Gold, format!("{} = {}", tr("Gold"), r.gold)),
-            (Resource::Mana, format!("{} = {}", tr("Mana"), r.mana_total)),
-            (Resource::Income, trf!("Income + {n}", n = r.income)),
-            (Resource::Wages, trf!("Wages - {n}", n = r.wages)),
+            (Resource::Gold, format!("{} = {}", resource_word(Resource::Gold), r.gold)),
+            (Resource::Mana, format!("{} = {}", resource_word(Resource::Mana), r.mana_total)),
+            (Resource::Income, format!("{} + {}", resource_word(Resource::Income), r.income)),
+            (Resource::Wages, format!("{} - {}", resource_word(Resource::Wages), r.wages)),
         ];
         // The original warns when the gold and the income do not cover the wages (0x4a9b75).
         if r.gold + r.income < r.wages {
@@ -203,12 +203,12 @@ impl Dialog {
         let mut d = Dialog::new(ini("VictoryTitle", razdor::i18n::n_("Victory over the enemy!")));
         d.chord = true;
         d.marked = Some(victory_markup(over, *reward, loot.len(), *mana, &ini));
-        d.resources.push((Resource::Gold, trf!("Gold + {reward}", reward)));
+        d.resources.push((Resource::Gold, format!("{} + {reward}", resource_word(Resource::Gold))));
         if *mana > 0 {
-            d.resources.push((Resource::Mana, trf!("Mana + {mana}", mana)));
+            d.resources.push((Resource::Mana, format!("{} + {mana}", resource_word(Resource::Mana))));
         }
         if captured.is_some() {
-            d.resources.push((Resource::Income, trf!("Income + {n}", n = game.daily_income())));
+            d.resources.push((Resource::Income, format!("{} + {}", resource_word(Resource::Income), game.daily_income())));
         }
         d.items = loot.clone();
         if *left_behind > 0 {
@@ -216,6 +216,26 @@ impl Dialog {
         }
         Some(d)
     }
+}
+
+/// The left edges of a question's Yes and No buttons `bw` wide in a window at `x`, `w` wide:
+/// centred at 0.24 and 0.76 of its width, as the original's.
+pub fn question_buttons_x(x: f32, w: f32, bw: f32) -> (f32, f32) {
+    (x + w * 0.24 - bw / 2.0, x + w * 0.76 - bw / 2.0)
+}
+
+/// A resource's word in the event window's captions, from the install's `[Event]
+/// Resource0..3` (Деньги, Магия, Доход, Выплата), as the original labels «Деньги + 160»;
+/// Razdor's own word in English or without the install's text.
+pub fn resource_word(r: Resource) -> String {
+    let (key, ours) = match r {
+        Resource::Gold => ("Resource0", razdor::i18n::n_("Gold")),
+        Resource::Mana => ("Resource1", razdor::i18n::n_("Mana")),
+        Resource::Income => ("Resource2", razdor::i18n::n_("Income")),
+        Resource::Wages => ("Resource3", razdor::i18n::n_("Wages")),
+        Resource::Experience => return tr("Experience").to_string(),
+    };
+    super::chrome::ui_text("Event", key).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru).unwrap_or_else(|| tr(ours).to_string())
 }
 
 /// The victory report's text as the original builds it (0x4a9d88), each line centred: a
@@ -496,8 +516,9 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
         let step = (w - 60.0 * o) / n;
         for (k, (r, label)) in d.resources.iter().enumerate() {
             let cx = x + 30.0 * o + step * (k as f32 + 0.5);
-            let c = if *r == Resource::Mana { MANA } else { Color::new(0.7, 0.92, 0.75, 1.0) };
-            chrome::shadow_centered(label, cx, cy + 18.0 * o, size, c);
+            // The original's caption face and green, the mana's in its blue (0x4a8ae8).
+            let c = if *r == Resource::Mana { MANA } else { CAPTION };
+            super::dt_font::with_original_face(super::dt_font::Face::Subtitle, || chrome::shadow_centered(label, cx, cy + 18.0 * o, size, c));
             resource_icon(*r, cx, cy + 62.0 * o, 70.0 * o);
         }
         cy += res_h;
@@ -508,7 +529,7 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
     let spread = |n: usize, i: usize| x + w * (i + 1) as f32 / (n + 1) as f32;
     let caption = |key: &str, ours: &'static str, cy: f32| {
         let t = chrome::ui_text("Event", key).filter(|_| razdor::i18n::lang() == razdor::i18n::Lang::Ru).unwrap_or_else(|| tr(ours).to_string());
-        chrome::shadow_centered(&t, x + w / 2.0, cy + 18.0 * o, size, CAPTION);
+        super::dt_font::with_original_face(super::dt_font::Face::Subtitle, || chrome::shadow_centered(&t, x + w / 2.0, cy + 18.0 * o, size, CAPTION));
     };
     let mut icons: Vec<(bool, u32, Rect)> = Vec::new();
     if !d.spells.is_empty() {
@@ -571,8 +592,11 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
     }
     if d.question {
         let answer = answer_key();
-        let yes = button(x + w / 2.0 - bw - 10.0 * o, by, bw, bh, tr("Yes"), true) || answer == Some(true);
-        let no = button(x + w / 2.0 + 10.0 * o, by, bw, bh, tr("No"), true) || answer == Some(false);
+        // Yes at a quarter of the window, No at three quarters (the original's question,
+        // measured on its «Просьба торговца»: centres at 0.24 W and 0.76 W).
+        let (yes_x, no_x) = question_buttons_x(x, w, bw);
+        let yes = button(yes_x, by, bw, bh, tr("Yes"), true) || answer == Some(true);
+        let no = button(no_x, by, bw, bh, tr("No"), true) || answer == Some(false);
         return if yes {
             Some(Close::Yes)
         } else if no {
@@ -685,6 +709,16 @@ fn draw_village_event(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The original's question at 1024×768 (window 634 wide at x 195): Да centred near 345,
+    /// Нет near 677; the captions «Деньги»… come from `[Event] Resource0..3`.
+    #[test]
+    fn a_question_s_buttons_stand_at_a_quarter_and_three_quarters() {
+        let (yes, no) = question_buttons_x(195.0, 634.0, 95.0);
+        assert!(((yes + 47.5) - 347.0).abs() < 4.0, "{yes}");
+        assert!(((no + 47.5) - 677.0).abs() < 4.0, "{no}");
+        assert_eq!(resource_word(Resource::Experience), tr("Experience"));
+    }
 
     /// The won battle's report (0x4a9d88): the beaten one's line in white, then each prize's
     /// line after an empty row, mana in the blue tint; "nothing" only when nothing was won.
