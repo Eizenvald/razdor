@@ -59,10 +59,17 @@ pub fn event_dialog(game: &Game, id: EventId, asking: bool) -> Dialog {
     // The original fills in `#HERONAME` (0x471f0c) and reads the result as markup (0x48e438:
     // lines at CR LF or `#\`, the marks `*` `|` `@` `^`); the CR is kept for that.
     d.marked = Some(body.replace("#HERONAME", &game.hero_name()));
+    // The defeat look (the event window's mode 2, 0x4a8ae8): a title holding `#DEFEAT`, or
+    // the map's defeat event. It changes the frame and the music, it does not end the game.
+    d.defeat = e.title.contains("#DEFEAT") || game.script().is_some_and(|s| s.is_defeat_event(id));
     let r = &e.results;
     d.picture = match (&e.custom_picture, r.picture) {
         (Some(data), _) if custom_picture(data).is_some() => custom_picture(data).map(Picture::Image),
-        (_, 0 | PICTURE_DEFEAT | PICTURE_VICTORY) => None,
+        // 200 and 201: the defeat and victory pictures, `Stnd-1` and `Stnd-2` (the table
+        // 0x674638 + 4·v, loaded at 0x4dc871 / 0x4dc880; 0x4aa105).
+        (_, PICTURE_DEFEAT) => super::chrome::win_ugs("Stnd-1").map(Picture::Still),
+        (_, PICTURE_VICTORY) => super::chrome::win_ugs("Stnd-2").map(Picture::Still),
+        (_, 0) => None,
         (_, u) => game.content.try_unit(UnitId(u as u32)).map(|_| Picture::Unit(UnitId(u as u32))),
     };
     if asking {
@@ -281,7 +288,7 @@ pub fn journal(game: &Game, assets: &super::assets::Assets, view: &mut JournalVi
     let box_ink = Color::new(1.0, 0.86, 0.58, 1.0);
     match rows.get(view.selected) {
         Some(row) => {
-            text_centered(&row.title, tx + tw / 2.0, ly + 32.0, 21.0, box_ink);
+            super::typography::Role::Name.with(|| text_centered(&ellipsize(&row.title, tw - 40.0, 21.0), tx + tw / 2.0, ly + 32.0, 21.0, box_ink));
             let mut sub = row.date.map_or_else(|| tr("Date unknown").to_string(), |d| d.label());
             if view.tab == Tab::Completed {
                 sub = format!("{}: {sub}", tr(QUEST_COMPLETED));
@@ -302,7 +309,8 @@ pub fn journal(game: &Game, assets: &super::assets::Assets, view: &mut JournalVi
                 })
                 .collect();
             let (top, bottom) = (ly + 88.0, ly + lh - 14.0);
-            let shown = (((bottom - top) / 22.0).floor() as usize).max(1);
+            let text_lh = super::typography::Role::Body.line_height(22.0);
+            let shown = (((bottom - top) / text_lh).floor() as usize).max(1);
             if mouse_in(tx, ly, tw, lh) {
                 let wh = wheel();
                 if wh < 0.0 && view.text_scroll + shown < lines.len() {
@@ -321,7 +329,7 @@ pub fn journal(game: &Game, assets: &super::assets::Assets, view: &mut JournalVi
             // Razdor's scrollbar right of the text when it does not all fit.
             scrollbar(Rect::new(tx + tw - 16.0, top - 18.0, 12.0, bottom - top + 18.0), &mut view.text_scroll, shown, lines.len());
             for (i, line) in lines.iter().skip(view.text_scroll).take(shown).enumerate() {
-                text(line, tx + 20.0, top + i as f32 * 22.0, 18.0, box_ink);
+                text(line, tx + 20.0, top + i as f32 * text_lh, 18.0, box_ink);
             }
             if lines.len() > shown {
                 let more = trf!("{first}–{last} of {total} lines (wheel, PgUp / PgDn)", first = view.text_scroll + 1, last = (view.text_scroll + shown).min(lines.len()), total = lines.len());

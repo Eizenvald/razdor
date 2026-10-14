@@ -12,9 +12,8 @@ use std::sync::Arc;
 use macroquad::prelude::*;
 
 use razdor::i18n::{self, n_, tr, Lang};
-use razdor::rules::content::{Content, HeroClass, UnitId};
+use razdor::rules::content::{Content, HeroClass};
 use razdor::rules::game::Game;
-use razdor::trf;
 
 use super::assets::Assets;
 use super::audio::{cue, Cue};
@@ -28,6 +27,8 @@ thread_local! {
     /// at k = 1, and the hero picked.
     static PICKED: Cell<usize> = const { Cell::new(0) };
     static SCROLL: Cell<f32> = const { Cell::new(0.0) };
+    /// Long scenario descriptions scroll without changing their font size.
+    static DESCRIPTION_SCROLL: Cell<(usize, usize)> = const { Cell::new((usize::MAX, 0)) };
     static HERO: Cell<usize> = const { Cell::new(0) };
     /// Whether the hero window is open (its class was set on opening).
     static HERO_OPEN: Cell<bool> = const { Cell::new(false) };
@@ -259,18 +260,26 @@ pub fn scenario_select(scenarios: &[ScenarioEntry], has_install: bool) -> Option
             draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.1, 0.15, 0.45, 0.35));
         }
         let e = &scenarios[g.first];
+        let chapters = listed_chapters(scenarios, g);
         let head = Rect::new(r.x, r.y, r.w, head_h - 2.0 * k);
         scenario_icon(e.scenario.header.scenario_picture_index, vec2(head.x + 14.0 * k, head.y + head.h / 2.0), 26.0 * k);
         let name = group_name(scenarios, g);
+        let name_ink = if e.scenario.header.scenario_picture_index == 5 {
+            super::typography::Ink::Green.color()
+        } else if !chapters.is_empty() {
+            super::typography::Ink::Yellow.color()
+        } else {
+            super::typography::Ink::Blue.color()
+        };
         with_face(Face::Subtitle, || {
             let size = fit_size(name, r.w - 40.0 * k, 15.0 * k);
-            chrome::shadow_text(&ellipsize(name, r.w - 40.0 * k, size), head.x + 32.0 * k, head.y + head.h * 0.5 + size * 0.36, size, CREAM);
+            chrome::shadow_text(&ellipsize(name, r.w - 40.0 * k, size), head.x + 32.0 * k, head.y + head.h * 0.5 + size * 0.36, size, name_ink);
         });
         let small = 12.0 * k;
-        for (n, &c) in listed_chapters(scenarios, g).iter().enumerate() {
+        with_face(Face::Body, || for (n, &c) in chapters.iter().enumerate() {
             let cy = r.y + head_h + n as f32 * chapter_h + chapter_h * 0.5 + small * 0.36;
-            chrome::shadow_text(&ellipsize(title(&scenarios[c]), r.w - 60.0 * k, small), r.x + 52.0 * k, cy, small, CREAM);
-        }
+            chrome::shadow_text(&ellipsize(title(&scenarios[c]), r.w - 60.0 * k, small), r.x + 52.0 * k, cy, small, super::typography::Ink::Orange.color());
+        });
         // A row is picked silently (the original's list makes no sound).
         if pressed {
             if row == picked {
@@ -338,13 +347,32 @@ pub fn scenario_select(scenarios: &[ScenarioEntry], has_install: bool) -> Option
         let desc = Rect::new(frame.x, y + 6.0 * k, frame.w, (bottom - y - 6.0 * k).max(0.0));
         chrome::text_box(desc);
         let small = 12.0 * k;
-        for (n, line) in wrap(&e.scenario.description, desc.w - 16.0 * k, small).iter().enumerate() {
-            let ly = desc.y + 16.0 * k + n as f32 * 14.0 * k;
-            if ly > desc.y + desc.h - 4.0 * k {
-                break;
+        with_face(Face::Bold, || {
+            let line_h = super::typography::Role::Bold.line_height(14.0 * k);
+            let visible = ((desc.h - 8.0 * k) / line_h).floor().max(0.0) as usize;
+            let mut lines = wrap(&e.scenario.description, desc.w - 16.0 * k, small);
+            if lines.len() > visible {
+                lines = wrap(&e.scenario.description, desc.w - 32.0 * k, small);
             }
-            chrome::shadow_text(line, desc.x + 8.0 * k, ly, small, CREAM);
-        }
+            let mut scroll = DESCRIPTION_SCROLL.with(|s| { let (of, at) = s.get(); if of == i { at } else { 0 } });
+            let last = lines.len().saturating_sub(visible);
+            if mouse_in(desc.x, desc.y, desc.w, desc.h) {
+                let delta = wheel();
+                if delta < 0.0 { scroll = (scroll + 1).min(last); }
+                if delta > 0.0 { scroll = scroll.saturating_sub(1); }
+            }
+            scroll = scroll.min(last);
+            if last > 0 {
+                scrollbar(Rect::new(desc.right() - 14.0 * k, desc.y + 4.0 * k, 10.0 * k, desc.h - 8.0 * k), &mut scroll, visible, lines.len());
+            }
+            DESCRIPTION_SCROLL.with(|s| s.set((i, scroll)));
+            let count = lines.len().min(visible);
+            let first_y = desc.center().y + super::typography::Role::Bold.size(small) * 0.36 - (count.saturating_sub(1) as f32 * line_h) / 2.0;
+            let cx = desc.center().x - if last > 0 { 7.0 * k } else { 0.0 };
+            for (n, line) in lines.iter().skip(scroll).take(count).enumerate() {
+                chrome::shadow_centered(line, cx, first_y + n as f32 * line_h, small, super::typography::Ink::Orange.color());
+            }
+        });
     }
     let can = !list.is_empty();
     if (win.button(369.0, 116.0, &own("Buttons", "Next", n_("Next")), can) || (can && key(KeyCode::Enter))) && next.is_none() {
@@ -433,7 +461,10 @@ pub fn class_select(game: &mut Option<Game>, demo: &Arc<Content>, scenario: Opti
     }
     let (e, content) = scenario.expect("checked");
     super::main_menu::backdrop();
-    let (win, closed) = Win::open(&own("NewHero", "Title", n_("The hero's starting characteristics")));
+    let scale = chrome::k();
+    let r = Rect::new((screen_width() - 632.0 * scale) / 2.0, (202.0 * scale).min(screen_height() - 516.0 * scale), 632.0 * scale, 516.0 * scale);
+    let (_, closed) = chrome::window(r, &own("NewHero", "Title", n_("The hero's starting characteristics")), chrome::Skin::Marble, true);
+    let win = Win { r, k: scale };
     let k = win.k;
     // As the original (0x4c1804, 0x4743c8): only a class whose preset has a start cell is
     // offered; the window opens on the first one, or is not opened at all when there is
@@ -450,26 +481,24 @@ pub fn class_select(game: &mut Option<Game>, demo: &Arc<Content>, scenario: Opti
     let mut pick = HERO.with(|h| h.get()).min(2);
     // The three heroes.
     for (i, hero) in HeroClass::ALL.into_iter().enumerate() {
-        let r = win.rect(27.0 + i as f32 * 185.0, 38.0, 170.0, 150.0);
+        let r = win.rect(38.0 + i as f32 * 197.0, 42.0, 160.0, 160.0);
         let (hover, down, pressed) = button_state(r, offered[i]);
-        draw_rectangle(r.x + 3.0 * k, r.y + 3.0 * k, r.w, r.h, Color::new(0.0, 0.0, 0.0, 0.5));
+        let tint = if !offered[i] {
+            Color::new(1.0, 0.24, 0.10, 1.0)
+        } else if i == pick {
+            WHITE
+        } else {
+            Color::new(0.22, 0.58, 1.0, 1.0)
+        };
         match chrome::win(["Hero0", "hero1", "hero2"][i]) {
-            Some(t) => chrome::tex_src(&t, Rect::new(0.0, (t.height() - t.height() * 150.0 / 170.0) / 2.0, t.width(), t.height() * 150.0 / 170.0), r, WHITE),
+            Some(t) => chrome::tex(&t, r, tint),
             None => assets.draw_portrait(hero.unit(), razdor::rules::battle::Team::Player, r),
         }
-        if !offered[i] {
-            draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.0, 0.0, 0.0, 0.6));
+        chrome::silver_frame(r, 1.0);
+        if down || (hover && i != pick) { draw_rectangle_lines(r.x, r.y, r.w, r.h, k, chrome::SILVER); }
+        if i != pick {
+            if let Some(t) = chrome::win("nameframe") { chrome::tex(&t, win.rect(38.0 + i as f32 * 197.0, 207.0, 160.0, 22.0), WHITE); }
         }
-        if i == pick {
-            chrome::glow_frame(r, Color::new(0.35, 1.0, 0.35, 1.0), true);
-        } else if down {
-            chrome::glow_frame(r, Color::new(0.8, 0.65, 0.3, 1.0), false);
-        } else if hover {
-            chrome::glow_frame(r, Color::new(0.35, 0.55, 1.0, 0.9), false);
-        }
-        let name = &content.unit(hero.unit()).name;
-        let ink = if i == pick { GOLD } else if offered[i] { CREAM } else { Color::new(0.5, 0.48, 0.44, 1.0) };
-        with_face(Face::Subtitle, || chrome::shadow_centered(name, r.center().x, r.y + r.h + 18.0 * k, 16.0 * k, ink));
         if pressed {
             // Choosing another class plays the menu press (interface.md §14); the class
             // already picked, nothing.
@@ -488,82 +517,98 @@ pub fn class_select(game: &mut Option<Game>, demo: &Arc<Content>, scenario: Opti
         screens::edit_name(&mut n);
         n.clone()
     });
-    // The name plate (`nameframe`, 162×22, silver): the name in dark ink on it.
-    let field = win.rect(172.0, 212.0, 250.0, 250.0 * 22.0 / 162.0);
+    let field = win.rect(38.0 + pick as f32 * 197.0, 207.0, 160.0, 22.0);
+    draw_rectangle(field.x, field.y, field.w, field.h, BLACK);
+    chrome::silver_frame(field, 1.0);
     let caret = if (get_time() * 2.0) as i64 % 2 == 0 { "|" } else { "" };
     let shown = format!("{name}{caret}");
-    let size = 14.0 * k;
-    match chrome::win("nameframe") {
-        Some(t) => {
-            chrome::tex(&t, field, WHITE);
-            let ink = Color::new(0.05, 0.04, 0.03, 1.0);
-            with_face(Face::Bold, || {
-                let w = measure(&shown, size).width;
-                let (x, y) = (field.center().x - w / 2.0, field.y + field.h * 0.5 + size * 0.36);
-                // A light halo keeps the ink readable on the chain.
-                for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
-                    text(&shown, x + dx * k, y + dy * k, size, Color::new(0.92, 0.92, 0.95, 0.9));
-                }
-                text(&shown, x, y, size, ink);
-            });
-        }
-        None => {
-            chrome::text_box(field);
-            chrome::shadow_centered(&shown, field.center().x, field.y + field.h * 0.5 + size * 0.36, size, CREAM);
-        }
-    }
-    // The book: the hero on the left page, his bonus and what the map gives him on the right.
-    let book = win.rect(15.0, 250.0, 564.0, 186.0);
+    with_face(Face::Subtitle, || {
+        let size = super::typography::Role::Name.size(16.0 * k);
+        chrome::shadow_centered(&ellipsize(&shown, field.w - 8.0 * k, size), field.center().x, field.center().y + size * 0.36, size, super::typography::Ink::Yellow.color());
+    });
+    let book = win.rect(18.0, 240.0, 596.0, 210.0);
     match chrome::win("NewHero_Paper") {
         Some(t) => chrome::tex(&t, book, WHITE),
         None => chrome::text_box(book),
     }
     let n = pick + 1;
     let small = 12.0 * k;
-    let page_w = book.w / 2.0 - 44.0 * k;
-    let (left, right) = (book.x + 26.0 * k, book.x + book.w / 2.0 + 18.0 * k);
+    let page_w = 260.0 * k;
+    let (left, right) = (book.x + 28.0 * k, book.x + 314.0 * k);
     let ours = [
         n_("A veteran of many cruel battles, the Knight has superb experience of war. Under the Church's protection he can withstand hostile spells."),
         n_("The Archmage can call on the mighty forces of the world that ordinary people cannot command. In battle he binds the enemy."),
         n_("The Ranger is a fast and accurate shot who finds his way anywhere. Watching nature, he has learnt the secrets of healing wounds fast."),
     ];
     let descript = own("NewHero", &format!("Descript{n}"), ours[pick]);
-    for (j, line) in wrap(&descript, page_w, small).iter().take(9).enumerate() {
-        chrome::shadow_text(line, left, book.y + 28.0 * k + j as f32 * 14.0 * k, small, CREAM);
+    with_face(Face::Subtitle, || chrome::shadow_centered(&content.unit(hero.unit()).name, left + page_w / 2.0, book.y + 40.0 * k, 16.0 * k, super::typography::Ink::Plain.color()));
+    let line_h = super::typography::Role::Body.line_height(14.0 * k);
+    let description = wrap(&descript, page_w, small);
+    for (j, line) in description.iter().take(6).enumerate() {
+        chrome::shadow_text(line, left, book.y + 56.0 * k + j as f32 * line_h, small, super::typography::Ink::Yellow.color());
     }
-    let icon = 24.0 * k;
-    chrome::trait_icon(&format!("HeroBonus{n}"), right, book.y + 18.0 * k, icon);
+    let bonus_y = book.y + 64.0 * k + description.len().min(6) as f32 * line_h;
+    chrome::trait_icon(&format!("HeroBonus{n}"), left, bonus_y - 16.0 * k, 24.0 * k);
     let bonus_ours = [
         n_("The army of this hero takes 10% less damage from enemy attacks (magic excepted)."),
         n_("The Archmage casts spells twice as fast for 50% less mana, but his army gets no bonuses."),
         n_("The army of this hero travels 20% faster, and the wounded heal 20% of their hits every day."),
     ];
     let bonus = own("NewHero", &format!("Bonus{n}"), bonus_ours[pick]);
-    let mut y = book.y + 28.0 * k;
-    for (j, line) in wrap(&bonus, page_w - icon - 6.0 * k, small).iter().take(5).enumerate() {
-        chrome::shadow_text(line, right + icon + 6.0 * k, y, small, chrome::BLUE_TEXT);
-        y = book.y + 28.0 * k + (j + 1) as f32 * 14.0 * k;
+    for (j, line) in wrap(&format!("______{bonus}"), page_w, small).iter().take(4).enumerate() {
+        chrome::shadow_text(&line.replace('_', " "), left, bonus_y + j as f32 * line_h, small, super::typography::Ink::Plain.color());
     }
-    let preset = &e.scenario.header.heroes[pick];
-    y += 8.0 * k;
-    chrome::shadow_text(&trf!("Gold: {gold}", gold = preset.gold), right, y, small, GOLD);
-    let army: Vec<String> = preset
-        .troops
-        .iter()
-        .filter(|t| t.unit != 0 && t.count > 0)
-        .filter_map(|t| content.try_unit(UnitId(t.unit as u32)).map(|u| format!("{} {}", t.count, u.name)))
-        .collect();
-    let army = if army.is_empty() { tr("alone").to_string() } else { army.join(", ") };
-    for (j, line) in wrap(&army, page_w, small).iter().take(4).enumerate() {
-        chrome::shadow_text(line, right, y + (j + 1) as f32 * 14.0 * k, small, CREAM);
+    // Level-one class preview (original 0x4c1334); labels and values have separate inks.
+    use razdor::rules::content::Stat;
+    let stats = razdor::rules::units::Stats::of_level(&content, hero.unit(), 1);
+    let mut rows = Vec::new();
+    for (key, fallback, stat) in [
+        ("SHit", n_("Hits"), Stat::Hits),
+        ("SAttackBlow", n_("Melee attack"), Stat::AttackBlow),
+        ("SDefenceBlow", n_("Melee defence"), Stat::DefenceBlow),
+        ("SAttackShot", n_("Ranged attack"), Stat::AttackShot),
+        ("SDefenceShot", n_("Ranged defence"), Stat::DefenceShot),
+        ("SMagicPower", n_("Magic power"), Stat::MagicPower),
+
+        ("SInitiative", n_("Initiative"), Stat::Initiative),
+        ("SManevres", n_("Actions"), Stat::Manevres),
+    ] {
+        if stats[stat] != 0 { rows.push((own("Skills", key, fallback), if stat == Stat::ProtectLife { format!("{}%", stats[stat]) } else { stats[stat].to_string() })); }
     }
-    if win.button(369.0, 116.0, &own("NewHero", "Start", n_("Start")), true) || key(KeyCode::Enter) {
+    let protections = [Stat::ProtectLife, Stat::ProtectElemental, Stat::ProtectDeath];
+    let same = protections.iter().all(|&st| stats[st] == stats[Stat::ProtectLife]);
+    let mut protection_rows = Vec::new();
+    for (key, fallback, stat) in if same {
+        vec![("SProtectAllMagic", n_("Magic immunity"), Stat::ProtectLife)]
+    } else {
+        vec![("SProtectLife", n_("Life magic protection"), Stat::ProtectLife), ("SProtectElemental", n_("Elemental magic protection"), Stat::ProtectElemental), ("SProtectDeath", n_("Death magic protection"), Stat::ProtectDeath)]
+    } {
+        if stats[stat] != 0 { protection_rows.push((own("Skills", key, fallback), format!("{}%", stats[stat]))); }
+    }
+    let at = rows.len().saturating_sub(2);
+    rows.splice(at..at, protection_rows);
+    with_face(Face::Subtitle, || {
+        let size = super::typography::Role::Name.size(16.0 * k);
+        for (j, (label, value)) in rows.iter().enumerate() {
+            let y = book.y + 50.0 * k + j as f32 * 18.0 * k;
+            chrome::shadow_text(&ellipsize(label, 225.0 * k, size), right, y, size, super::typography::Ink::Yellow.color());
+            chrome::shadow_right(value, book.right() - 24.0 * k, y, size, super::typography::Ink::Plain.color());
+        }
+    });
+    draw_line(win.r.x, win.r.y + 460.0 * k, win.r.right(), win.r.y + 460.0 * k, k, chrome::SILVER);
+    let hero_button = |x, label: &str| {
+        let r = win.rect(x, 470.0, 94.0, 34.0);
+        let (_, down, pressed) = button_state(r, true);
+        chrome::marble_button(r, label, true, down);
+        pressed
+    };
+    if hero_button(424.0, &own("NewHero", "Start", n_("Start"))) || key(KeyCode::Enter) {
         cue(Cue::Button);
         *game = Some(screens::start_game(demo, Some((e, &content)), hero, &name));
         return leave_hero_window(Screen::WorldMap);
     }
     // Back or Esc returns to the main menu, not to the scenario list (0x4c0fd4).
-    if win.button(492.0, 95.0, &own("Buttons", "Prev", n_("Back")), true) || closed || key(KeyCode::Escape) {
+    if hero_button(528.0, &own("Buttons", "Cancel", n_("Cancel"))) || closed || key(KeyCode::Escape) {
         return leave_hero_window(Screen::MainMenu);
     }
     None

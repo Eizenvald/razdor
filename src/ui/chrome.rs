@@ -41,12 +41,17 @@ pub enum Fx {
     KeyPurple,
     /// Warm red button palette, preserving the silver outer edge of the original art.
     ButtonRed,
+    /// Green and blue swapped (0x48dd40 with 1, 3, 2): the blue pill made the green one.
+    SwapGreenBlue,
+    /// Red takes green, green takes blue, blue takes red (0x48dd40 with 2, 3, 1): the green
+    /// buttons made the defeat window's red ones (0x4dba90).
+    RotateRgb,
 }
 
 struct Chrome {
     dir: PathBuf,
     /// By path, then by [`Fx`] (its index).
-    textures: HashMap<String, [Option<Option<Texture2D>>; 9]>,
+    textures: HashMap<String, [Option<Option<Texture2D>>; 11]>,
     /// By key: the tuning it was made with and the texture (`None`: its file is missing).
     visual_textures: HashMap<&'static str, ([f32; 4], Option<Texture2D>)>,
     /// The pictures of [`visual_texture`] as decoded, by path: the light and the brown paper
@@ -197,6 +202,11 @@ pub fn transform(img: &mut Image, fx: Fx) {
                 let a = lum(p) as u8;
                 p[..3].copy_from_slice(&[20, 10, 4]);
                 p[3] = a.min(p[3]);
+            }
+            Fx::SwapGreenBlue => p.swap(1, 2),
+            Fx::RotateRgb => {
+                let (r, g, b) = (p[0], p[1], p[2]);
+                p[..3].copy_from_slice(&[g, b, r]);
             }
             Fx::ShadeStrong => {
                 let a = (lum(p) * 5 / 2).min(255) as u8;
@@ -935,8 +945,12 @@ pub fn three_slice(t: &Texture2D, r: Rect, end: f32, color: Color) {
 
 /// Text with the original's dark drop shadow.
 pub fn shadow_text(s: &str, x: f32, y: f32, size: f32, color: Color) {
-    let o = (size / 14.0).clamp(1.0, 2.0);
-    text(s, x + o, y + o, size, Color::new(0.0, 0.0, 0.0, 0.75 * color.a));
+    let size = super::dt_font::native_size(super::dt_font::face(), size);
+    // From the original's sheets: their shadow sheet, 1 px down and right (4e5c9c, 4dbc26).
+    if !super::dt_font::draw_shadow(s, x, y, size, color.a) {
+        let o = (size / 14.0).clamp(1.0, 2.0);
+        text(s, x + o, y + o, size, Color::new(0.0, 0.0, 0.0, 0.75 * color.a));
+    }
     text(s, x, y, size, color);
 }
 
@@ -1200,8 +1214,8 @@ fn title_bar_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bo
     // marble (the load window, the army screen).
     // They give way to a title that would not fit between them.
     // Every window title in the titles' face (the original draws a plain one in its body font).
-    let face = super::dt_font::Face::Title;
-    let size = (16.0 * k).round();
+    let face = super::typography::Role::Title.face();
+    let size = super::typography::Role::Title.size((16.0 * k).round());
     let title_w = super::dt_font::with_face(face, || measure(title, size).width);
     let ornate = ornate && matches!(skin, Skin::Red | Skin::Marble) && r.w > 400.0 && title_w < r.w - 300.0 * k;
     if let Some(t) = win_fx("Corner-Left", Fx::KeyBlack).filter(|_| ornate) {
@@ -1210,7 +1224,9 @@ fn title_bar_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bo
         let w = t.width() * h / t.height();
         tex(&t, Rect::new(r.x + k, r.y + (r.h - h) / 2.0, w, h), tint);
         if let Some(t2) = win_fx("Corner-Right", Fx::KeyBlack) {
-            let right = r.x + r.w - w - k - if closable { r.h + 4.0 * k } else { 0.0 };
+            // Let the right ornament continue under the close box; the button is drawn
+            // later and stays visually on top of the pattern.
+            let right = r.x + r.w - w - k;
             tex(&t2, Rect::new(right, r.y + (r.h - h) / 2.0, w, h), tint);
         }
     }
@@ -1218,10 +1234,9 @@ fn title_bar_styled(r: Rect, title: &str, skin: Skin, closable: bool, ornate: bo
     let color = title_color.unwrap_or(if skin == Skin::Red { GOLD } else { CREAM });
     let room = if ornate { r.w - 300.0 * k } else { r.w - 2.0 * r.h - 8.0 * k };
     super::dt_font::with_face(face, || {
-        let mut t = title.to_string();
-        while measure(&t, size).width > room && t.chars().count() > 4 {
-            t.pop();
-        }
+        // A wide face shrinks to fit first (at most to 70%); what still does not fit is cut.
+        let size = super::widgets::fit_size(title, room, size);
+        let t = super::widgets::ellipsize(title, room, size);
         shadow_centered(&t, r.x + r.w / 2.0, r.y + r.h * 0.5 + size * 0.36, size, color);
     });
     if closable {
@@ -1270,9 +1285,14 @@ pub fn divider(r: Rect) {
 
 /// The hint of a strip, drawn directly over its parchment background.
 pub fn hint_text(r: Rect, hint: &str, color: Color) {
+    super::typography::Role::Hint.with(|| hint_text_in_face(r, hint, color));
+}
+
+fn hint_text_in_face(r: Rect, hint: &str, color: Color) {
     let room = r.w - 3.0 * r.h;
     // Smaller if it must be, then shortened with "…".
-    let size = super::widgets::fit_size(hint, room, (r.h * 0.62).round().max(11.0));
+    let native = super::dt_font::native_size(super::dt_font::Face::Body, (r.h * 0.62).round().max(11.0));
+    let size = super::widgets::fit_size(hint, room, native);
     let s = super::widgets::ellipsize(hint, room, size);
     shadow_centered(&s, r.x + r.w / 2.0, r.y + r.h * 0.5 + size * 0.36, size, color);
 }
@@ -1339,12 +1359,6 @@ pub fn unit_parchment(r: Rect) {
     if let Some(t) = win_fx("UnitFrame", Fx::Shade) {
         tex(&t, r, Color::new(1.0, 1.0, 1.0, 0.8));
     }
-    let e = 14.0 * k();
-    let dark = Color::new(0.25, 0.12, 0.02, 0.18);
-    draw_rectangle(r.x, r.y, r.w, e, dark);
-    draw_rectangle(r.x, r.y + r.h - e, r.w, e, dark);
-    draw_rectangle(r.x, r.y + e, e, r.h - 2.0 * e, dark);
-    draw_rectangle(r.x + r.w - e, r.y + e, e, r.h - 2.0 * e, dark);
     draw_rectangle_lines(r.x, r.y, r.w, r.h, 1.5, Color::new(0.75, 0.6, 0.3, 1.0));
 }
 
@@ -1387,6 +1401,21 @@ pub fn marble_button(r: Rect, label: &str, enabled: bool, hover: bool) {
 }
 
 /// The quest action uses the same marble pattern in the original's warm red palette.
+/// The event window's buttons in its defeat look: the green ones with their channels turned
+/// (red takes green: 0x4dba90 → 0x48dd40(2, 3, 1); 0x4aa263 swaps them in).
+pub fn defeat_button(r: Rect, label: &str, enabled: bool, hover: bool) {
+    let name = if r.w < 110.0 { "Btn1" } else if r.w < 145.0 { "Btn2" } else { "Btn3" };
+    let state = if hover && enabled { "Down" } else { "Up" };
+    match win_fx(&format!("{name}{state}"), Fx::RotateRgb) {
+        Some(t) if enabled => {
+            three_slice(&t, r, 14.0, WHITE);
+            button_label(r, label, enabled, hover, false);
+        }
+        _ => marble_button(r, label, enabled, hover),
+    }
+}
+
+/// The quest action uses the same button art, with the original's red enabled state.
 pub fn quest_button(r: Rect, label: &str, enabled: bool, hover: bool) {
     marble_button_tinted(r, label, enabled, hover, true);
 }
@@ -1409,17 +1438,21 @@ fn marble_button_tinted(r: Rect, label: &str, enabled: bool, hover: bool, quest_
         draw_rectangle_lines(r.x, r.y, r.w, r.h, 2.0, if enabled { SILVER } else { SILVER_DARK });
         draw_rectangle_lines(r.x + 2.0, r.y + 2.0, r.w - 4.0, r.h - 4.0, 1.0, Color::new(0.0, 0.0, 0.0, 0.5));
     }
+    button_label(r, label, enabled, hover, quest_red);
+}
+
+/// A button's label, centred, smaller if it must be to fit.
+fn button_label(r: Rect, label: &str, enabled: bool, _hover: bool, _quest_red: bool) {
     let color = if !enabled {
         Color::new(0.6, 0.6, 0.58, 1.0)
     } else {
         Color::new(1.0, 0.98, 0.94, 1.0)
     };
     // Button labels in the buttons' and names' face.
-    super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
-        let mut size: f32 = (r.h * 0.50).clamp(12.0, (22.0 * k()).max(12.0)).round();
-        while size > 11.0 && measure(label, size).width > r.w - 10.0 {
-            size -= 1.0;
-        }
+    super::typography::Role::Button.with(|| {
+        let size = super::widgets::fit_size(label, r.w - 10.0, (r.h * 0.56).clamp(12.0, (22.0 * k()).max(12.0)).round());
+        let label = super::widgets::ellipsize(label, r.w - 10.0, size);
+        let label = label.as_str();
         let d = measure(label, size);
         let x = r.x + (r.w - d.width) / 2.0;
         let y = r.y + (r.h + d.offset_y) / 2.0 - 1.0;
@@ -1457,8 +1490,10 @@ pub fn pill_button(r: Rect, label: &str, enabled: bool, green: bool) -> bool {
             draw_rectangle_lines(r.x, r.y, r.w, r.h, 1.5, if hover { GOLD } else { SILVER });
         }
     }
-    super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
+    super::typography::Role::Body.with(|| {
         let size = super::widgets::fit_size(label, r.w - 8.0, (r.h * 0.62).round().clamp(11.0, (18.0 * k()).max(11.0)));
+        let label = super::widgets::ellipsize(label, r.w - 8.0, size);
+        let label = label.as_str();
         let d = measure(label, size);
         shadow_text(label, r.x + (r.w - d.width) / 2.0, r.y + (r.h + d.offset_y) / 2.0 - 1.0, size, if enabled { WHITE } else { Color::new(0.8, 0.8, 0.8, 1.0) });
     });

@@ -34,6 +34,13 @@ pub fn keep(content: &Content, list: impl IntoIterator<Item = (usize, ItemId)>, 
 /// screen, N switches the music): they do not start a search. `found` and `of` give the count
 /// shown at its right.
 pub fn field(key: &str, query: &mut String, r: Rect, shortcuts: &[KeyCode], found: usize, of: usize) -> Reply {
+    field_with(key, query, r, shortcuts, found, of, true)
+}
+
+/// [`field`], drawn only while it is used (focused or holding a query) when `draw_idle` is
+/// false: the screen draws its own content in `r` meanwhile (the market's column titles).
+/// The keys work the same either way.
+pub fn field_with(key: &str, query: &mut String, r: Rect, shortcuts: &[KeyCode], found: usize, of: usize, draw_idle: bool) -> Reply {
     let mut reply = Reply::default();
     let ctrl = is_key_down(KeyCode::LeftControl) || is_key_down(KeyCode::RightControl);
     if !input_blocked() {
@@ -74,6 +81,9 @@ pub fn field(key: &str, query: &mut String, r: Rect, shortcuts: &[KeyCode], foun
     }
     let k = chrome::k();
     let active = has_focus(key);
+    if !draw_idle && !active && query.is_empty() {
+        return reply;
+    }
     draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.03, 0.03, 0.03, 0.75));
     draw_rectangle_lines(r.x, r.y, r.w, r.h, if active { 2.0 } else { 1.0 }, if active { ACCENT } else { chrome::SILVER_DARK });
     let size = (r.h * 0.72).round().min(16.0 * k);

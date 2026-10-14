@@ -111,18 +111,18 @@ pub fn scenario_select(scenarios: &[ScenarioEntry], has_install: bool) -> Option
     for (k, (idx, title, desc)) in entries.iter().enumerate() {
         let (c, r) = (k / per_col, k % per_col);
         let (ex, ey) = (x + c as f32 * (col_w + 20.0), top + r as f32 * (row_h + 6.0));
-        let (hover, down, pressed) = super::widgets::button_state(Rect::new(ex, ey, col_w, row_h), true);
+        let hover = mouse_in(ex, ey, col_w, row_h);
         draw_rectangle(ex, ey, col_w, row_h, PANEL);
-        draw_rectangle_lines(ex, ey, col_w, row_h, 2.0, if down { chrome::GOLD } else if hover { ACCENT } else { DIM });
+        draw_rectangle_lines(ex, ey, col_w, row_h, 2.0, if hover { ACCENT } else { DIM });
         text_fit(title, ex + 12.0, ey + 22.0, col_w - 24.0, 20.0, if idx.is_none() { ACCENT } else { INK });
         let first = wrap(desc, col_w - 24.0, 16.0).into_iter().next().unwrap_or_default();
         text(&first, ex + 12.0, ey + 42.0, 16.0, DIM);
         if hover {
             hovered = Some((*idx, desc.clone()));
-        }
-        if pressed {
-            cue(Cue::MenuPress);
-            return Some(Screen::ClassSelect { scenario: *idx });
+            if clicked() {
+                cue(Cue::MenuPress);
+                return Some(Screen::ClassSelect { scenario: *idx });
+            }
         }
     }
     if button(screen_width() - 220.0, 40.0, 180.0, 44.0, tr("Load a game"), true) {
@@ -236,9 +236,7 @@ pub fn class_select(
         if !offered[i] {
             draw_rectangle(x, y, w, h, Color::new(0.0, 0.0, 0.0, 0.6));
         }
-        let (_, down, pressed) = super::widgets::button_state(Rect::new(x, y, w, h), offered[i]);
-        if down { chrome::glow_frame(Rect::new(x, y, w, h), Color::new(0.8, 0.65, 0.3, 1.0), false); }
-        if pressed {
+        if hover && clicked() {
             cue(Cue::MenuPress);
             *game = Some(start_game(&content, scenario.as_ref().map(|(e, c)| (*e, c)), hero, &name));
             return Some(Screen::WorldMap);
@@ -267,35 +265,22 @@ fn days_played(game: &Option<Game>) -> u64 {
     game.as_ref().map_or(0, |g| g.clock.day_index().saturating_sub(g.world.start.day_index()))
 }
 
-/// The scenario's victory or defeat event, if it ended the game: its title.
-fn end_event(game: &Option<Game>) -> Option<String> {
-    let g = game.as_ref()?;
-    let id = match g.script_end()? {
-        ScriptEnd::Victory(id) | ScriptEnd::Defeat(id) => id,
-    };
-    Some(super::story::event_title(g, id))
-}
-
 /// What the defeat screen asks the app to do besides a new game.
 pub enum EndChoice {
-    /// Load this save (the newest of the same map).
     Load(std::path::PathBuf),
-    /// Start the same map again, with the same hero.
     Restart,
 }
 
 thread_local! {
-    /// The newest save of the lost game's map, looked up at most once a second: (when,
-    /// which map, the save).
+    /// The newest save for the lost game's map, refreshed at most once a second.
     static LATEST: std::cell::RefCell<Option<(f64, ScenarioRef, Option<std::path::PathBuf>)>> = const { std::cell::RefCell::new(None) };
 }
 
-/// The newest save, manual or automatic, of the map `game` was playing.
 fn latest_save(game: &Game) -> Option<std::path::PathBuf> {
     let origin = game.origin.clone()?;
     let now = get_time();
-    LATEST.with(|l| {
-        if let Some((at, of, path)) = l.borrow().as_ref() {
+    LATEST.with(|cache| {
+        if let Some((at, of, path)) = cache.borrow().as_ref() {
             if *of == origin && now - at < 1.0 {
                 return path.clone();
             }
@@ -303,17 +288,16 @@ fn latest_save(game: &Game) -> Option<std::path::PathBuf> {
         let dir = razdor::rules::save::games_dir()?;
         let newest = [razdor::rules::save::SaveKind::Manual, razdor::rules::save::SaveKind::Auto]
             .into_iter()
-            .flat_map(|k| razdor::rules::save::list(&dir, k))
-            .filter(|e| e.meta.scenario == origin)
-            .max_by_key(|e| e.meta.saved_at)
-            .map(|e| e.path);
-        *l.borrow_mut() = Some((now, origin, newest.clone()));
+            .flat_map(|kind| razdor::rules::save::list(&dir, kind))
+            .filter(|entry| entry.meta.scenario == origin)
+            .max_by_key(|entry| entry.meta.saved_at)
+            .map(|entry| entry.path);
+        *cache.borrow_mut() = Some((now, origin, newest.clone()));
         newest
     })
 }
 
-/// The original red defeat dialog over the last view of the map. Keep Razdor's three
-/// ways out of a lost game together in its footer.
+/// The red defeat report, retaining the current main's complete skull illustration.
 pub fn game_over(game: &mut Option<Game>, assets: &Assets) -> (Option<Screen>, Option<EndChoice>) {
     let days = days_played(game);
     let latest = game.as_ref().and_then(latest_save);
@@ -334,32 +318,12 @@ pub fn game_over(game: &mut Option<Game>, assets: &Assets) -> (Option<Screen>, O
     let body = Rect::new(x + 3.0 * scale, y + 29.0 * scale, w - 6.0 * scale, 191.0 * scale);
     chrome::silver_frame(body, scale.max(1.0));
     let portrait = Rect::new(x + 20.0 * scale, y + 46.0 * scale, 128.0 * scale, 128.0 * scale);
-    // The red win/defeat skin is the original backing. `Skull.lit` supplies only the skull;
-    // do not use the spell's `_Rays` layer or its circular Spell-Frame here.
-    chrome::surface(portrait, Skin::Red);
-    let skull_rect = Rect::new(portrait.x + 8.0 * scale, portrait.y + 8.0 * scale,
-        portrait.w - 16.0 * scale, portrait.h - 16.0 * scale);
-    if let Some(skull) = chrome::art("Spells/Skull.lit", chrome::Fx::KeyBlack) {
-        chrome::tex(&skull, skull_rect, WHITE);
-    } else if let Some(skull) = chrome::art("Windows/Army-Death.lit", chrome::Fx::KeyBlack) {
-        chrome::tex(&skull, skull_rect, WHITE);
-    } else {
-        chrome::shadow_centered("☠", portrait.x + portrait.w / 2.0,
-            portrait.y + 91.0 * scale, 84.0 * scale, chrome::SILVER);
-    }
-    chrome::silver_frame(portrait, 1.0 * scale);
-    // The original's ornate window corners make a square portrait frame that fits the red
-    // defeat panel. Spell-Frame is a round medallion and is intentionally not used here.
-    let corner_size = 26.0 * scale;
-    for (name, cx, cy) in [
-        ("Corner_Frame-LU", portrait.x, portrait.y),
-        ("Corner_Frame-RU", portrait.x + portrait.w - corner_size, portrait.y),
-        ("Corner_Frame-LD", portrait.x, portrait.y + portrait.h - corner_size),
-        ("Corner_Frame-RD", portrait.x + portrait.w - corner_size, portrait.y + portrait.h - corner_size),
-    ] {
-        if let Some(corner) = chrome::art(&format!("Windows/{name}.lit"), chrome::Fx::KeyBlack) {
-            chrome::tex(&corner, Rect::new(cx, cy, corner_size, corner_size), WHITE);
-        }
+    if let Some(skull) = chrome::win_ugs("Stnd-1") {
+        let fit = (portrait.w / skull.width()).min(portrait.h / skull.height());
+        let size = Vec2::new(skull.width() * fit, skull.height() * fit);
+        let dest = Rect::new(portrait.x + (portrait.w - size.x) / 2.0,
+            portrait.y + (portrait.h - size.y) / 2.0, size.x, size.y);
+        chrome::tex(&skull, dest, WHITE);
     }
     let message = Rect::new(x + 164.0 * scale, portrait.y, 516.0 * scale, portrait.h);
     chrome::text_box(message);
@@ -392,19 +356,24 @@ pub fn game_over(game: &mut Option<Game>, assets: &Assets) -> (Option<Screen>, O
             picked = Some(i);
         }
     }
-    if picked == Some(0) {
-        *game = None;
-        return (Some(Screen::MainMenu), None);
-    }
-    if picked == Some(1) {
-        if let Some(path) = latest {
-            return (None, Some(EndChoice::Load(path)));
+    match picked {
+        Some(0) => {
+            *game = None;
+            (Some(Screen::MainMenu), None)
         }
+        Some(1) => latest.map_or((None, None), |path| (None, Some(EndChoice::Load(path)))),
+        Some(2) => (None, Some(EndChoice::Restart)),
+        _ => (None, None),
     }
-    if picked == Some(2) {
-        return (None, Some(EndChoice::Restart));
-    }
-    (None, None)
+}
+
+/// The scenario's victory or defeat event, if it ended the game: its title.
+fn end_event(game: &Option<Game>) -> Option<String> {
+    let g = game.as_ref()?;
+    let id = match g.script_end()? {
+        ScriptEnd::Victory(id) | ScriptEnd::Defeat(id) => id,
+    };
+    Some(super::story::event_title(g, id))
 }
 
 /// After a campaign victory whose next map is in the install: what carries over (header

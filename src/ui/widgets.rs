@@ -12,44 +12,92 @@ thread_local! {
     /// A TrueType font with Cyrillic, for text the built-in pixel font cannot draw (the
     /// original's names and descriptions).
     static FONT: RefCell<Option<Font>> = const { RefCell::new(None) };
-    /// Sharp stand-ins for the original's bitmap faces: text, bold, titles.
-    static FACE_FONTS: RefCell<[Option<Font>; 4]> = const { RefCell::new([None, None, None, None]) };
+    /// The faces of the modern font mode: text, bold, titles, buttons and names.
+    static FACE_FONTS: RefCell<[[Option<Font>; 4]; 1]> = const { RefCell::new([[None, None, None, None]]) };
+    /// `RAZDOR_FONT*` files, which win in every mode.
+    static OWN_FONTS: RefCell<[Option<Font>; 4]> = const { RefCell::new([None, None, None, None]) };
 }
 
-/// The fonts that ship with Razdor (`data/fonts`; see
-/// `docs/superpowers/specs/2026-09-28-interface-fonts.md`): PT Sans (SIL Open Font License)
-/// for text and bold, Becker Medium (free for personal and commercial use) for titles and
-/// headings, Kurale (SIL Open Font License) for buttons and names, in place of the
-/// original's small bitmap faces. `RAZDOR_FONT`, `RAZDOR_FONT_BOLD`, `RAZDOR_FONT_TITLE` and
-/// `RAZDOR_FONT_SUBTITLE` name other files (e.g. a bought Benguiat).
-const FACE_FILES: [(&str, &[u8]); 4] = [
-    ("RAZDOR_FONT", include_bytes!("../../data/fonts/PT_Sans-Regular.ttf")),
-    ("RAZDOR_FONT_BOLD", include_bytes!("../../data/fonts/PT_Sans-Bold.ttf")),
-    ("RAZDOR_FONT_TITLE", include_bytes!("../../data/fonts/Becker-Medium.ttf")),
-    ("RAZDOR_FONT_SUBTITLE", include_bytes!("../../data/fonts/Kurale-Regular.ttf")),
+/// The fonts that ship with Razdor (`data/fonts`, licences next to them), by font mode
+/// (`dt_font::FontMode`) and face (text, bold, titles, buttons and names). The original's
+/// mode draws the install's own bitmap sheets and needs none of them.
+/// Modern: PT Serif (OFL) for text and bold, Becker Medium (free for personal and commercial
+/// use) for titles, Kurale (OFL) for buttons and names.
+const MODE_FILES: [[&[u8]; 4]; 1] = [
+    [
+        include_bytes!("../../data/fonts/PT_Serif-Regular.ttf"),
+        include_bytes!("../../data/fonts/PT_Serif-Bold.ttf"),
+        include_bytes!("../../data/fonts/Becker-Medium.ttf"),
+        include_bytes!("../../data/fonts/Kurale-Regular.ttf"),
+    ],
 ];
 
+/// Characters each mode's face lacks (checked against the Russian catalog and the install's
+/// texts), drawn as a near look-alike instead.
+const MODE_MISSING: [[&[(char, &str)]; 4]; 1] = [[&[('→', "->")], &[('→', "->")], &[], &[]]];
+
+/// `RAZDOR_FONT`, `RAZDOR_FONT_BOLD`, `RAZDOR_FONT_TITLE` and `RAZDOR_FONT_SUBTITLE` name
+/// other files (e.g. a bought Benguiat), used in every mode.
+const OWN_VARS: [&str; 4] = ["RAZDOR_FONT", "RAZDOR_FONT_BOLD", "RAZDOR_FONT_TITLE", "RAZDOR_FONT_SUBTITLE"];
+
+/// PT Sans, the font for characters the original's sheets lack and for everything when no
+/// face is set.
+const FALLBACK_FILE: &[u8] = include_bytes!("../../data/fonts/PT_Sans-Regular.ttf");
+
 pub async fn load_font() {
-    for (i, (var, bundled)) in FACE_FILES.iter().enumerate() {
+    for (i, var) in OWN_VARS.iter().enumerate() {
         let own = match std::env::var(var) {
             Ok(path) => load_ttf_font(&path).await.map_err(|e| razdor::diag!("{var}={path}: {e}")).ok(),
             Err(_) => None,
         };
-        let font = own.or_else(|| load_ttf_font_from_bytes(bundled).map_err(|e| razdor::diag!("bundled font {i}: {e}")).ok());
-        FACE_FONTS.with(|f| f.borrow_mut()[i] = font);
+        OWN_FONTS.with(|f| f.borrow_mut()[i] = own);
     }
-    // The text face doubles as the font for everything else.
-    let text = FACE_FONTS.with(|f| f.borrow()[0].clone());
+    for (m, files) in MODE_FILES.iter().enumerate() {
+        for (i, bytes) in files.iter().enumerate() {
+            let font = load_ttf_font_from_bytes(bytes).map_err(|e| razdor::diag!("bundled font {m}/{i}: {e}")).ok();
+            FACE_FONTS.with(|f| f.borrow_mut()[m][i] = font);
+        }
+    }
+    let text = OWN_FONTS.with(|f| f.borrow()[0].clone()).or_else(|| load_ttf_font_from_bytes(FALLBACK_FILE).map_err(|e| razdor::diag!("bundled fallback font: {e}")).ok());
     if text.is_none() {
         razdor::diag!("no TrueType font could be loaded; transliterating");
     }
     FONT.with(|f| *f.borrow_mut() = text);
 }
 
-/// The sharp stand-in for bitmap face `i` (0 text, 1 bold, 2 titles, 3 buttons and names),
-/// if installed.
-pub fn face_font(i: usize) -> Option<Font> {
-    FACE_FONTS.with(|f| f.borrow().get(i).cloned().flatten())
+/// The TrueType font of face `i` (0 text, 1 bold, 2 titles, 3 buttons and names) in `mode`:
+/// a `RAZDOR_FONT*` file, else the mode's bundled face; `None` in the original's mode.
+pub fn face_font(i: usize, mode: super::dt_font::FontMode) -> Option<Font> {
+    if let Some(own) = OWN_FONTS.with(|f| f.borrow().get(i).cloned().flatten()) {
+        return Some(own);
+    }
+    let m = match mode {
+        super::dt_font::FontMode::Original => return None,
+        super::dt_font::FontMode::Modern => 0,
+    };
+    FACE_FONTS.with(|f| f.borrow()[m].get(i).cloned().flatten())
+}
+
+/// How much bigger or smaller the current mode's face is drawn than the size asked for
+/// (every bundled face is drawn at the size asked for).
+fn face_scale() -> f32 {
+    1.0
+}
+
+/// `s` with the characters the current mode's face lacks replaced by look-alikes.
+fn with_missing(s: &str) -> std::borrow::Cow<'_, str> {
+    let m = match super::dt_font::mode() {
+        super::dt_font::FontMode::Original => return s.into(),
+        super::dt_font::FontMode::Modern => 0,
+    };
+    let missing = MODE_MISSING[m][super::dt_font::face().index()];
+    if !s.chars().any(|c| missing.iter().any(|(m, _)| *m == c)) {
+        return s.into();
+    }
+    s.chars()
+        .map(|c| missing.iter().find(|(m, _)| *m == c).map_or_else(|| c.to_string(), |(_, r)| r.to_string()))
+        .collect::<String>()
+        .into()
 }
 
 /// Whether a TrueType font (with Cyrillic) was found.
@@ -89,7 +137,7 @@ fn transliterate(s: &str) -> String {
 /// font for all its texts.
 fn with_font<R>(s: &str, f: impl FnOnce(Option<&Font>, &str) -> R) -> R {
     if let Some(font) = super::dt_font::current_ttf() {
-        return f(Some(&font), s);
+        return f(Some(&font), &with_missing(s));
     }
     FONT.with(|font| match font.borrow().as_ref() {
         Some(font) => f(Some(font), s),
@@ -105,11 +153,13 @@ fn ttf_size(size: f32) -> u16 {
     if n > 14 { n & !1 } else { n }
 }
 
-fn measure_ttf(s: &str, size: f32) -> TextDimensions {
+pub fn measure_ttf(s: &str, size: f32) -> TextDimensions {
+    let size = size * if super::dt_font::current_ttf().is_some() { face_scale() } else { 1.0 };
     with_font(s, |font, s| measure_text(s, font, ttf_size(size), 1.0))
 }
 
 fn text_ttf(s: &str, x: f32, y: f32, size: f32, color: Color) {
+    let size = size * if super::dt_font::current_ttf().is_some() { face_scale() } else { 1.0 };
     with_font(s, |font, s| {
         // Measuring first puts the string's new glyphs into the atlas before any is drawn:
         // macroquad sends the whole atlas to the GPU again at each draw after a glyph was
@@ -123,6 +173,7 @@ fn text_ttf(s: &str, x: f32, y: f32, size: f32, color: Color) {
 /// Size of `s`: in the original's font of the current face when the install has it
 /// (`ui::dt_font`), else in the TrueType font.
 pub fn measure(s: &str, size: f32) -> TextDimensions {
+    let size = super::dt_font::native_size(super::dt_font::face(), size);
     let bitmap = super::dt_font::with_current(|f| {
         let width = f.width(s, size, &|c| measure_ttf(c.encode_utf8(&mut [0; 4]), size).width);
         let cap = f.cap_height(size);
@@ -354,7 +405,8 @@ pub fn hint_box(lines: &[(String, Color)], w: f32) {
         return;
     }
     let k = super::chrome::k();
-    let (size, line_h) = (17.0 * k, 21.0 * k);
+    let size = super::typography::Role::Hint.size(17.0 * k);
+    let line_h = super::typography::Role::Hint.line_height(21.0 * k);
     let w = w.min(screen_width() - 8.0);
     let h = lines.len() as f32 * line_h + 14.0 * k;
     let (mx, my) = pointer();
@@ -377,11 +429,17 @@ pub fn hint_box(lines: &[(String, Color)], w: f32) {
 }
 
 fn tooltip_at_alpha(lines: &[(String, Color)], alpha: f32) {
+    super::typography::Role::Hint.with(|| tooltip_content(lines, alpha));
+}
+
+fn tooltip_content(lines: &[(String, Color)], alpha: f32) {
     if lines.is_empty() {
         return;
     }
     let w = lines.iter().map(|(s, _)| measure(s, 17.0).width).fold(0.0, f32::max) + 24.0;
-    let h = lines.len() as f32 * 21.0 + 14.0;
+    let size = super::dt_font::native_size(super::dt_font::face(), 17.0);
+    let line_h = super::dt_font::native_line_height(super::dt_font::face(), 21.0);
+    let h = lines.len() as f32 * line_h + 14.0;
     let (mx, my) = pointer();
     let x = (mx + 18.0).min(screen_width() - w - 4.0);
     let y = (my + 18.0).min(screen_height() - h - 4.0);
@@ -390,7 +448,7 @@ fn tooltip_at_alpha(lines: &[(String, Color)], alpha: f32) {
     draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.0, 0.05, 0.03, 0.2));
     super::chrome::silver_frame(r, 1.5);
     for (i, (s, c)) in lines.iter().enumerate() {
-        super::chrome::shadow_text(s, x + 12.0, y + 24.0 + i as f32 * 21.0, 17.0, *c);
+        super::chrome::shadow_text(s, x + 12.0, y + 7.0 + size * 0.8 + i as f32 * line_h, size, *c);
     }
 }
 
@@ -446,6 +504,8 @@ pub fn button_sounding(x: f32, y: f32, w: f32, h: f32, label: &str, enabled: boo
 
 /// Draws `s` with its baseline at `y` (see [`measure`] for the font).
 pub fn text(s: &str, x: f32, y: f32, size: f32, color: Color) {
+    let size = super::dt_font::native_size(super::dt_font::face(), size);
+    let color = super::typography::color(color);
     let drawn = super::dt_font::with_current(|f| {
         f.draw(s, x, y, size, color, &|c, px, py| {
             let ch = c.encode_utf8(&mut [0; 4]).to_string();
@@ -477,6 +537,9 @@ pub fn text_marked(s: &str, marked: Option<std::ops::Range<usize>>, x: f32, y: f
 /// The font size, at most `size` and not below 70% of it, at which `s` fits in `width`
 /// (Russian texts run longer than the English ones the layouts were drawn for).
 pub fn fit_size(s: &str, width: f32, size: f32) -> f32 {
+    if super::typography::fixed_size() {
+        return super::dt_font::native_size(super::dt_font::face(), size);
+    }
     let mut fit = size;
     while fit > (size * 0.7).max(9.0) && measure(s, fit).width > width {
         fit -= 1.0;
@@ -486,11 +549,13 @@ pub fn fit_size(s: &str, width: f32, size: f32) -> f32 {
 
 /// `s` shortened with "…" until it fits in `width` at `size`.
 pub fn ellipsize(s: &str, width: f32, size: f32) -> String {
+    if width <= 0.0 { return String::new(); }
     if measure(s, size).width <= width {
         return s.to_string();
     }
+    if measure("…", size).width > width { return String::new(); }
     let mut t: String = s.to_string();
-    while t.chars().count() > 1 && measure(&format!("{t}…"), size).width > width {
+    while !t.is_empty() && measure(&format!("{t}…"), size).width > width {
         t.pop();
     }
     format!("{}…", t.trim_end())
@@ -546,6 +611,11 @@ fn glyph_width(c: char, size: f32) -> f32 {
 /// The rows of `text` read as the original's markup (see [`razdor::dt::markup`]) in a box
 /// `room` wide at `size`: each line word-wrapped as TextList.AddText 0x47e46c does.
 pub fn markup_rows(text: &str, room: f32, size: f32) -> Vec<MarkupRow> {
+    // The original draws its marked texts in Benguiat's tints (0x48e438).
+    super::dt_font::with_original_face(super::dt_font::Face::Subtitle, || markup_rows_in_face(text, room, size))
+}
+
+fn markup_rows_in_face(text: &str, room: f32, size: f32) -> Vec<MarkupRow> {
     razdor::dt::markup::parse(text)
         .into_iter()
         .flat_map(|line| {
@@ -566,6 +636,10 @@ pub fn ink_color(ink: razdor::dt::markup::Ink) -> Color {
 /// (TextDrawJustified 0x478a9c) or, the last row of a justified line, left aligned. No
 /// shadow: these lists get no shadow font (0x48e1cc passes 0). `_` draws as a space.
 pub fn draw_markup_row(row: &MarkupRow, x: f32, y: f32, room: f32, size: f32) {
+    super::dt_font::with_original_face(super::dt_font::Face::Subtitle, || draw_markup_row_in_face(row, x, y, room, size));
+}
+
+fn draw_markup_row_in_face(row: &MarkupRow, x: f32, y: f32, room: f32, size: f32) {
     use razdor::dt::markup::Align;
     let color = ink_color(row.ink);
     let shown = row.text.replace('_', " ");
@@ -1091,6 +1165,36 @@ pub fn scrollbar(r: Rect, first: &mut usize, shown: usize, total: usize) -> bool
         None => draw_rectangle(knob.x, knob.y, knob.w, knob.h, chrome::SILVER),
     }
     *first != before
+}
+
+/// [`scrollbar`], drawn even when everything fits: then idle, the knob at the top and the
+/// clicks doing nothing, as the original's lists that always show their bar (the building
+/// window's quests, 0x4bedec).
+pub fn scrollbar_always(r: Rect, first: &mut usize, shown: usize, total: usize) -> bool {
+    use super::chrome;
+    if total > shown {
+        return scrollbar(r, first, shown, total);
+    }
+    let w = r.w;
+    let track = Rect::new(r.x, r.y + w, w, r.h - 2.0 * w);
+    match chrome::win("VSTexture") {
+        Some(t) => chrome::tex(&t, track, WHITE),
+        None => draw_rectangle(track.x + w / 3.0, track.y, w / 3.0, track.h, chrome::SILVER_DARK),
+    }
+    for (name, rect) in [("VArrowUp", Rect::new(r.x, r.y, w, w)), ("VArrowDown", Rect::new(r.x, r.y + r.h - w, w, w))] {
+        match chrome::win(name) {
+            Some(t) => chrome::tex(&t, rect, WHITE),
+            None => draw_rectangle(rect.x, rect.y, rect.w, rect.h, chrome::SILVER),
+        }
+    }
+    let knob_h = chrome::win("VSlider").map_or(w * 1.8, |t| w * t.height() / t.width()).min(track.h / 2.0);
+    let knob = Rect::new(track.x, track.y, w, knob_h);
+    match chrome::win("VSlider") {
+        Some(t) => chrome::tex(&t, knob, WHITE),
+        None => draw_rectangle(knob.x, knob.y, knob.w, knob.h, chrome::SILVER),
+    }
+    *first = 0;
+    false
 }
 
 /// A pixel scroll of `scroll` (of `most`, with `view` in sight) as a scrollbar's (first,

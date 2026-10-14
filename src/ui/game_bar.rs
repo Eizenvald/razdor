@@ -191,7 +191,7 @@ fn masked(name: &'static str, alpha: &str) -> Option<Texture2D> {
 }
 
 /// One time button; true when pressed (its sound plays: `InterfaceButtonDown`, §14).
-fn time_button(b: TimeButton, r: Rect, _hover: bool) -> bool {
+fn time_button(b: TimeButton, r: Rect) -> (bool, Option<String>) {
     let (hover, down, pressed) = crate::ui::widgets::button_state(r, true);
     let (up_art, down_art, alpha) = b.art();
     match masked(if down { down_art } else { up_art }, alpha) {
@@ -215,13 +215,10 @@ fn time_button(b: TimeButton, r: Rect, _hover: bool) -> bool {
             shadow_centered(label, r.x + r.w / 2.0, r.y + r.h / 2.0 + s * 0.36, s, WHITE);
         }
     }
-    if hover {
-        panel_hint(&[(b.hint(), CREAM)]);
-    }
     if pressed {
         super::audio::cue(super::audio::Cue::Button);
     }
-    pressed
+    (pressed, hover.then(|| b.hint()))
 }
 
 /// How a button looks.
@@ -250,11 +247,11 @@ fn resources(game: &Game, y: f32, h: f32) {
         (tr("income"), "Res-Income", format!("+ {}", game.daily_income()), GOLD),
         (tr("wages"), "Res-Payment", wages, Color::new(1.0, 0.62, 0.25, 1.0)),
     ];
-    let value_size = (19.0 * k).round();
-    let label_size = value_size;
+    let value_size = super::typography::Role::Name.size((19.0 * k).round());
+    let label_size = super::typography::Role::Body.size((19.0 * k).round());
     for (i, (label, art, value, color)) in items.iter().enumerate() {
         let cx = w * (0.125 + 0.25 * i as f32);
-        let lw = measure(label, label_size).width;
+        let lw = super::dt_font::with_face(super::dt_font::Face::Body, || measure(label, label_size).width);
         let base = y + h * 0.5 + value_size * 0.36;
         let label_x = cx - lw - 16.0 * k;
         let icon = 24.0 * k;
@@ -272,8 +269,10 @@ fn resources(game: &Game, y: f32, h: f32) {
                 icon,
             ),
         }
-        super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
+        super::dt_font::with_face(super::dt_font::Face::Body, || {
             shadow_text(label, label_x, base, label_size, *color);
+        });
+        super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
             shadow_text(value, cx + 16.0 * k, base, value_size, *color);
         });
     }
@@ -416,7 +415,7 @@ pub fn draw_with_time(game: &Game, look: impl Fn(BarButton) -> Look, time_button
     // The time panel.
     let ew = 370.0 * row / 64.0;
     let cx = w / 2.0;
-    let size = (13.0 * k).round();
+    let size = super::typography::Role::Bold.size((13.0 * k).round());
     // "Время:", the date, and while walking "До конца пути: 4 час" (the video's bar).
     let mut lines = vec![(tr("Time:").to_string(), Color::new(1.0, 0.93, 0.55, 1.0)), (game.clock.label(), WHITE)];
     if game.moving() {
@@ -429,8 +428,8 @@ pub fn draw_with_time(game: &Game, look: impl Fn(BarButton) -> Look, time_button
     }
     // Russian dates run longer: the lines shrink to the ribbon's middle.
     let room = (w - 2.0 * ew - 16.0 * k).max(100.0);
-    let size = lines.iter().map(|(l, _)| fit_size(l, room, size)).fold(size, f32::min);
-    let lh = size * 1.25;
+    let size = super::typography::Role::Bold.with(|| lines.iter().map(|(l, _)| fit_size(l, room, size)).fold(size, f32::min));
+    let lh = super::typography::Role::Bold.line_height(size * 1.25);
     let top = y + row / 2.0 - lh * (lines.len() as f32 - 1.0) / 2.0 + size * 0.36;
     // The message box hovered on the idle map: the three buttons stand over it, its text
     // hidden (as the original draws it).
@@ -438,17 +437,19 @@ pub fn draw_with_time(game: &Game, look: impl Fn(BarButton) -> Look, time_button
     let pointer = Vec2::from(super::widgets::pointer());
     let buttons = time_buttons && !super::widgets::input_blocked() && message_box(y, cx, s).contains(pointer);
     let mut timed = None;
+    let mut timed_hint = None;
     if buttons {
-        let hovered = time_button_at(pointer, true, y, cx, s);
         for b in TimeButton::ALL {
-            if time_button(b, time_button_rect(b, y, cx, s), hovered == Some(b)) {
+            let (clicked, hint) = time_button(b, time_button_rect(b, y, cx, s));
+            if clicked {
                 timed = Some(b);
             }
+            timed_hint = hint.or(timed_hint);
         }
     } else {
         super::dt_font::with_face(super::dt_font::Face::Bold, || {
             for (i, (l, c)) in lines.iter().enumerate() {
-                shadow_centered(l, cx, top + i as f32 * lh, size, *c);
+                shadow_centered(&super::widgets::ellipsize(l, room, size), cx, top + i as f32 * lh, size, *c);
             }
         });
     }
@@ -481,7 +482,7 @@ pub fn draw_with_time(game: &Game, look: impl Fn(BarButton) -> Look, time_button
         hovered_hint = hint.or(hovered_hint);
         // Keep the right-hand group edge-to-edge as well.
     }
-    if let Some(hint) = hovered_hint {
+    if let Some(hint) = timed_hint.or(hovered_hint) {
         panel_hint(&[(hint, CREAM)]);
     }
     (pressed, timed)

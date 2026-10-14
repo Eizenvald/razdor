@@ -633,7 +633,7 @@ pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool, ov
         (own("Options", "OptionSld1", n_("Sound effects volume")), audio.sfx_volume, false),
     ];
     for (i, (label, value, music)) in rows.into_iter().enumerate() {
-        let y = inner.y + 36.0 * k + i as f32 * 58.0 * k;
+        let y = inner.y + 36.0 * k + i as f32 * 52.0 * k;
         chrome::shadow_text(&label, inner.x + 24.0 * k, y, 14.0 * k, chrome::CREAM);
         let pct = format!("{:.0}%", value * 100.0);
         chrome::shadow_text(&pct, inner.x + inner.w - 24.0 * k - measure(&pct, 14.0 * k).width, y, 14.0 * k, chrome::GOLD);
@@ -651,7 +651,7 @@ pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool, ov
     }
     // The Community's "Скорость анимаций в битве" (`AnimationSpeed`): it caps a strike's
     // slide at (100 − S)·5 ms and its effect at (100 − S)·3 ms (0x4afd45, 0x4afe7c).
-    let y = inner.y + 36.0 * k + 2.0 * 58.0 * k;
+    let y = inner.y + 36.0 * k + 2.0 * 52.0 * k;
     let label = own("Options", "OptionSld4", n_("Battle animation speed"));
     chrome::shadow_text(&label, inner.x + 24.0 * k, y, 14.0 * k, chrome::CREAM);
     let speed = anim_speed(audio).unwrap_or(0.0);
@@ -679,7 +679,7 @@ pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool, ov
     }
     // The battle AI, as the original's "Улучшенный интеллект противника в битве": easy or
     // expert, from the install's setting until chosen here.
-    let y = inner.y + 36.0 * k + 3.0 * 58.0 * k;
+    let y = inner.y + 36.0 * k + 3.0 * 52.0 * k;
     let label = own("Options", "Option9", n_("Improved enemy AI in battle"));
     chrome::shadow_text(&label, inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
     let expert = expert_ai(audio);
@@ -690,7 +690,7 @@ pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool, ov
     }
     // The front row's width (Razdor's switch for the original's "wide front row in battle",
     // which only the install's ini set): for the games started from now on.
-    let y = y + 58.0 * k;
+    let y = y + 52.0 * k;
     chrome::shadow_text(tr("Front row in battle (new games)"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
     let wide = wide_row(audio, install_wide);
     let rr = Rect::new(ar.x, y, ar.w, ar.h);
@@ -699,19 +699,34 @@ pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool, ov
         audio.wide_row = Some(!wide);
     }
     // Windowed, borderless or full screen, set at once (`display::follow_settings`).
-    let y = y + 58.0 * k;
+    let y = y + 52.0 * k;
     chrome::shadow_text(tr("Screen (Alt+Enter)"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
     let dr = Rect::new(ar.x, y, ar.w, ar.h);
     if settings_button(dr, audio.display.label()) {
         audio.display = audio.display.next();
     }
     // The interface scale, as Minecraft's: Auto (the largest that fits) or a fixed one below it.
-    let y = y + 58.0 * k;
+    let y = y + 52.0 * k;
     chrome::shadow_text(tr("Interface scale"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
     let fit = chrome::fit_k();
     let sr = Rect::new(ar.x, y, ar.w, ar.h);
     if settings_button(sr, &super::display::scale_label(audio.ui_scale, fit)) {
         audio.ui_scale = super::display::next_scale(audio.ui_scale, fit);
+    }
+    // The interface's fonts (Razdor's choice): the original's sheets from the install, PT
+    // Serif, or the pixel faces; at once.
+    let y = y + 52.0 * k;
+    chrome::shadow_text(tr("Font"), inner.x + 24.0 * k, y + 18.0 * k, 14.0 * k, chrome::CREAM);
+    let fr = Rect::new(ar.x, y, ar.w, ar.h);
+    let font_label = match audio.font {
+        super::dt_font::FontMode::Original => tr("As in the original"),
+        super::dt_font::FontMode::Modern => tr("Modern"),
+    };
+    let over_font = fr.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
+    chrome::marble_button(fr, font_label, true, over_font);
+    if over_font && clicked() {
+        cue(Cue::Button);
+        audio.font = audio.font.next();
     }
     let ok = Rect::new(inner.x + inner.w - 120.0 * k, inner.y + inner.h - 44.0 * k, 96.0 * k, 28.0 * k);
     let ok_label = own("Buttons", "Ok", n_("OK"));

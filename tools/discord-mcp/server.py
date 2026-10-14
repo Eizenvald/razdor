@@ -324,6 +324,11 @@ def status():
     state = read_state()
     out = {"token_set": bool(ENV.get("DISCORD_BOT_TOKEN")), "posting": ENV.get("DISCORD_ALLOW_POST") == "1", "downloads": str(DOWNLOADS), "state_file": str(STATE)}
     try:
+        me = get("/users/@me")
+        out["bot"] = me.get("username")
+    except Fail as e:
+        out["token_error"] = str(e)
+    try:
         cid = channel_id()
         ch = get(f"/channels/{cid}")
         out.update({"channel": cid, "name": ch.get("name"), "guild": ch.get("guild_id"), "cursor": state.get(cid)})
@@ -373,6 +378,10 @@ def tool_list():
 
 
 def handle(req):
+    # `.env` is read again for every request, so a token or channel set while the server
+    # runs is used at once (the paths stay as they were at start).
+    ENV.clear()
+    ENV.update(load_env())
     method, params = req.get("method"), req.get("params") or {}
     if method == "initialize":
         return {"protocolVersion": params.get("protocolVersion", "2025-06-18"),

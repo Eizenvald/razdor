@@ -39,9 +39,14 @@ scenario end:
   ui/screens.rs  victory(): hand_over() → Game::next_map() → NextMap
                    campaign_game() → Game::from_campaign(content, scenario, &prev)
                                        → apply_carry_over(&prev); journal.next_chapter()
-                 game_over(): defeat screen; newest save of the map, or Game::restart()
-battle defeat:  BattleResult::Defeat (rules/game.rs settle_battle) → the defeat screen
+                 ScriptEnd::Defeat: its window was the last thing shown → the main menu (ui/mod.rs)
+battle defeat:  ui/battle_view.rs close_lost(): the screen closes at once → Dialog::defeat()
+                  250 ms later on the map; its OK drops the game → the main menu
+army lost to a spell: Game::army_fallen() → the same Dialog::defeat() (ui/mod.rs)
 ```
+
+Scenario names use yellow for campaigns and blue (`55, 180, 255`) for single scenarios;
+campaign chapter names use orange (`235, 165, 75` in SanSerif).
 
 ## Key types
 
@@ -77,9 +82,13 @@ Razdor keeps one choice: an erased name falls back to the class name.
 (`History::record_outcomes`); `#HERONAME` is the only text placeholder (`Game::fill_text`).
 
 **Victory and defeat** (events.md §11). The scenario's victory or defeat event stops the engine
-(`EventEngine::ended`). Losing the whole army in battle is a defeat too. The defeat screen offers the
-newest save of the map, or a restart (`Game::restart`: the map loaded again with its restart
-snapshot: on a campaign map what the previous map carried over).
+(`EventEngine::ended`); after its window the game returns to the main menu. Losing the whole army
+(in battle, or to a spell) is a defeat too, without the map's defeat event: the battle screen closes
+at once and 250 ms later the event window shows in its defeat look (`Dialog::defeat`: the red marble,
+`Stnd-1` at its side, `[Event] DefeatTitle` / `Defeat` / `DefeatInfo` from the language file, the red
+«Ок»); its OK returns to the main menu. There is no other end screen for a defeat. An event window
+also takes the defeat look when its title holds `#DEFEAT` or it is the map's defeat event (the look
+only). Pictures 200 and 201 are the `Stnd-1` / `Stnd-2` stills (ARGB 4444, `gfx::decode_ugs_argb4444`).
 
 **Campaign hand-over** (events.md §12, saves-data.md §15, 0x4b5b64). Once the victory event's
 window is read, the next map starts at once with no screen between (`ui::screens::hand_over`); the

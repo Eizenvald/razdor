@@ -130,7 +130,7 @@ impl BuildingView {
         if has_focus(FILTER_KEY) {
             clear_focus();
         }
-        *self = BuildingView { tribute_paid: self.tribute_paid, tribute: self.tribute, hall_pick: self.hall_pick, hall_scroll: self.hall_scroll, ..BuildingView::new(tab) };
+        *self = BuildingView { tribute_paid: self.tribute_paid, tribute: self.tribute, hall_pick: None, hall_scroll: 0, ..BuildingView::new(tab) };
     }
 
     /// The animation under way and how far it is (0..1), if any.
@@ -261,6 +261,10 @@ fn tab_button(label: &str, tab: Option<Tab>, r: Rect, active: bool) -> bool {
 
 /// The red-brown text box with the building's description.
 fn description_box(desc: &str, x: f32, y: f32, w: f32, h: f32) {
+    super::typography::Role::Name.with(|| description_box_in_face(desc, x, y, w, h))
+}
+
+fn description_box_in_face(desc: &str, x: f32, y: f32, w: f32, h: f32) {
     let k = chrome::k();
     chrome::text_box(Rect::new(x, y, w, h));
     let lines = wrap(desc, w - 60.0 * k, 19.0 * k);
@@ -330,6 +334,10 @@ fn quest_section_frame(panel: Rect, list: Rect) {
 /// building tab that does not manage armies. With none on offer, the original hides the
 /// whole quest area: its divider stays and the building's description fills the space.
 fn hall_offers(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut Option<String>, dialogs: &mut VecDeque<Dialog>) -> Option<Screen> {
+    super::typography::Role::Name.with(|| hall_offers_in_face(game, f, view, message, dialogs))
+}
+
+fn hall_offers_in_face(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut Option<String>, dialogs: &mut VecDeque<Dialog>) -> Option<Screen> {
     let k = chrome::k();
     let entries = game.hall_entries();
     let strip = card_panel_divider(f);
@@ -355,7 +363,7 @@ fn hall_offers(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mu
     }
     let title_area = Rect::new(quest_border.x + 62.0*k, quest_border.y, quest_border.w - 70.0*k, quest_border.h);
     let title_size = fit_size(title, title_area.w, 20.0 * k);
-    chrome::shadow_centered(title, title_area.center().x, title_area.y + (title_area.h + title_size * 0.36) / 2.0, title_size, QUEST_HEADING);
+    chrome::shadow_centered(&ellipsize(title, title_area.w, title_size), title_area.center().x, title_area.y + (title_area.h + title_size * 0.36) / 2.0, title_size, QUEST_HEADING);
 
     let rows = 3usize;
     let row_h = 24.0 * k;
@@ -370,10 +378,9 @@ fn hall_offers(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mu
         if wh > 0.0 { view.hall_scroll = view.hall_scroll.saturating_sub(1); }
     }
     view.hall_scroll = view.hall_scroll.min(max_scroll);
-    if max_scroll > 0 {
-        scrollbar(Rect::new(list.x + list.w - 14.0 * k, list.y + 2.0 * k, 12.0 * k, list.h - 4.0 * k), &mut view.hall_scroll, rows, entries.len());
-    }
-    let row_w = list.w - if max_scroll > 0 { 16.0 * k } else { 0.0 };
+    // The bar is always there, idle while the list fits, as the original's (0x4bedec).
+    scrollbar_always(Rect::new(list.x + list.w - 14.0 * k, list.y + 2.0 * k, 12.0 * k, list.h - 4.0 * k), &mut view.hall_scroll, rows, entries.len());
+    let row_w = list.w - 16.0 * k;
     let visible_rows = entries.len().saturating_sub(view.hall_scroll).min(rows);
     let first_y = list.y + (list.h - visible_rows as f32 * row_h) / 2.0;
     for (n, entry) in entries.iter().enumerate().skip(view.hall_scroll).take(rows) {
@@ -1014,6 +1021,10 @@ fn garrison(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
 /// red); `marks` light a filter's match in the names. Returns the clicked row.
 #[allow(clippy::too_many_arguments)]
 fn price_list(assets: Option<&Assets>, rows: &[(Option<ItemId>, String, String, bool)], marks: &[Option<std::ops::Range<usize>>], pick: Option<usize>, scroll: &mut usize, x: f32, y: f32, w: f32, visible: usize) -> Option<usize> {
+    super::typography::Role::Name.with(|| price_list_in_face(assets, rows, marks, pick, scroll, x, y, w, visible))
+}
+
+fn price_list_in_face(assets: Option<&Assets>, rows: &[(Option<ItemId>, String, String, bool)], marks: &[Option<std::ops::Range<usize>>], pick: Option<usize>, scroll: &mut usize, x: f32, y: f32, w: f32, visible: usize) -> Option<usize> {
     let k = chrome::k();
     let row_h = 186.0 * k / visible.max(1) as f32;
     let frame = Rect::new(x, y, w, visible as f32 * row_h);
@@ -1036,12 +1047,15 @@ fn price_list(assets: Option<&Assets>, rows: &[(Option<ItemId>, String, String, 
         let ry = y + (n - *scroll) as f32 * row_h;
         let sel = pick == Some(n);
         if sel {
-            draw_rectangle(x + 2.0 * k, ry, w - 20.0 * k, row_h - 2.0 * k, Color::new(0.3, 0.38, 0.3, 1.0));
+            // Keep the icon strip clear; tint the text/price area translucently.
+            let selection_x = x + row_h;
+            let right = x + w - 18.0 * k;
+            draw_rectangle(selection_x, ry, (right - selection_x).max(0.0), row_h - 2.0 * k, Color::new(0.3, 0.38, 0.3, 0.42));
         }
         if let (Some(item), Some(assets)) = (icon, assets) {
             assets.draw_item(*item, x + 2.0 * k, ry + 1.0, row_h - 4.0 * k);
         }
-        let shown = ellipsize(name, w - 110.0 * k, 17.0 * k);
+        let shown = ellipsize(name, w - 120.0 * k, 17.0 * k);
         let visible_end = shown.strip_suffix('…').unwrap_or(&shown).len();
         let mark = marks.get(n).cloned().flatten().filter(|r| r.end <= visible_end && shown.is_char_boundary(r.start) && shown.is_char_boundary(r.end));
         let item_color = if *red { Color::new(1.0, 0.56, 0.16, 1.0) } else { BUILDING_AND_ITEM_NAME };
@@ -1082,19 +1096,25 @@ pub(super) fn item_description(game: &Game, assets: &Assets, item: ItemId, x: f3
         (desc, (lines, n), height)
     };
     let scales = [1.0, 0.9, 0.8, 0.72, 0.65];
-    let s = scales.iter().copied().find(|&s| layout(s).2 <= h).unwrap_or(0.65);
+    let s = if super::typography::fixed_size() { 1.0 } else { scales.iter().copied().find(|&s| layout(s).2 <= h).unwrap_or(0.65) };
     let (mut desc, (lines, props_n), _) = layout(s);
     let icon = 56.0 * k * s;
     assets.draw_item(item, x + w / 2.0 - icon / 2.0, y + 10.0 * k, icon);
-    let mut ly = y + 10.0 * k + icon + 6.0 * k + 18.0 * k * s;
-    text_centered(&d.name, x + w / 2.0, ly, 20.0 * k * s, Color::new(0.84, 0.85, 0.87, 1.0));
+    let desc_lh = super::typography::Role::Body.line_height(18.0 * k * s);
+    let props_lh = super::typography::Role::Body.line_height(19.0 * k * s);
+    let limit_lh = super::typography::Role::Body.line_height(20.0 * k * s);
+    let mut ly = y + 10.0 * k + icon + 6.0 * k + super::typography::Role::Name.size(18.0 * k * s) * 0.72;
+    super::typography::Role::Name.with(|| {
+        let name = ellipsize(&d.name, w - 24.0 * k, 20.0 * k * s);
+        text_centered(&name, x + w / 2.0, ly, 20.0 * k * s, Color::new(0.84, 0.85, 0.87, 1.0));
+    });
     ly += 4.0 * k * s;
     if let Some(limit) = limit {
-        ly += 20.0 * k * s;
-        text_centered(limit, x + w / 2.0, ly, 16.0 * k * s, Color::new(0.34, 0.34, 0.34, 1.0));
+        ly += limit_lh;
+        text_centered(limit, x + w / 2.0, ly, 16.0 * k * s, Color::new(155.0 / 255.0, 155.0 / 255.0, 155.0 / 255.0, 1.0));
     }
     // At the smallest size the description gives way to the properties.
-    let room = ((y + h - 6.0 * k - ly - 4.0 * k - 19.0 * k * s * lines.len() as f32) / (18.0 * k * s)).floor().max(0.0) as usize;
+    let room = ((y + h - 6.0 * k - ly - 4.0 * k - props_lh * lines.len() as f32) / desc_lh).floor().max(0.0) as usize;
     if desc.len() > room {
         desc.truncate(room);
         if let Some(last) = desc.last_mut() {
@@ -1102,12 +1122,12 @@ pub(super) fn item_description(game: &Game, assets: &Assets, item: ItemId, x: f3
         }
     }
     for line in &desc {
-        ly += 18.0 * k * s;
+        ly += desc_lh;
         text_centered(line, x + w / 2.0, ly, 15.0 * k * s, ACCENT);
     }
     ly += 4.0 * k;
     for (n, line) in lines.iter().enumerate() {
-        ly += 19.0 * k * s;
+        ly += props_lh;
         if n < props_n {
             text_centered(line, x + w / 2.0, ly, 16.0 * k * s, chrome::ORANGE_TEXT);
         } else {
@@ -1116,42 +1136,78 @@ pub(super) fn item_description(game: &Game, assets: &Assets, item: ItemId, x: f3
     }
 }
 
+/// The market rows' order: indices of `prices`, cheapest first; equal prices keep their
+/// stock or pack order (a stable sort).
+fn cheapest_first<P: Ord>(prices: &[P]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..prices.len()).collect();
+    order.sort_by_key(|&n| &prices[n]);
+    order
+}
+
 /// The row to select after row `k` left a list that now has `left` rows: the one that
 /// moved up into it, else the one above, else none.
 fn next_pick(k: usize, left: usize) -> Option<usize> {
     (left > 0).then(|| k.min(left - 1))
 }
 
-/// Market: the goods (or, in the sell shop, the pack) with prices, the selected item's
-/// description, and the buy / sell buttons.
+/// Which of the market's list buttons are on, ("Инвентарь", "Торговая лавка"), with the
+/// pack (`selling`) or the goods shown (0x4bca8c): the shown list's own button is off, and
+/// the goods' also while the shop has none (its +0x0d = goods count > 0).
+fn market_switches(selling: bool, goods: usize) -> (bool, bool) {
+    if selling { (false, goods > 0) } else { (true, false) }
+}
+
+/// Market (0x4bca8c): the goods (mode 1) or the pack (mode 0, "Инвентарь") with prices,
+/// the selected item's description, and the trade button. The goods list stands right of the
+/// description, the pack list left of it (the original moves both panes with the mode).
+/// "Инвентарь" (0x4b9be0) shows the pack and "Торговая лавка" (0x4b9be8) the goods: both
+/// always shown, the current list's one off, "Торговая лавка" also off while the shop is empty.
 fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, message: &mut Option<String>, dialogs: &mut VecDeque<Dialog>) -> Option<Screen> {
     let k = chrome::k();
     let (x, y, w) = (f.cx, f.cy, f.cw);
     let c = game.content.clone();
     let dw = w * 0.492;
-    let (lx, lw) = (x + dw + 8.0 * k, w - dw - 8.0 * k);
+    let lw = w - dw - 8.0 * k;
+    let (dx, lx) = if view.selling { (x + lw + 8.0 * k, x) } else { (x, x + dw + 8.0 * k) };
     let heading = own_text("Building", "ItemInfo", n_("Item description"));
-    chrome::shadow_centered(&heading, x + dw / 2.0, y + 13.0 * k, 17.0 * k, MARKET_HEADING);
+    super::typography::Role::Title.with(|| chrome::shadow_centered(&heading, dx + dw / 2.0, y + 13.0 * k, 17.0 * k, MARKET_HEADING));
     // The sell list holds only the pack items worth more than 1 (personal items and the
     // cheapest are not bought); a buy price above the gold is red (0x4bca8c).
     let sellable: Vec<usize> = (0..game.pack.len()).filter(|&k| game.can_sell(game.pack[k])).collect();
     let goods = game.market_here().unwrap_or_default();
+    // Both lists cheapest first, whatever the item's kind (the owner's choice; the original
+    // shows them unsorted, in stock and pack order: 0x4be9a0 jumps over its sort). `order[row]`
+    // is the row's index in `sellable` or in the goods, which the trade takes.
+    let prices: Vec<_> = if view.selling { sellable.iter().map(|&n| game.sell_price(game.pack[n])).collect() } else { goods.iter().map(|&i| game.buy_price(i)).collect() };
+    let order = cheapest_first(&prices);
     let rows: Vec<(Option<ItemId>, String, String, bool)> = if view.selling {
-        sellable.iter().map(|&k| game.pack[k]).map(|i| (Some(i), c.item(i).name.clone(), game.sell_price(i).to_string(), false)).collect()
+        order.iter().map(|&n| game.pack[sellable[n]]).map(|i| (Some(i), c.item(i).name.clone(), game.sell_price(i).to_string(), false)).collect()
     } else {
-        goods.iter().map(|&i| (Some(i), c.item(i).name.clone(), game.buy_price(i).to_string(), game.buy_price(i) > game.gold)).collect()
+        order.iter().map(|&n| goods[n]).map(|i| (Some(i), c.item(i).name.clone(), game.buy_price(i).to_string(), game.buy_price(i) > game.gold)).collect()
     };
-    // The title on the left of its row, the filter line on the right: the list keeps the
-    // items that match what is typed, their matched part lit; Enter picks the first.
-    let head = if view.selling { tr("Your pack: what the market pays") } else { tr("Goods for sale") };
-    text_fit(head, lx, y + 18.0 * k, lw * 0.5 - 6.0 * k, 18.0 * k, MARKET_HEADING);
+    // Over the list the original's column titles, "Название" and "Цена" (0x4bca8c). The
+    // filter (Razdor's) takes their line only while it is used: a letter typed over the list,
+    // Ctrl+F or a click on the titles starts it; the list keeps the items that match, their
+    // matched part lit; Enter picks the first.
     let all: Vec<(usize, ItemId)> = rows.iter().enumerate().filter_map(|(n, r)| r.0.map(|i| (n, i))).collect();
     let before = item_filter::keep(&c, all.iter().copied(), &view.filter).len();
-    let filter_rect = Rect::new(lx + lw * 0.5, y, lw * 0.5, 18.0 * k);
-    let reply = item_filter::field(FILTER_KEY, &mut view.filter, filter_rect, &[KeyCode::N], before, rows.len());
+    let filter_rect = Rect::new(lx, y, lw, 18.0 * k);
+    let reply = item_filter::field_with(FILTER_KEY, &mut view.filter, filter_rect, &[KeyCode::N], before, rows.len(), false);
+    if view.filter.is_empty() && !has_focus(FILTER_KEY) {
+        let (name_head, price_head) = (own_text("Building", "ItemName", n_("Name")), own_text("Building", "ItemCost", n_("Price")));
+        super::typography::Role::Title.with(|| {
+            chrome::shadow_centered(&name_head, lx + 32.0 * k + (lw - 120.0 * k) / 2.0, y + 13.0 * k, 17.0 * k, MARKET_HEADING);
+            chrome::shadow_centered(&price_head, lx + lw - 58.0 * k, y + 13.0 * k, 17.0 * k, MARKET_HEADING);
+        });
+    }
     let kept = item_filter::keep(&c, all, &view.filter);
     let shown: Vec<(Option<ItemId>, String, String, bool)> = kept.iter().map(|(n, _)| rows[*n].clone()).collect();
     let marks: Vec<Option<std::ops::Range<usize>>> = kept.iter().map(|(_, m)| m.name_range.clone()).collect();
+    // Opening either market list starts with its first visible item selected, so the
+    // description and trade button are ready immediately.
+    if view.pick.is_none() {
+        view.pick = kept.first().map(|(n, _)| *n);
+    }
     let at_pick = view.pick.and_then(|p| kept.iter().position(|(n, _)| *n == p));
     if let Some(k) = price_list(Some(assets), &shown, &marks, at_pick, &mut view.scroll, lx, y + 21.0 * k, lw, 7) {
         view.pick = Some(kept[k].0);
@@ -1169,35 +1225,38 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
     let dh = 186.0 * k;
     let card_y = y + 21.0 * k;
     match view.pick.and_then(|k| rows.get(k)).and_then(|r| r.0) {
-        Some(item) => item_description(game, assets, item, x, card_y, dw, dh),
+        Some(item) => item_description(game, assets, item, dx, card_y, dw, dh),
         None => {
-            chrome::text_box(Rect::new(x, card_y, dw, dh));
-            text_centered(tr("Pick an item from the list."), x + dw / 2.0, card_y + dh / 2.0, 18.0 * k, BOX_INK);
+            chrome::text_box(Rect::new(dx, card_y, dw, dh));
+            text_centered(tr("Pick an item from the list."), dx + dw / 2.0, card_y + dh / 2.0, 18.0 * k, BOX_INK);
         }
     }
     let by = f.y + 249.0 * k;
     for (offset, width) in [(0.0, 166.0), (166.0, 134.0), (300.0, 108.0), (408.0, 164.0)] {
         chrome::silver_frame(Rect::new(x + offset * k, f.y + 241.0 * k, width * k, 50.0 * k), k.max(1.0));
     }
-    let mut next = None;
-    if button(x + 8.0 * k, by, 150.0 * k, 34.0 * k, tr("Inventory"), true) {
-        next = Some(Screen::Squad { selected: Default::default(), scroll: 0, back: Some(view.clone()) });
+    let (invent_on, market_on) = market_switches(view.selling, goods.len());
+    let (invent, shop) = (own_text("Building", "Invent", n_("Inventory")), own_text("Building", "Market", n_("Trading shop")));
+    if button(x + 8.0 * k, by, 150.0 * k, 34.0 * k, &invent, invent_on) {
+        view.selling = true;
+        view.pick = None;
+        view.scroll = 0;
     }
-    // The money between "Снаряжение" and the trade button, its label over the amount.
+    // The money between "Инвентарь" and the trade button, its label over the amount.
     gold_group(game, Rect::new(x + 174.0 * k, by - 2.0 * k, 118.0 * k, 40.0 * k));
-    let label = if view.selling { tr("Sell") } else { tr("Buy") };
+    let label = if view.selling { own_text("Building", "Trade", n_("Sell")) } else { own_text("Building", "Buy", n_("Buy")) };
     // Sell is always on; Buy only when the price is at most the gold, the purchase's test.
     let can = match (view.selling, view.pick) {
-        (true, Some(k)) => k < sellable.len(),
+        (true, Some(k)) => k < order.len(),
         (false, Some(k)) => rows.get(k).and_then(|r| r.0).is_some_and(|i| game.gold >= game.buy_price(i)),
         _ => false,
     };
     // The trade button plays the gold sound (interface.md §14).
-    if button_sounding(x + 308.0 * k, by, 90.0 * k, 34.0 * k, label, can, Cue::Gold) {
+    if button_sounding(x + 308.0 * k, by, 90.0 * k, 34.0 * k, &label, can, Cue::Gold) {
         let k = view.pick.unwrap_or(0);
         let mut done = false;
         *message = Some(if view.selling {
-            let pack_index = sellable[k];
+            let pack_index = sellable[order[k]];
             let name = c.item(game.pack[pack_index]).name.clone();
             match game.sell(pack_index) {
                 Ok(g) => {
@@ -1207,7 +1266,7 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
                 Err(e) => trade_error(e),
             }
         } else {
-            match game.buy(k) {
+            match game.buy(order[k]) {
                 Ok(item) => {
                     done = true;
                     trf!("Bought {item}. It is in your pack.", item = c.item(item).name)
@@ -1223,21 +1282,20 @@ fn market(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView, 
             view.pick = next_pick(k, left);
         }
     }
-    // The way back to the goods is offered only while the shop has some.
-    let toggle = if view.selling { tr("Back to the goods") } else { tr("Sell shop") };
-    if button(x + 416.0 * k, by, 148.0 * k, 34.0 * k, toggle, !view.selling || !goods.is_empty()) {
-        view.selling = !view.selling;
+    if button(x + 416.0 * k, by, 148.0 * k, 34.0 * k, &shop, market_on) {
+        view.selling = false;
         view.pick = None;
         view.scroll = 0;
     }
     FILTER_KEYS.with(|f| f.set(reply.keys_taken));
-    next.or_else(|| hall_offers(game, f, view, message, dialogs))
+    hall_offers(game, f, view, message, dialogs)
 }
 
 /// Sanctuary: spells for sale; a spell bought goes into the hero's book.
 fn sanctuary(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut Option<String>, dialogs: &mut VecDeque<Dialog>) -> Option<Screen> {
     let k = chrome::k();
     let spells: Vec<SpellDef> = game.spells_here().into_iter().cloned().collect();
+    view.pick = view.pick.filter(|&n| n < spells.len()).or_else(|| (!spells.is_empty()).then_some(0));
     // Laid out as the original's (0x4ba854, tab 4; measured on its screen): the list on the
     // right, a picture column, "Название заклятия" and "Цена" over six rows in one frame; a
     // spell already in the book in its own colour.
@@ -1248,7 +1306,7 @@ fn sanctuary(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut 
     // The description on the left: its title, the spell's card, the message box, the money
     // and "Купить" (0x4ba078).
     let title = own_text("Building", "SpellInfo", n_("Spell description"));
-    super::dt_font::with_face(super::dt_font::Face::Title, || chrome::shadow_centered(&title, f.x + 388.0 * k, f.y + 46.0 * k, 15.0 * k, chrome::CREAM));
+    super::dt_font::with_face(super::dt_font::Face::Title, || chrome::shadow_centered(&title, f.x + 388.0 * k, f.y + 46.0 * k, 15.0 * k, MARKET_HEADING));
     let card = at(f, 255.0, 55.0, 266.0, 103.0);
     let chosen = view.pick.and_then(|n| spells.get(n));
     match chosen {
@@ -1260,19 +1318,22 @@ fn sanctuary(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut 
     }
     let note = at(f, 255.0, 165.0, 266.0, 66.0);
     let (can, said) = match chosen {
-        Some(s) if game.knows_spell(s.id) => (false, Some((own_text("Building", "AlreadySpell", n_("This spell is already in your book!")), MANA))),
+        Some(s) if game.knows_spell(s.id) => (false, Some((own_text("Building", "AlreadySpell", n_("This spell is already in your book!")), Color::from_rgba(55, 180, 255, 255)))),
         Some(s) if game.gold < s.cost_gold => (false, Some((own_text("Building", "NoMoneyForSpell", n_("You do not have enough money for this spell!")), chrome::RED_TEXT))),
         Some(_) if game.spells.len() >= SPELL_BOOK_SIZE => (false, Some((own_text("Building", "NoPlaceForSpell", n_("There is no room for the spell in your spell book!")), chrome::RED_TEXT))),
         Some(_) => (true, None),
         None => (false, None),
     };
     if let Some((t, color)) = said {
-        let size = 15.0 * k;
-        let lines = wrap(&t, note.w - 8.0 * k, size);
-        let top = note.y + (note.h - lines.len() as f32 * 19.0 * k) / 2.0 + size * 0.8;
-        for (i, l) in lines.iter().enumerate() {
-            chrome::shadow_centered(l, note.center().x, top + i as f32 * 19.0 * k, size, color);
-        }
+        super::typography::Role::Name.with(|| {
+            let size = 15.0 * k;
+            let line_h = super::typography::Role::Name.line_height(19.0 * k);
+            let lines = wrap(&t, note.w - 8.0 * k, size);
+            let top = note.center().y - (lines.len().saturating_sub(1) as f32 * line_h) / 2.0 + super::typography::Role::Name.size(size) * 0.36;
+            for (i, l) in lines.iter().enumerate() {
+                chrome::shadow_centered(l, note.center().x, top + i as f32 * line_h, size, color);
+            }
+        });
     }
     chrome::silver_frame(at(f, 255.0, 241.0, 266.0, 50.0), k.max(1.0));
     chrome::silver_frame(at(f, 255.0, 241.0, 160.0, 50.0), k.max(1.0));
@@ -1280,10 +1341,7 @@ fn sanctuary(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut 
     let buy = at(f, 424.0, 247.0, 92.0, 36.0);
     if button_sounding(buy.x, buy.y, buy.w, buy.h, tr("Buy"), can, Cue::Gold) {
         if let Some(s) = chosen {
-            *message = Some(match game.learn_spell(s.id) {
-                Ok(()) => trf!("{spell} is written into your book.", spell = s.name),
-                Err(e) => service_error(e),
-            });
+            *message = game.learn_spell(s.id).err().map(service_error);
         }
     }
     hall_offers(game, f, view, message, dialogs)
@@ -1293,40 +1351,50 @@ fn sanctuary(game: &mut Game, f: &Frame, view: &mut BuildingView, message: &mut 
 /// its price, six rows over the frame's height; a click picks a row.
 fn spell_list(game: &Game, spells: &[SpellDef], pick: Option<usize>, r: Rect) -> Option<usize> {
     let k = chrome::k();
-    draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.0, 0.04, 0.02, 0.45));
-    chrome::silver_frame(r, 1.0);
+    chrome::surface(r, chrome::Skin::Brown);
+    let row_h = r.h / 6.0;
+    chrome::surface(Rect::new(r.x, r.y, row_h, r.h), chrome::Skin::Paper);
+    chrome::silver_frame(r, k.max(1.0));
     // The column titles stand over the frame, on the description's title line.
-    let head = 0.0;
     let (name_x, price_x) = (r.x + 47.0 * k, r.x + r.w - 53.0 * k);
     let (name_head, price_head) = (own_text("Building", "SpellName", n_("Spell")), own_text("Building", "ItemCost", n_("Price")));
     super::dt_font::with_face(super::dt_font::Face::Title, || {
-        chrome::shadow_text(&name_head, name_x + 10.0 * k, r.y - 9.0 * k, 15.0 * k, chrome::CREAM);
-        chrome::shadow_text(&price_head, price_x, r.y - 9.0 * k, 15.0 * k, chrome::CREAM);
+        chrome::shadow_text(&name_head, name_x + 10.0 * k, r.y - 9.0 * k, 15.0 * k, MARKET_HEADING);
+        chrome::shadow_text(&price_head, price_x, r.y - 9.0 * k, 15.0 * k, MARKET_HEADING);
     });
-    let row_h = (r.h - head) / 6.0;
     let mut hit = None;
     for (n, s) in spells.iter().enumerate().take(6) {
-        let ry = r.y + head + n as f32 * row_h;
+        let ry = r.y + n as f32 * row_h;
         let row = Rect::new(r.x + 2.0 * k, ry, r.w - 4.0 * k, row_h - 2.0 * k);
         if pick == Some(n) {
-            draw_rectangle(row.x, row.y, row.w, row.h, Color::new(0.3, 0.38, 0.3, 1.0));
+            draw_rectangle(r.x + row_h, row.y, r.w - row_h, row.h, Color::new(1.0, 1.0, 0.65, 0.20));
         }
         let side = row_h - 6.0 * k;
         chrome::spell_icon(s, Rect::new(r.x + 5.0 * k, ry + 2.0 * k, side, side));
-        let ink = if game.knows_spell(s.id) { MANA } else if pick == Some(n) { WHITE } else { ACCENT };
-        let size = fit_size(&s.name, price_x - name_x - 8.0 * k, 18.0 * k);
-        text(&s.name, name_x, ry + row_h / 2.0 + size * 0.35, size, ink);
-        text(&s.cost_gold.to_string(), price_x, ry + row_h / 2.0 + 6.0 * k, 18.0 * k, if game.gold < s.cost_gold { RED } else { ACCENT });
-        if mouse_in(row.x, row.y, row.w, row.h) && clicked() {
+        let ink = if game.knows_spell(s.id) { Color::from_rgba(55, 180, 255, 255) }
+            else if game.gold < s.cost_gold { Color::from_rgba(255, 175, 85, 255) }
+            else { Color::from_rgba(255, 255, 155, 255) };
+        super::typography::Role::Name.with(|| {
+            let size = 18.0 * k;
+            text(&ellipsize(&s.name, price_x - name_x - 8.0 * k, size), name_x, ry + row_h / 2.0 + size * 0.35, size, ink);
+            text(&s.cost_gold.to_string(), price_x, ry + row_h / 2.0 + 6.0 * k, size, ink);
+        });
+        if button_state(row, true).2 {
             hit = Some(n);
         }
     }
+    let empty_y = r.y + spells.len().min(6) as f32 * row_h;
+    draw_rectangle(r.x + k, empty_y, r.w - 2.0 * k, (r.bottom() - empty_y - k).max(0.0), Color::new(0.0, 0.0, 0.0, 0.45));
     hit
 }
 
 /// The money as the market and the sanctuary show it (0x4bd39c): the gold picture, then
 /// "Деньги" with the amount under it, the group centred in `r`.
 fn gold_group(game: &Game, r: Rect) {
+    super::typography::Role::Name.with(|| gold_group_in_face(game, r))
+}
+
+fn gold_group_in_face(game: &Game, r: Rect) {
     let k = chrome::k();
     let label = own_text("Building", "Gold", n_("Money"));
     let icon = 34.0 * k;
@@ -1377,26 +1445,12 @@ fn stock_caption(label: &str, stock: i32) -> String {
 /// yellow, "Магия + N" in blue) with a 1 px shadow. `Ok` (`Btn1`) centred 10 px from the
 /// bottom and the close box, both 0x4c6000. Razdor takes the tribute as the hero enters
 /// (economy.md §3), so the window shows what was taken ([`BuildingView::tribute`]).
-fn village_window(game: &mut Game, view: &BuildingView, message: &mut Option<String>) -> Option<Screen> {
+/// The village window's texts: the box and the two stock captions ([`village_window`]).
+fn village_texts(game: &Game, view: &BuildingView, l: usize, (x, y, o): (f32, f32, f32), size: f32, line_h: f32) {
     use razdor::dt::markup::Ink;
-    let l = game.location?;
-    let o = chrome::k() * 0.9375;
-    let (w, h) = ((634.0 * o).round(), (516.0 * o).round());
-    let (x, y) = (((screen_width() - w) / 2.0).round(), ((screen_height() - chrome::bar_height() - h) / 2.0).max(2.0).round());
     let loc = &game.world.locations[l];
-    let (_, closed) = chrome::window(Rect::new(x, y, w, h), &loc.name, chrome::Skin::Marble, true);
-    // The reference has a narrow marble gap around the picture and a separate framed
-    // footer. Stretch the complete village artwork to these bounds, without cropping it.
-    let picture = Rect::new(x + 4.0 * o, y + 31.0 * o, w - 8.0 * o, 428.0 * o);
-    if let Some(t) = chrome::win("S_Village") {
-        chrome::tex(&t, picture, WHITE);
-    }
-    chrome::silver_frame(picture, o.max(1.0));
-    let footer = Rect::new(x + 2.0 * o, y + 461.0 * o, w - 4.0 * o, h - 463.0 * o);
-    chrome::silver_frame(footer, o.max(1.0));
     let (gold, mana) = view.tribute;
-    let size = (15.0 * o).round();
-    let line_h = (17.0 * o).round();
+
     let (bx, by, bw) = (x + 18.0 * o, y + 45.0 * o, 598.0 * o);
     let lines_of = |t: &str| t.split('\n').flat_map(|p| if p.trim().is_empty() { vec![String::new()] } else { wrap(p, bw - 32.0 * o, size) }).collect::<Vec<_>>();
     let mut lines: Vec<(String, Color)> = Vec::new();
@@ -1436,6 +1490,28 @@ fn village_window(game: &mut Game, view: &BuildingView, message: &mut Option<Str
         let (label, ink) = if is_mana { (own_text("Building", "Mana", n_("Magic")), Ink::Bar) } else { (own_text("Building", "Gold", n_("Money")), Ink::Plain) };
         chrome::shadow_centered(&stock_caption(&label, stock), sx + 80.0 * o, sy - 24.0 * o + size, size, benguiat(ink.rgb()));
     }
+}
+
+fn village_window(game: &mut Game, view: &BuildingView, message: &mut Option<String>) -> Option<Screen> {
+    let l = game.location?;
+    let o = chrome::k() * 0.9375;
+    let (w, h) = ((634.0 * o).round(), (516.0 * o).round());
+    let (x, y) = (((screen_width() - w) / 2.0).round(), ((screen_height() - chrome::bar_height() - h) / 2.0).max(2.0).round());
+    let loc = &game.world.locations[l];
+    let (_, closed) = chrome::window(Rect::new(x, y, w, h), &loc.name, chrome::Skin::Marble, true);
+    // The reference has a narrow marble gap around the picture and a separate framed
+    // footer. Stretch the complete village artwork to these bounds, without cropping it.
+    let picture = Rect::new(x + 4.0 * o, y + 31.0 * o, w - 8.0 * o, 428.0 * o);
+    if let Some(t) = chrome::win("S_Village") {
+        chrome::tex(&t, picture, WHITE);
+    }
+    chrome::silver_frame(picture, o.max(1.0));
+    let footer = Rect::new(x + 2.0 * o, y + 461.0 * o, w - 4.0 * o, h - 463.0 * o);
+    chrome::silver_frame(footer, o.max(1.0));
+    let size = (15.0 * o).round();
+    let line_h = (17.0 * o).round();
+    // The original's texts here are Benguiat's tints (0x4dbb0c fonts ae24a0..ae24ac).
+    super::dt_font::with_original_face(super::dt_font::Face::Subtitle, || village_texts(game, view, l, (x, y, o), size, line_h));
     let (btn_w, btn_h) = chrome::win("Btn1Up").map_or((180.0, 40.0), |t| (t.width(), t.height()));
     let (btn_w, btn_h) = (btn_w * o, btn_h * o);
     let btn_x = x + (w - btn_w) / 2.0;
@@ -1739,7 +1815,14 @@ fn with_back(bar: Option<Screen>, view: &BuildingView) -> Option<Screen> {
 
 #[cfg(test)]
 mod tests {
-    use super::{next_pick, offer_picture, recruit_x, screen_line, stock_caption, stock_picture};
+
+    #[test]
+    fn market_rows_go_cheapest_first_ties_in_stock_order() {
+        assert_eq!(super::cheapest_first(&[2750, 605, 110, 495, 110]), vec![2, 4, 3, 1, 0]);
+        assert!(super::cheapest_first::<i32>(&[]).is_empty());
+    }
+
+    use super::{market_switches, next_pick, offer_picture, recruit_x, screen_line, stock_caption, stock_picture};
     use razdor::rules::economy::VillageOffer;
     use razdor::rules::formation::{Formation, Row, Slot};
 
@@ -1790,6 +1873,16 @@ mod tests {
         assert_eq!(next_pick(2, 5), Some(2), "the item below moved up into row 2");
         assert_eq!(next_pick(4, 4), Some(3), "the last one bought: the one above");
         assert_eq!(next_pick(0, 0), None, "nothing left");
+    }
+
+    /// The original's two list buttons (0x4bca8c): "Инвентарь" shows the pack and is off
+    /// while it is shown; "Торговая лавка" shows the goods and is off while they are shown
+    /// or the shop has none. Neither opens another window.
+    #[test]
+    fn the_market_s_list_buttons_are_the_original_s() {
+        assert_eq!(market_switches(false, 5), (true, false), "goods shown: only Инвентарь");
+        assert_eq!(market_switches(true, 5), (false, true), "pack shown: only Торговая лавка");
+        assert_eq!(market_switches(true, 0), (false, false), "an empty shop: no way to the goods");
     }
 }
 

@@ -104,10 +104,26 @@ PLAYTEST_NOTES "Мосты сдвинуты"). The minimap is `src/ui/minimap.rs
 
 ## Fonts
 
-TrueType faces bundled in `data/fonts/` (open licences, loaded by `widgets::load_font`)
-for Razdor's text; the original's bitmap fonts are decoded from the install by
-`src/ui/dt_font.rs` (`BitmapFont`, glyph order `ORDER`) and scaled so their capitals match
-the TrueType size; missing glyphs fall back to TrueType.
+All text goes through `widgets::measure` / `widgets::text` in the current face
+(`dt_font::with_face`: `Face::Body`, `Bold`, `Title`, `Subtitle`) and the font mode
+(`dt_font::FontMode`, the settings' «Шрифт», set every frame by `display::follow_settings`;
+`RAZDOR_FONT_MODE` overrides it for snapshots):
+
+- `Original` (default): `dt_font::current_ttf` is `None`, so `dt_font::with_current` draws the
+  install's sheet (`Face::file`: `SanSerif.lit`, `SanSerif_Bold.lit`, `Benguiat.lit`) as a
+  `BitmapFont`: nearest filtering, a whole-number scale (`BitmapFont::scale`, the nearest
+  integer to matching the TrueType capital height, at least 1), pen and cell tops on whole
+  pixels. `chrome::shadow_text` draws the face's shadow sheet (`Face::shadow_file`) 1 sheet
+  pixel down-right first (`dt_font::draw_shadow`). Glyphs a sheet lacks come from PT Sans
+  (`widgets::measure_ttf`).
+- `Modern`: `widgets::face_font` gives the bundled TrueType face (`MODE_FILES`:
+  PT Serif, Becker, Kurale); `MODE_MISSING` swaps the few
+  characters a face lacks for look-alikes.
+- `RAZDOR_FONT*` files win in every mode.
+
+Traps: never call `widgets::measure`/`text` from inside a `with_current` closure (it holds the
+sheet cache's borrow; use `measure_ttf`). Sheet widths change with the mode, so lay text out
+by `measure`, not by fixed pixel widths.
 
 ## How to add a picture
 

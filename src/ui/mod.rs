@@ -30,6 +30,7 @@ pub mod spell_badges;
 pub mod spellbook;
 pub mod story;
 pub mod terrain;
+pub mod typography;
 pub mod unit_drag;
 pub mod unit_sheet;
 pub mod update_view;
@@ -408,6 +409,8 @@ impl App {
             Screen::Battle(_) => Mood::Battle { garrison: matches!(self.game.as_ref().and_then(|g| g.foe.as_ref()), Some(Foe::Garrison(_))) },
             Screen::GameOver => Mood::Lost,
             Screen::Victory => Mood::Won,
+            // The defeat report plays the defeat theme (4c57ad, 0x4a8ae8's mode 2 → 0x482290).
+            _ if self.dialogs.iter().any(|d| d.defeat) => Mood::Lost,
             _ if self.game.is_some() => Mood::Map,
             _ => Mood::Menu,
         }
@@ -508,6 +511,7 @@ impl App {
                 if let Screen::Building(view) = std::mem::replace(&mut self.screen, Screen::WorldMap) {
                     self.map_view.back_to = Some(view);
                 }
+                self.map_view.reset();
             }
             world_view::BuildingFlight::ComeBack => {
                 if let Some(view) = self.map_view.back_to.take() {
@@ -536,7 +540,8 @@ impl App {
             Screen::Menu(_) | Screen::Settings => Place::Menu,
             Screen::Save(_) => Place::Save,
             Screen::Load(_) => Place::Load,
-            Screen::GameOver | Screen::Victory => Place::End,
+            Screen::GameOver => Place::End,
+            Screen::Victory => Place::End,
             Screen::Editor => Place::Editor,
         }
     }
@@ -700,6 +705,14 @@ impl App {
     }
 
     pub fn frame(&mut self) {
+        if matches!(self.screen, Screen::Editor) {
+            self.frame_content();
+        } else {
+            dt_font::with_native_metrics(|| self.frame_content());
+        }
+    }
+
+    fn frame_content(&mut self) {
         display::follow_settings(&self.audio.settings);
         // A minimap resized or moved by the player is kept once the drag ends (saved with the
         // settings).
@@ -928,6 +941,12 @@ impl App {
                 let offer_result = closed.as_ref().is_some_and(|d| d.village_event && !d.offer);
                 let asked = closed.as_ref().is_some_and(|d| d.question && !d.offer);
                 let read = closed.as_ref().is_some_and(|d| d.event.is_some() && !d.question);
+                // A standalone defeat report hands over to the recovery screen, keeping
+                // the game available for loading its latest save or restarting the map.
+                if closed.as_ref().is_some_and(|d| d.defeat && d.event.is_none()) {
+                    self.dialogs.clear();
+                    next = Some(Screen::GameOver);
+                }
                 // Closing a dialog while the triumph plays changes the map track at once
                 // (0x4c20b3).
                 if self.map_music.triumph {
@@ -1014,10 +1033,11 @@ impl App {
                         None => next = Some(Screen::Victory),
                     }
                 }
+                // After the map's defeat event, offer the lost game's recovery actions.
                 Some(ScriptEnd::Defeat(_)) if !matches!(self.screen, Screen::GameOver) => next = Some(Screen::GameOver),
                 _ => {}
             }
-            // A world spell that killed the whole army loses the game (0x4900fc → 0x4af658).
+            // Losing the whole army outside battle opens the same defeat screen.
             if next.is_none() && !matches!(self.screen, Screen::GameOver | Screen::Battle(..)) && self.game.as_ref().is_some_and(Game::army_fallen) {
                 next = Some(Screen::GameOver);
             }
