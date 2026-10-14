@@ -8,6 +8,13 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
 
 ## Open
 
+- **dt-original: the hero window and group 4** (2026-10-14). main bdc0c96 (the bar's flag opens
+  the original's hero window, map tooltips centred on the mouse, the spell book's empty cells,
+  the red Dismiss buttons, the 300 ms hint fade) is parity but was not cherry-picked: it
+  conflicts in eight files of dt-original's UI (items_view, world_view, widgets, spellbook,
+  hotkeys, mod, snapshot) and its worktree was mid-port by another agent. Port by hand; on
+  dt-original the flag opens the hero window and there is no J journal.
+
 - **dt-original: the start garrisons' arrangement** (2026-10-14). main e834147 arranges the
   garrison of the hero's own start buildings (his stationed units) at load like every garrison
   (0x4b2504 → 0x49855c, 0x4988c0). Not cherry-picked yet: dt-original's worktree was in the
