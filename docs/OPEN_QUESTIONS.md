@@ -24,19 +24,6 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
   load and save windows centred over the map (saves.rs `book_top`) and the question's Yes/No at
   0.24 W / 0.76 W (dialog.rs `question_buttons_x`) are parity; port them to dt-original.
 
-- **dt-original: the hero window and group 4** (2026-10-14). main bdc0c96 (the bar's flag opens
-  the original's hero window, map tooltips centred on the mouse, the spell book's empty cells,
-  the red Dismiss buttons, the 300 ms hint fade) is parity but was not cherry-picked: it
-  conflicts in eight files of dt-original's UI (items_view, world_view, widgets, spellbook,
-  hotkeys, mod, snapshot) and its worktree was mid-port by another agent. Port by hand; on
-  dt-original the flag opens the hero window and there is no J journal.
-
-- **dt-original: the start garrisons' arrangement** (2026-10-14). main e834147 arranges the
-  garrison of the hero's own start buildings (his stationed units) at load like every garrison
-  (0x4b2504 → 0x49855c, 0x4988c0). Not cherry-picked yet: dt-original's worktree was in the
-  middle of another agent's conflicted cherry-pick. Cherry-pick e834147 (`src/rules/game.rs`
-  hunk and the `start_garrisons` test in `src/rules/world.rs`) once it is free.
-
 - **Menus (group 5 of the UI audit, 2026-10-14), approximations left.** (1) The new-hero
   window's other portraits: the original builds them from the picture with 0x48db5c(100, 200,
   100) and 0x48da5c colour shifts plus a 33-step vignette mask (0x4d7d30); Razdor tints with
@@ -48,10 +35,6 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
   (pair 03): check 0x4c01fc's caller. (5) Hints now follow the install's `OptValue6` until the
   checkbox is touched; the shipped ini has 1 (hints off), so the bar's button names are off
   by default, as in the original.
-- **Menus on dt-original** (2026-10-14). The settings window, new hero window, scenario list,
-  exit window, credits and the menu's foot lines (main, group 5) are parity; dt-original's
-  settings and menus differ (no Razdor advanced window there): port by hand.
-
 - **dt-original: the main hall's quest list** (2026-10-14). On main the list fills the lower
   panel from the top with a full-width highlight (0x4bedec, 3ad3501); dt-original has its own
   main hall layout, so only the button text, the market's first row, the descriptions, the
@@ -71,11 +54,6 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
   ornaments at its ends; Razdor draws the brown text box. Find which picture the original
   draws there (`HSTexture` is a scrollbar's; `HintFrame` is the main hall's dark divider) and
   use it.
-- **Battle screen parity not on dt-original** (2026-10-14). fa63292 (the original's card
-  highlight `chrome::card_highlight`, the red bold ExitHint, the leave-battle window as
-  4d3620) conflicts with dt-original's older `battle_view.rs` (8 hunks), `saves.rs`,
-  `chrome.rs` and `snapshot.rs`; port it by hand (on dt-original the exit window's warning can
-  be the install's `[ExitBattle] Warning`, its restart being the original's).
 - **Battle strip art** (2026-10-14). The original's strip between the formations spans the
   right side between two silver lines (4d1fb0: y 319 and 346, x 266…894) with dark scroll
   ornaments at both ends; Razdor draws `chrome::text_box` (parchment with corner pieces), a
@@ -112,6 +90,26 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
   button's own size.
 
 ## Settled
+
+- **dt-original: the hero window and group 4** (2026-10-14). main bdc0c96 (the bar's flag opens
+  the original's hero window, map tooltips centred on the mouse, the spell book's empty cells,
+  the red Dismiss buttons, the 300 ms hint fade) is parity but was not cherry-picked: it
+  conflicts in eight files of dt-original's UI (items_view, world_view, widgets, spellbook,
+  hotkeys, mod, snapshot) and its worktree was mid-port by another agent. Port by hand; on
+  dt-original the flag opens the hero window and there is no J journal. Ported by hand: dt-original c063aef.
+- **dt-original: the start garrisons' arrangement** (2026-10-14). main e834147 arranges the
+  garrison of the hero's own start buildings (his stationed units) at load like every garrison
+  (0x4b2504 → 0x49855c, 0x4988c0). Not cherry-picked yet: dt-original's worktree was in the
+  middle of another agent's conflicted cherry-pick. Cherry-pick e834147 (`src/rules/game.rs`
+  hunk and the `start_garrisons` test in `src/rules/world.rs`) once it is free. Ported by hand: dt-original f490886.
+- **Menus on dt-original** (2026-10-14). The settings window, new hero window, scenario list,
+  exit window, credits and the menu's foot lines (main, group 5) are parity; dt-original's
+  settings and menus differ (no Razdor advanced window there): port by hand. Ported by hand: dt-original 46174ed.
+- **Battle screen parity not on dt-original** (2026-10-14). fa63292 (the original's card
+  highlight `chrome::card_highlight`, the red bold ExitHint, the leave-battle window as
+  4d3620) conflicts with dt-original's older `battle_view.rs` (8 hunks), `saves.rs`,
+  `chrome.rs` and `snapshot.rs`; port it by hand (on dt-original the exit window's warning can
+  be the install's `[ExitBattle] Warning`, its restart being the original's). Ported by hand: dt-original 50e3ec7.
 
 - **Event window text size, position, red button; victory with no next map** (2026-10-14).
   From 0x4a8ae8, 0x4dba90 → 0x4768f8 and 0x4aba30, matched against the original captured under
