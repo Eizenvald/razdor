@@ -94,16 +94,31 @@ struct State {
     /// may reach a window it does not manage yet), so the mode is set once more after a while.
     since: f64,
     settled: bool,
+    /// When `follow` first ran (the first frame), and how many start nudges were sent.
+    started: Option<f64>,
+    nudges: u8,
     sys: sys::Window,
 }
 
 thread_local! {
     static STATE: std::cell::RefCell<State> =
-        std::cell::RefCell::new(State { applied: None, target: None, since: 0.0, settled: true, sys: sys::Window::default() });
+        std::cell::RefCell::new(State { applied: None, target: None, since: 0.0, settled: true, started: None, nudges: 0, sys: sys::Window::default() });
 }
 
 /// Seconds after a change when it is set once more.
 const SETTLE_SECONDS: f64 = 0.5;
+
+/// Seconds after the first frame when a windowed start nudges its window ([`nudges_due`]).
+const NUDGE_AT: [f64; 2] = [0.3, 1.5];
+
+/// How many start nudges are due `elapsed` seconds after the first frame, `sent` already
+/// sent. On Windows an OpenGL window that was never resized after it appeared can stay black
+/// under the desktop compositor (a player's report: black until maximized or Alt+Enter, on
+/// every windowed start); a start in borderless or full screen moves the window, and never
+/// showed it. So a windowed start sends a size change after its first frames too.
+fn nudges_due(elapsed: f64, sent: u8) -> u8 {
+    (NUDGE_AT.iter().filter(|&&t| elapsed >= t).count() as u8).saturating_sub(sent)
+}
 
 // ------------------------------------------------------------------------------------------
 // Alt+Enter
@@ -169,6 +184,13 @@ fn follow(mode: DisplayMode) {
     let now = macroquad::prelude::get_time();
     STATE.with(|s| {
         let mut s = s.borrow_mut();
+        let started = *s.started.get_or_insert(now);
+        if nudges_due(now - started, s.nudges) > 0 {
+            s.nudges += 1;
+            if s.applied == Some(DisplayMode::Windowed) && mode == DisplayMode::Windowed {
+                s.sys.nudge();
+            }
+        }
         let from = s.applied.unwrap_or(DisplayMode::Windowed);
         if s.applied == Some(mode) {
             if s.settled || now - s.since < SETTLE_SECONDS {
@@ -433,6 +455,9 @@ mod sys {
     }
 
     impl Window {
+        /// Nothing to do: an X11 window shows its first frames.
+        pub fn nudge(&mut self) {}
+
         pub fn apply(&mut self, from: DisplayMode, to: DisplayMode) -> bool {
             if !self.tried {
                 self.tried = true;
@@ -523,6 +548,9 @@ mod sys {
     const WS_SIZEBOX: isize = 0x0004_0000;
     const WS_MINIMIZEBOX: isize = 0x0002_0000;
     const WS_MAXIMIZEBOX: isize = 0x0001_0000;
+    const SWP_NOMOVE: u32 = 0x0002;
+    const SWP_NOZORDER: u32 = 0x0004;
+    const SWP_NOACTIVATE: u32 = 0x0010;
     const SWP_FRAMECHANGED: u32 = 0x0020;
     const SWP_SHOWWINDOW: u32 = 0x0040;
     const HWND_TOPMOST: Hwnd = -1isize as Hwnd;
@@ -554,6 +582,26 @@ mod sys {
     }
 
     impl Window {
+        /// One pixel wider and back, the frame redrawn: the size change an OpenGL window may
+        /// need before the compositor shows it ([`super::nudges_due`]).
+        pub fn nudge(&mut self) {
+            // SAFETY: Win32 calls on our own window.
+            unsafe {
+                if self.hwnd.is_none() {
+                    self.hwnd = find().map(|w| w as usize);
+                }
+                let Some(w) = self.hwnd.map(|w| w as Hwnd) else { return };
+                let mut r = Rect::default();
+                if GetWindowRect(w, &mut r) == 0 {
+                    return;
+                }
+                let (cw, ch) = (r.right - r.left, r.bottom - r.top);
+                let flags = SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED;
+                SetWindowPos(w, std::ptr::null_mut(), 0, 0, cw + 1, ch, flags);
+                SetWindowPos(w, std::ptr::null_mut(), 0, 0, cw, ch, flags);
+            }
+        }
+
         pub fn apply(&mut self, from: DisplayMode, to: DisplayMode) -> bool {
             // SAFETY: Win32 calls on our own window.
             unsafe {
@@ -625,6 +673,9 @@ mod sys {
     }
 
     impl Window {
+        /// Nothing to do: a macOS window shows its first frames.
+        pub fn nudge(&mut self) {}
+
         pub fn apply(&mut self, from: DisplayMode, to: DisplayMode) -> bool {
             // SAFETY: AppKit messages to our own window on the main thread.
             unsafe {
@@ -678,6 +729,8 @@ mod sys {
     pub struct Window;
 
     impl Window {
+        pub fn nudge(&mut self) {}
+
         pub fn apply(&mut self, _from: DisplayMode, to: DisplayMode) -> bool {
             macroquad::miniquad::window::set_fullscreen(to != DisplayMode::Windowed);
             true
@@ -688,6 +741,16 @@ mod sys {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_windowed_start_is_nudged_twice_after_its_first_frames() {
+        assert_eq!(nudges_due(0.0, 0), 0, "not on the first frame");
+        assert_eq!(nudges_due(0.31, 0), 1);
+        assert_eq!(nudges_due(0.5, 1), 0, "once per step");
+        assert_eq!(nudges_due(1.6, 1), 1);
+        assert_eq!(nudges_due(100.0, 2), 0, "never again");
+        assert_eq!(nudges_due(100.0, 0), 2, "a long first frame sends both in turn");
+    }
 
     #[test]
     fn modes_cycle_and_read_back() {
