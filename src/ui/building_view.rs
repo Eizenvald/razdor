@@ -444,7 +444,12 @@ fn selected_unit_panel(game: &Game, assets: &Assets, f: &Frame, view: &BuildingV
     };
     let Some(unit) = unit else { return };
     let c = &game.content;
-    let stats = unit.stats(c);
+    // The panel shows the building's defence with the unit's own, "15 + 20" (492f24, as the
+    // cards add army +0x378c: 0x49462c).
+    let bd = if guard { game.garrison_defence_here() } else { game.hero_building_defence() };
+    let mut stats = unit.stats(c);
+    stats[Stat::DefenceBlow] += bd;
+    stats[Stat::DefenceShot] += bd;
     let name = if guard { unit.name(c).to_string() } else { game.squad_label(i) };
     let hero = (!guard && i == 0).then(|| HeroClass::ALL.into_iter().find(|h| h.unit() == unit.def)).flatten();
     let sheet = unit_sheet::Sheet {
@@ -462,7 +467,7 @@ fn selected_unit_panel(game: &Game, assets: &Assets, f: &Frame, view: &BuildingV
         items: unit.items,
         back_row: unit.slot.row == razdor::rules::formation::Row::Back,
         unpaid: unit.unpaid,
-        building: 0,
+        building: bd,
         hero,
         status: super::items_view::potion_status(c, unit),
         battle: false,
@@ -669,7 +674,7 @@ fn barracks(game: &mut Game, assets: &Assets, f: &Frame, view: &mut BuildingView
                 let cost = trf!("Price {price}", price = pr.amount);
                 chrome::shadow_centered(&cost, strip.center().x, pill.y + pill.h + 13.0 * k, 12.0 * k, chrome::GOLD);
             }
-            _ => super::unit_sheet::stat_strip(strip, &vs, &vs, vs[razdor::rules::content::Stat::MagicPower], super::unit_sheet::caster(&c, u.def), super::unit_sheet::strip_place(form, u.slot), u.hp, back_row_def(&c, u.slot), false, super::unit_sheet::StripPanel::of_squad(i, u.named)),
+            _ => super::unit_sheet::stat_strip(strip, &vs, &vs, vs[razdor::rules::content::Stat::MagicPower], super::unit_sheet::caster(&c, u.def), super::unit_sheet::strip_place(form, u.slot), u.hp, back_row_def(&c, u.slot), game.hero_building_defence(), false, super::unit_sheet::StripPanel::of_squad(i, u.named)),
         }
         if !u.alive() {
             chrome::death_veil(sq);
@@ -827,7 +832,8 @@ fn card_grid(game: &Game, assets: &Assets, f: &Frame, rel_y: f32, units: &[&Unit
         chrome::wounds(sq, u.hp, u.max_hp(c));
         draw_rectangle_lines(sq.x, sq.y, sq.w, sq.h, 1.0, Color::new(0.85, 0.85, 0.85, 0.8));
         let vs = u.stats(c);
-        super::unit_sheet::stat_strip(Rect::new(p.x, p.y + card.x, card.x, card.y - card.x), &vs, &vs, vs[razdor::rules::content::Stat::MagicPower], super::unit_sheet::caster(c, u.def), super::unit_sheet::strip_place(form, u.slot), u.hp, back_row_def(c, u.slot), false, if own { super::unit_sheet::StripPanel::of_squad(i, u.named) } else { super::unit_sheet::StripPanel::Plain });
+        let bd = if own { game.hero_building_defence() } else { game.garrison_defence_here() };
+        super::unit_sheet::stat_strip(Rect::new(p.x, p.y + card.x, card.x, card.y - card.x), &vs, &vs, vs[razdor::rules::content::Stat::MagicPower], super::unit_sheet::caster(c, u.def), super::unit_sheet::strip_place(form, u.slot), u.hp, back_row_def(c, u.slot), bd, false, if own { super::unit_sheet::StripPanel::of_squad(i, u.named) } else { super::unit_sheet::StripPanel::Plain });
         if !u.alive() {
             chrome::death_veil(sq);
         } else if u.unpaid {

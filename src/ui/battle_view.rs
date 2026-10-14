@@ -1226,7 +1226,10 @@ impl BattleView {
             now: &self.battle.shown_stats_of(f),
             start: &f.at_start,
             power: f.power,
-            wage: if f.is_hero || f.team == Team::Enemy || self.custom { 0 } else { b.content().wage(f.unit) },
+            // The recruit wage of the type's Cost for either side, none for a hero class, a
+            // named character or the Undead (491a58 → 4a163c; the original showed 49 on an
+            // enemy «Атаманша»).
+            wage: if f.is_hero || f.named > 0 || self.custom { 0 } else { super::items_view::class_wage(b.content(), f.unit) },
             items,
             back_row: f.slot.row == Row::Back,
             // No payment line in battle (492f24: 4ed424).
