@@ -135,8 +135,18 @@ a click on an own empty cell → `move_active`. The rules apply the action **fir
 keeps `before` (the fighters before it) so the cards show the change only as the effect ends.
 
 The strip under the enemy rows is `strip_text`: the last log line while something plays
-(`note_log`, 2.5 s), the original's exit hint on the player's turn, "nothing to do" in
-orange, or who is moving.
+(`note_log`, 2.5 s), the original's exit hint on the player's turn (bold sheet, red tint
+`EXIT_HINT_INK`, 4c3dcc), "nothing to do" in orange, or who is moving.
+
+Highlights are the original's (`chrome::card_highlight`, states `chrome::Lit`, 4c57bc): the
+actor (or the unit whose action plays) `Current`; on the player's turn every own-side cell in
+`moves(active)` and every friendly unit in `targets(active)` `CanAct`, hostile targets `Enemy`,
+the hovered one `Aimed`; the AI's target while its action plays `Aimed` or `OwnTarget`. They
+are drawn over the portrait under the card's signs and pulse with the real clock.
+
+Esc (or the red X) opens the leave-battle window (`saves::battle_exit_dialog`, laid out as
+4d3620 in the original's pixels); the battle window is not drawn while it is open, as the
+original hides it. `RAZDOR_SCENE_BATTLE_EXIT=1` snapshots it over any battle scene.
 
 ## 6. End of battle and return to the map
 

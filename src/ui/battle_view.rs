@@ -716,7 +716,7 @@ impl BattleView {
         world_view::backdrop(game, assets);
         // The leave-battle window stands alone over the map: the original hides the battle
         // window while it is open (86b of the UI audit; 4d3620 is its own window).
-        if !(self.exiting && !just_opened) {
+        if !self.exiting || just_opened {
             self.close_clicked |= self.draw(&l, &battle_title(game), game.clock.total_minutes() as u64, assets);
             self.controls(&l, over);
         }

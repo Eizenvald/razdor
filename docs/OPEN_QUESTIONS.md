@@ -21,6 +21,21 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
   ornaments at its ends; Razdor draws the brown text box. Find which picture the original
   draws there (`HSTexture` is a scrollbar's; `HintFrame` is the main hall's dark divider) and
   use it.
+- **Battle strip art** (2026-10-14). The original's strip between the formations spans the
+  right side between two silver lines (4d1fb0: y 319 and 346, x 266…894) with dark scroll
+  ornaments at both ends; Razdor draws `chrome::text_box` (parchment with corner pieces), a
+  little shorter. Find the strip label's (667a74) background art and use it.
+- **Highlights on the AI's turn** (2026-10-14). The original also lights, on the AI's turn,
+  the cells its actor can act on (its side "can act", the player's "enemy", 4c57bc with
+  `local_1c == 2`); Razdor lights only the actor and, while the action plays, its target.
+  Needs the AI actor's options before its action (the rules apply it first).
+- **Battle layout in the original's pixels** (2026-10-14). `battle_view::Layout` still uses the
+  960×720 reference × k (836×600 window, 244-wide panel); the original's window is 896×640
+  (4daa80), the panel 264 wide, cards 94×133 at a 102 × 141 pitch from (278, 37) / (278, 356).
+  At 1024×768 the two are within a few pixels; a relayout like the event window's would make
+  them equal at every scale.
+- **Battle button labels** (2026-10-14). The leave-battle window's button labels come out a
+  little larger and heavier than the original's (its buttons' font); check the button font.
 
 - **Button art picked by screen width** (2026-10-14). `chrome::defeat_button` and
   `marble_button` choose Btn1/2/3 by the screen's width, so on large screens a 95-px button is
