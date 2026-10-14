@@ -32,6 +32,12 @@ Record what you learn as addresses and our own words. Never paste decompiled cod
 `docs/reference/` or a commit. Check signedness and widths at the instruction level
 (`CBW`/`MOVSX` vs `MOVZX`): a decoder bug once came from reading a signed byte as unsigned.
 
+If the `mcp__ghidra-dt__*` tools are missing or fail, say so in the report: fall back to the
+decompile in `docs/notes/out/decomp.c` and the per-function maps in `docs/notes/map/`, and mark
+anything you could not confirm as **unknown**. Never present a guess as the original's
+behaviour. (`claude mcp list` shows the servers as failed while a session holds the project:
+its health check starts a second server; the launcher gives such a server a private copy.)
+
 ## 3. Data and the install
 
 The install (`RAZDOR_DT_DIR`) has the ini files (`_Global.ini`, `Rus_Units.ini`, …), maps and
