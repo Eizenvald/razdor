@@ -30,7 +30,7 @@ pub enum Resource {
     Experience,
 }
 
-/// A picture over the text: a unit's portrait, or an event's own image.
+/// A picture beside the text: a unit's portrait, or an event's own image.
 #[derive(Clone, Debug)]
 pub enum Picture {
     Unit(UnitId),
@@ -422,6 +422,12 @@ fn event_origin(sw: f32, sh: f32, bar: f32, w: f32, h: f32) -> (f32, f32) {
 /// original's pixels ([`event_frame`]) times the interface scale, its text in the original's
 /// Benguiat at its own size ([`super::dt_font::sheet_size`]).
 pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
+    super::dt_font::with_legacy_metrics(|| {
+        super::dt_font::with_original_face(super::typography::Role::Name.face(), || draw_content(d, assets, game))
+    })
+}
+
+fn draw_content(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
     if d.village_event {
         return draw_village_event(d, assets, game);
     }
@@ -434,7 +440,13 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
     let line = EVENT_LINE * o;
     // A picture at the side takes its width and 14 more from the text box.
     let side = match &d.picture {
-        Some(Picture::Side(t) | Picture::Still(t)) => Some((t.width(), t.height())),
+        Some(Picture::Unit(_)) => Some((128.0, 128.0)),
+        Some(Picture::Image(t)) => {
+            let scale = (128.0 / t.height()).min(220.0 / t.width());
+            Some((t.width() * scale, t.height() * scale))
+        }
+        Some(Picture::Side(t)) => Some((t.width(), t.height())),
+        Some(Picture::Still(t)) => Some((t.width(), t.height())),
         _ => None,
     };
     let side_w = side.map_or(0.0, |(pw, _)| pw + 14.0);
@@ -477,15 +489,17 @@ pub fn draw(d: &Dialog, assets: &Assets, game: Option<&Game>) -> Option<Close> {
     let mut cy = top;
     match &d.picture {
         Some(Picture::Unit(u)) => {
-            let r = Rect::new(x + w / 2.0 - 64.0 * o, cy, 128.0 * o, 128.0 * o);
+            // Left of the text box, as the original's portrait (the box starts at 19 +
+            // picture + 14).
+            let r = Rect::new(x + 20.0 * o, top + o, 128.0 * o, 128.0 * o);
             assets.draw_portrait(*u, Team::Player, r);
             chrome::silver_frame(r, 1.5 * o);
         }
         Some(Picture::Image(tex)) => {
-            let k = (128.0 * o / tex.height()).min((w - 60.0 * o) / tex.width());
-            let (tw, th) = (tex.width() * k, tex.height() * k);
-            draw_texture_ex(tex, x + (w - tw) / 2.0, cy, WHITE, DrawTextureParams { dest_size: Some(vec2(tw, th)), ..Default::default() });
-            draw_rectangle_lines(x + (w - tw) / 2.0, cy, tw, th, 2.0 * o, MARBLE_EDGE);
+            let (tw, th) = side.expect("picture dimensions");
+            let r = Rect::new(x + 20.0 * o, top + o, tw * o, th * o);
+            draw_texture_ex(tex, r.x, r.y, WHITE, DrawTextureParams { dest_size: Some(vec2(r.w, r.h)), ..Default::default() });
+            draw_rectangle_lines(r.x, r.y, r.w, r.h, 2.0 * o, MARBLE_EDGE);
         }
         Some(Picture::Still(tex)) => chrome::tex(tex, Rect::new(x + 20.0 * o, top + o, tex.width() * o, tex.height() * o), WHITE),
         Some(Picture::Side(tex)) => {

@@ -30,6 +30,7 @@ pub mod spell_badges;
 pub mod spellbook;
 pub mod story;
 pub mod terrain;
+pub mod typography;
 pub mod unit_drag;
 pub mod unit_sheet;
 pub mod update_view;
@@ -713,6 +714,14 @@ impl App {
     }
 
     pub fn frame(&mut self) {
+        if matches!(self.screen, Screen::Editor) {
+            self.frame_content();
+        } else {
+            dt_font::with_native_metrics(|| self.frame_content());
+        }
+    }
+
+    fn frame_content(&mut self) {
         display::follow_settings(&self.audio.settings);
         // A minimap resized or moved by the player is kept once the drag ends (saved with the
         // settings).

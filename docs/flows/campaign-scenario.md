@@ -48,6 +48,9 @@ battle defeat:  ui/battle_view.rs close_lost(): the screen closes at once → Di
 army lost to a spell: Game::army_fallen() → the same Dialog::defeat() (ui/mod.rs)
 ```
 
+Scenario names use yellow for campaigns and blue (`55, 180, 255`) for single scenarios;
+campaign chapter names use orange (`235, 165, 75` in SanSerif).
+
 ## Key types
 
 | Type | File | What it is |

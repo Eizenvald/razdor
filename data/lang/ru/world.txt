@@ -157,7 +157,6 @@ Bought {item}. It is in your pack. = Куплено: {item}. Предмет в �
 Trading shop = Торговая лавка
 Pick a spell from the list. = Выберите заклинание из списка.
 This spell is already in your book! = Это заклинание уже есть в вашей книге!
-{spell} is written into your book. = {spell}: вписано в вашу книгу.
 
 # Village window and offers (the install's [Building] and [Event] texts when it has them)
 You enter the village, and the local #NAME1 greets you with reverence. = Вы входите в деревню; здешний #NAME1 почтительно вас приветствует.

@@ -159,7 +159,7 @@ fn oval(i: usize, label: &str, hot: Option<usize>) -> bool {
     let c = video(button_centre(i));
     let size = OVAL * k;
     let r = oval_rect(i);
-    let hover = hot == Some(i);
+    let (hover, _down, pressed) = super::widgets::button_state(r, hot == Some(i));
     // The bell as the pointer comes onto an item (interface.md §4, 0x4b9b3c); leaving clears
     // the light.
     HOVERED.with(|h| {
@@ -219,7 +219,7 @@ fn oval(i: usize, label: &str, hot: Option<usize>) -> bool {
         );
     }
     word(i, label, c, hover);
-    if hover && clicked() {
+    if pressed {
         cue(Cue::MenuPress);
         return true;
     }
@@ -252,10 +252,10 @@ fn link(label: &str, x: f32, y: f32, right: bool) -> bool {
     let size = 18.0 * chrome::k();
     let w = measure(label, size).width;
     let x = if right { x - w } else { x };
-    let hover = !input_blocked() && mouse_in(x, y - size, w, size * 1.3);
-    let color = if hover { chrome::GOLD } else { Color::new(0.95, 0.88, 0.72, 0.85) };
+    let (_, down, pressed) = super::widgets::button_state(Rect::new(x, y - size, w, size * 1.3), true);
+    let color = if down { chrome::GOLD } else { Color::new(0.95, 0.88, 0.72, 0.85) };
     chrome::shadow_text(label, x, y, size, color);
-    if hover && clicked() {
+    if pressed {
         cue(Cue::Button);
         return true;
     }
@@ -616,13 +616,7 @@ pub fn open_advanced() {
 
 /// A button of Razdor's own rows (`label` on the marble), true when clicked.
 fn row_button(r: Rect, label: &str) -> bool {
-    let over = r.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-    chrome::marble_button(r, label, true, over);
-    if over && clicked() {
-        cue(Cue::Button);
-        return true;
-    }
-    false
+    settings_button(r, label)
 }
 
 /// Razdor's advanced settings (the settings window's "Ещё…"): rules where Razdor can differ
@@ -743,10 +737,15 @@ fn advanced_window(audio: &mut super::audio::Settings, over_map: bool) -> bool {
         super::language::toggle();
     }
     let ok = Rect::new(inner.x + inner.w - 120.0 * k, inner.y + inner.h - 44.0 * k, 96.0 * k, 28.0 * k);
-    let over_ok = ok.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
     let ok_label = own("Buttons", "Ok", n_("OK"));
-    chrome::marble_button(ok, &ok_label, true, over_ok);
-    closed || key(KeyCode::Escape) || key(KeyCode::Enter) || (over_ok && clicked())
+    closed || key(KeyCode::Escape) || key(KeyCode::Enter) || settings_button(ok, &ok_label)
+}
+
+fn settings_button(r: Rect, label: &str) -> bool {
+    let (_, down, pressed) = super::widgets::button_state(r, true);
+    chrome::marble_button(r, label, true, down);
+    if pressed { cue(Cue::Button); }
+    pressed
 }
 
 /// One of the original's slider rows (0x4d01c9: 32 px boxes 40 apart from 45 px under the
@@ -899,19 +898,15 @@ pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool, ov
     // «Принять» keeps what was changed, «Отмена» (the close box and Esc too) puts it back.
     let cancel = Rect::new(inner.x + inner.w - 14.0 * k - 89.0 * k, inner.y + inner.h - 42.0 * k, 89.0 * k, 32.0 * k);
     let apply = Rect::new(cancel.x - 8.0 * k - 89.0 * k, cancel.y, 89.0 * k, 32.0 * k);
-    let over = |r: Rect| r.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
     let (apply_label, cancel_label) = (own("Buttons", "Apply", n_("Apply")), own("Buttons", "Cancel", n_("Cancel")));
-    chrome::marble_button(apply, &apply_label, true, over(apply));
-    chrome::marble_button(cancel, &cancel_label, true, over(cancel));
-    if (over(apply) && clicked()) || key(KeyCode::Enter) {
-        cue(Cue::Button);
+    // Both act when the button is let go over it (PR #5's buttons).
+    let apply_pressed = settings_button(apply, &apply_label);
+    let cancel_pressed = settings_button(cancel, &cancel_label);
+    if apply_pressed || key(KeyCode::Enter) {
         OPENED_WITH.with(|o| o.set(None));
         return true;
     }
-    if (over(cancel) && clicked()) || closed || key(KeyCode::Escape) {
-        if over(cancel) {
-            cue(Cue::Button);
-        }
+    if cancel_pressed || closed || key(KeyCode::Escape) {
         if let Some(before) = OPENED_WITH.with(|o| o.take()) {
             *audio = before;
         }

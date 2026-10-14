@@ -131,6 +131,10 @@ pub fn hold_right_for_snapshot(on: bool) {
     SNAPSHOT_RIGHT.with(|r| r.set(on));
 }
 
+pub fn is_mouse_button_released(b: MouseButton) -> bool {
+    mq::is_mouse_button_released(b) || button(b).released
+}
+
 pub fn is_key_pressed(k: KeyCode) -> bool {
     mq::is_key_pressed(k) || key_edge(k).pressed
 }
@@ -212,7 +216,7 @@ mod tests {
                     let after = code[i + name.len()..].chars().next();
                     !before.is_some_and(|c| ident(c) || c == ':') && !after.is_some_and(ident) && !code[..i].ends_with("fn ")
                 });
-                let imported = imported.contains(&name) || src.contains(&format!("use input::{name};"));
+                let imported = imported.contains(&name) || src.contains(&format!("use input::{name};")) || src.contains(&format!("use crate::ui::input::{name};"));
                 let qualified = macroquads.contains(&name) || src.contains(&format!("macroquad::input::{name}")) || src.contains(&format!("macroquad::prelude::{name}"));
                 if (used && !imported) || qualified {
                     wrong.push(format!("{}: {name}", path.display()));

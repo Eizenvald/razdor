@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use crate::ui::input::{get_keys_pressed, get_keys_released, is_key_down, is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, mouse_position, mouse_wheel};
+use crate::ui::input::{get_keys_pressed, get_keys_released, is_key_down, is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, is_mouse_button_released, mouse_position, mouse_wheel};
 use macroquad::prelude::*;
 
 pub const INK: Color = Color::new(0.93, 0.90, 0.82, 1.0);
@@ -173,6 +173,7 @@ fn text_ttf(s: &str, x: f32, y: f32, size: f32, color: Color) {
 /// Size of `s`: in the original's font of the current face when the install has it
 /// (`ui::dt_font`), else in the TrueType font.
 pub fn measure(s: &str, size: f32) -> TextDimensions {
+    let size = super::dt_font::native_size(super::dt_font::face(), size);
     let bitmap = super::dt_font::with_current(|f| {
         let width = f.width(s, size, &|c| measure_ttf(c.encode_utf8(&mut [0; 4]), size).width);
         let cap = f.cap_height(size);
@@ -206,6 +207,12 @@ thread_local! {
     /// This frame's click and key presses were taken (a wait cut by them): nothing else
     /// acts on them.
     static SWALLOWED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+thread_local! {
+    /// The dialog button where the left-button press began. Its action runs only when that
+    /// same button receives the release while still under the pointer.
+    static BUTTON_CAPTURE: std::cell::Cell<Option<[u32; 4]>> = const { std::cell::Cell::new(None) };
 }
 
 /// The rest of this frame sees no click and no key press ([`clicked`], [`key`],
@@ -245,6 +252,22 @@ pub fn mouse_in(x: f32, y: f32, w: f32, h: f32) -> bool {
 
 pub fn clicked() -> bool {
     !input_blocked() && !input_swallowed() && is_mouse_button_pressed(MouseButton::Left)
+}
+
+/// Tracks a button from mouse-down to mouse-up. Returns its hover, held-down visual state,
+/// and activation edge; dragging out cancels activation and dragging back in restores it.
+pub fn button_state(r: Rect, enabled: bool) -> (bool, bool, bool) {
+    let hover = enabled && !input_swallowed() && mouse_in(r.x, r.y, r.w, r.h);
+    let capture = [r.x.to_bits(), r.y.to_bits(), r.w.to_bits(), r.h.to_bits()];
+    let down_edge = is_mouse_button_pressed(MouseButton::Left);
+    let up_edge = is_mouse_button_released(MouseButton::Left);
+    if down_edge && hover {
+        BUTTON_CAPTURE.with(|c| c.set(Some(capture)));
+    } else if !is_mouse_button_down(MouseButton::Left) && !up_edge {
+        BUTTON_CAPTURE.with(|c| c.set(None));
+    }
+    let captured = BUTTON_CAPTURE.with(|c| c.get() == Some(capture));
+    (hover, captured && hover && is_mouse_button_down(MouseButton::Left), hover && captured && up_edge)
 }
 
 pub fn right_clicked() -> bool {
@@ -432,7 +455,8 @@ pub fn hint_box(lines: &[(String, Color)], w: f32) {
         return;
     }
     let k = super::chrome::k();
-    let (size, line_h) = (17.0 * k, 21.0 * k);
+    let size = super::typography::Role::Hint.size(17.0 * k);
+    let line_h = super::typography::Role::Hint.line_height(21.0 * k);
     let w = w.min(screen_width() - 8.0);
     let h = lines.len() as f32 * line_h + 14.0 * k;
     let (mx, my) = pointer();
@@ -455,11 +479,17 @@ pub fn hint_box(lines: &[(String, Color)], w: f32) {
 }
 
 fn tooltip_at_alpha(lines: &[(String, Color)], alpha: f32) {
+    super::typography::Role::Hint.with(|| tooltip_content(lines, alpha));
+}
+
+fn tooltip_content(lines: &[(String, Color)], alpha: f32) {
     if lines.is_empty() {
         return;
     }
     let w = lines.iter().map(|(s, _)| measure(s, 17.0).width).fold(0.0, f32::max) + 24.0;
-    let h = lines.len() as f32 * 21.0 + 14.0;
+    let size = super::dt_font::native_size(super::dt_font::face(), 17.0);
+    let line_h = super::dt_font::native_line_height(super::dt_font::face(), 21.0);
+    let h = lines.len() as f32 * line_h + 14.0;
     let (mx, my) = pointer();
     let x = (mx + 18.0).min(screen_width() - w - 4.0);
     let y = (my + 18.0).min(screen_height() - h - 4.0);
@@ -471,7 +501,7 @@ fn tooltip_at_alpha(lines: &[(String, Color)], alpha: f32) {
     // The box and its text fade together (the whole box is blended, 49ee4b).
     let ink = alpha / alpha.max(160.0 / 255.0).max(f32::EPSILON);
     for (i, (s, c)) in lines.iter().enumerate() {
-        super::chrome::shadow_text(s, x + 12.0, y + 24.0 + i as f32 * 21.0, 17.0, Color { a: c.a * ink.min(1.0), ..*c });
+        super::chrome::shadow_text(s, x + 12.0, y + 7.0 + size * 0.8 + i as f32 * line_h, size, Color { a: c.a * ink.min(1.0), ..*c });
     }
 }
 
@@ -528,9 +558,9 @@ pub fn red_button(x: f32, y: f32, w: f32, h: f32, label: &str, enabled: bool) ->
 
 /// [`button`] with its own press sound (the money buttons play `Item-Gold`).
 pub fn button_sounding(x: f32, y: f32, w: f32, h: f32, label: &str, enabled: bool, sound: super::audio::Cue) -> bool {
-    let hover = enabled && mouse_in(x, y, w, h);
-    super::chrome::marble_button(Rect::new(x, y, w, h), label, enabled, hover);
-    let pressed = hover && clicked();
+    let r = Rect::new(x, y, w, h);
+    let (_, down, pressed) = button_state(r, enabled);
+    super::chrome::marble_button(Rect::new(x, y, w, h), label, enabled, down);
     if pressed {
         super::audio::cue(sound);
     }
@@ -539,6 +569,8 @@ pub fn button_sounding(x: f32, y: f32, w: f32, h: f32, label: &str, enabled: boo
 
 /// Draws `s` with its baseline at `y` (see [`measure`] for the font).
 pub fn text(s: &str, x: f32, y: f32, size: f32, color: Color) {
+    let size = super::dt_font::native_size(super::dt_font::face(), size);
+    let color = super::typography::color(color);
     let drawn = super::dt_font::with_current(|f| {
         f.draw(s, x, y, size, color, &|c, px, py| {
             let ch = c.encode_utf8(&mut [0; 4]).to_string();
@@ -570,6 +602,9 @@ pub fn text_marked(s: &str, marked: Option<std::ops::Range<usize>>, x: f32, y: f
 /// The font size, at most `size` and not below 70% of it, at which `s` fits in `width`
 /// (Russian texts run longer than the English ones the layouts were drawn for).
 pub fn fit_size(s: &str, width: f32, size: f32) -> f32 {
+    if super::typography::fixed_size() {
+        return super::dt_font::native_size(super::dt_font::face(), size);
+    }
     let mut fit = size;
     while fit > (size * 0.7).max(9.0) && measure(s, fit).width > width {
         fit -= 1.0;
@@ -579,11 +614,13 @@ pub fn fit_size(s: &str, width: f32, size: f32) -> f32 {
 
 /// `s` shortened with "…" until it fits in `width` at `size`.
 pub fn ellipsize(s: &str, width: f32, size: f32) -> String {
+    if width <= 0.0 { return String::new(); }
     if measure(s, size).width <= width {
         return s.to_string();
     }
+    if measure("…", size).width > width { return String::new(); }
     let mut t: String = s.to_string();
-    while t.chars().count() > 1 && measure(&format!("{t}…"), size).width > width {
+    while !t.is_empty() && measure(&format!("{t}…"), size).width > width {
         t.pop();
     }
     format!("{}…", t.trim_end())
@@ -961,8 +998,9 @@ pub fn number_field(key: &str, x: f32, y: f32, w: f32, value: i64, min: i64, max
 
 /// A compact button (no sound, for steppers and list rows).
 pub fn small_button(x: f32, y: f32, w: f32, h: f32, label: &str, enabled: bool) -> bool {
-    let hover = enabled && mouse_in(x, y, w, h);
-    let bg = match (enabled, hover) {
+    let r = Rect::new(x, y, w, h);
+    let (_, down, pressed) = button_state(r, enabled);
+    let bg = match (enabled, down) {
         (false, _) => Color::new(0.16, 0.16, 0.16, 1.0),
         (true, true) => Color::new(0.45, 0.35, 0.2, 1.0),
         (true, false) => Color::new(0.26, 0.21, 0.14, 1.0),
@@ -975,13 +1013,13 @@ pub fn small_button(x: f32, y: f32, w: f32, h: f32, label: &str, enabled: bool) 
         let d = measure(label, size);
         text(label, x + (w - d.width) / 2.0, y + (h + d.offset_y) / 2.0 - 1.0, size, if enabled { INK } else { DIM });
     });
-    hover && clicked()
+    pressed
 }
 
 /// A button that stays lit while `on` (tool and mode pickers). True when clicked.
 pub fn toggle_button(x: f32, y: f32, w: f32, h: f32, label: &str, on: bool) -> bool {
-    let hover = mouse_in(x, y, w, h);
-    let bg = if on { Color::new(0.55, 0.42, 0.18, 1.0) } else if hover { Color::new(0.36, 0.28, 0.18, 1.0) } else { Color::new(0.22, 0.18, 0.12, 1.0) };
+    let (hover, down, pressed) = button_state(Rect::new(x, y, w, h), true);
+    let bg = if on { Color::new(0.55, 0.42, 0.18, 1.0) } else if down { Color::new(0.36, 0.28, 0.18, 1.0) } else if hover { Color::new(0.28, 0.22, 0.14, 1.0) } else { Color::new(0.22, 0.18, 0.12, 1.0) };
     draw_rectangle(x, y, w, h, bg);
     draw_rectangle_lines(x, y, w, h, 1.0, if on { ACCENT } else { DIM });
     super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
@@ -990,7 +1028,6 @@ pub fn toggle_button(x: f32, y: f32, w: f32, h: f32, label: &str, on: bool) -> b
         let d = measure(label, size);
         text(label, x + (w - d.width) / 2.0, y + (h + d.offset_y) / 2.0 - 1.0, size, INK);
     });
-    let pressed = hover && clicked();
     if pressed {
         claim();
     }

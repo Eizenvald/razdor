@@ -196,7 +196,8 @@ impl BitmapFont {
     /// (a small text, or one shrunk to fit by `widgets::fit_size`) the scale stays as it is,
     /// drawn smoothed.
     fn scale(&self, size: f32) -> f32 {
-        whole_scale(size * TTF_CAP / self.cap)
+        let raw = size * TTF_CAP / self.cap;
+        if NATIVE_METRICS.with(Cell::get) { raw } else { whole_scale(raw) }
     }
 
     /// Width of `s` at `size`, with `fallback` giving the width of a character not in the sheet.
@@ -248,6 +249,42 @@ thread_local! {
     static SHADOWS: RefCell<HashMap<Face, Option<BitmapFont>>> = RefCell::new(HashMap::new());
     static FACE: Cell<Face> = const { Cell::new(Face::Body) };
     static MODE: Cell<FontMode> = const { Cell::new(FontMode::Original) };
+    static NATIVE_METRICS: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Use sheet pixels times the interface scale for the original interface's text.
+pub fn with_native_metrics<R>(f: impl FnOnce() -> R) -> R {
+    let before = NATIVE_METRICS.with(|v| v.replace(true));
+    let result = f();
+    NATIVE_METRICS.with(|v| v.set(before));
+    result
+}
+
+/// Use the screen's established fallback metrics for a legacy layout that must not inherit
+/// the shared native font sizing (modal dialogs still use their own fixed spacing).
+pub fn with_legacy_metrics<R>(f: impl FnOnce() -> R) -> R {
+    let before = NATIVE_METRICS.with(|v| v.replace(false));
+    let result = f();
+    NATIVE_METRICS.with(|v| v.set(before));
+    result
+}
+
+pub fn native_metrics() -> bool {
+    NATIVE_METRICS.with(Cell::get) && mode() == FontMode::Original
+}
+
+pub fn native_size(face: Face, fallback: f32) -> f32 {
+    if !NATIVE_METRICS.with(Cell::get) || mode() != FontMode::Original {
+        return fallback;
+    }
+    with_face(face, || with_current(|font| font.cap * super::chrome::k() / TTF_CAP)).unwrap_or(fallback)
+}
+
+pub fn native_line_height(face: Face, fallback: f32) -> f32 {
+    if !NATIVE_METRICS.with(Cell::get) || mode() != FontMode::Original {
+        return fallback;
+    }
+    with_face(face, || with_current(|font| font.glyphs.values().map(|g| g.h).max().unwrap_or(0) as f32 * super::chrome::k())).unwrap_or(fallback)
 }
 
 /// Sets the interface's font mode (the settings', or `RAZDOR_FONT_MODE`'s); every frame.
@@ -320,6 +357,7 @@ pub fn with_current<R>(f: impl FnOnce(&BitmapFont) -> R) -> Option<R> {
 /// sheet or the install has no shadow sheet for it.
 pub fn draw_shadow(s: &str, x: f32, y: f32, size: f32, alpha: f32) -> bool {
     let face = FACE.with(|c| c.get());
+    let size = native_size(face, size);
     with_current(|font| {
         SHADOWS.with(|shadows| {
             let mut shadows = shadows.borrow_mut();

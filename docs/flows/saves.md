@@ -55,6 +55,16 @@ show in the load window.
 
 ## The load window's list (progressive)
 
+The book's column headings use the pale green interface label colour; save names and scenario
+titles are yellow, while the save time is orange in SanSerif. The manual/autosave tabs switch
+size and colour immediately with selection. An idle spine is grey at 80%, a held one at 90%,
+and a selected spine is full size and drawn last across the book outline and steel line. Each
+tab's idle and selected artwork choices are defined separately in `src/ui/saves.rs`.
+
+The delete sign opens a confirmation with the captured save name in blue and Yes/No
+buttons. The book beneath turns grey and ignores input until the confirmation closes;
+only Yes deletes the captured file, while No or Escape keeps it.
+
 Opening the list never reads a save on the UI thread (commits c04fa1b, b2ecf89):
 
 - `save::list_files` lists the folder only (name, length, mtime → `ListedSave`, ordered

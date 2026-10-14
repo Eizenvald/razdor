@@ -63,13 +63,15 @@ fn control_label(c: Control) -> &'static str {
 /// A row of a list that can be picked: the blue bar when picked, a warm wash under the
 /// mouse. True when clicked.
 fn row(r: Rect, picked: bool) -> bool {
-    let over = mouse_in(r.x, r.y, r.w, r.h);
+    let (over, down, pressed) = button_state(r, true);
     if picked {
         draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.12, 0.2, 0.62, 0.75));
-    } else if over {
+    } else if down {
         draw_rectangle(r.x, r.y, r.w, r.h, Color::new(1.0, 0.85, 0.5, 0.12));
+    } else if over {
+        draw_rectangle(r.x, r.y, r.w, r.h, Color::new(1.0, 0.85, 0.5, 0.06));
     }
-    over && clicked()
+    pressed
 }
 
 /// Draws the window; returns what was chosen. `audio` holds the battle AI's level.

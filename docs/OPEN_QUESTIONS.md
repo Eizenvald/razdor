@@ -8,6 +8,17 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
 
 ## Open
 
+- **Defeat recovery screen from PR #5, owner's decision** (2026-10-14). Eizenvald's PR kept
+  Razdor's screen after a defeat with the days played and three actions: new game, load the
+  latest save of that map, restart the map. The merge kept main's parity instead (the
+  original's red report, «Ок» → main menu, 0x4c206c → 0x4bfb34) and dropped that screen. If
+  the owner wants the recovery actions back, they are a deviation (main only), e.g. as extra
+  buttons after the report or in the main menu; the PR's code is in its branch
+  (work/ui-followup-2026-10-14: `screens::game_over`, `EndChoice`, `latest_save`).
+- **dt-original: PR #5's parity parts** (2026-10-14). Typography roles and colours, the
+  sanctuary layout, the event pictures on the left, the save window's tabs and steel line, the
+  new hero window's geometry: port to dt-original after checking each against the original.
+
 - **Village window open in the original, not in Razdor** (2026-10-14, explorer C1014-212558,
   Устье Трейна, step 15 `wait 4`). The original had a village window on screen and skipped the
   wait; Razdor had no window and applied it (153 AI draws). Reproduced twice on the original.

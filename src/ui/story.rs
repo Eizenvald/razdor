@@ -299,7 +299,7 @@ pub fn journal(game: &Game, assets: &super::assets::Assets, view: &mut JournalVi
     let box_ink = Color::new(1.0, 0.86, 0.58, 1.0);
     match rows.get(view.selected) {
         Some(row) => {
-            text_centered(&row.title, tx + tw / 2.0, ly + 32.0, 21.0, box_ink);
+            super::typography::Role::Name.with(|| text_centered(&ellipsize(&row.title, tw - 40.0, 21.0), tx + tw / 2.0, ly + 32.0, 21.0, box_ink));
             let mut sub = row.date.map_or_else(|| tr("Date unknown").to_string(), |d| d.label());
             if view.tab == Tab::Completed {
                 sub = format!("{}: {sub}", tr(QUEST_COMPLETED));
@@ -320,7 +320,8 @@ pub fn journal(game: &Game, assets: &super::assets::Assets, view: &mut JournalVi
                 })
                 .collect();
             let (top, bottom) = (ly + 88.0, ly + lh - 14.0);
-            let shown = (((bottom - top) / 22.0).floor() as usize).max(1);
+            let text_lh = super::typography::Role::Body.line_height(22.0);
+            let shown = (((bottom - top) / text_lh).floor() as usize).max(1);
             if mouse_in(tx, ly, tw, lh) {
                 let wh = wheel();
                 if wh < 0.0 && view.text_scroll + shown < lines.len() {
@@ -339,7 +340,7 @@ pub fn journal(game: &Game, assets: &super::assets::Assets, view: &mut JournalVi
             // Razdor's scrollbar right of the text when it does not all fit.
             scrollbar(Rect::new(tx + tw - 16.0, top - 18.0, 12.0, bottom - top + 18.0), &mut view.text_scroll, shown, lines.len());
             for (i, line) in lines.iter().skip(view.text_scroll).take(shown).enumerate() {
-                text(line, tx + 20.0, top + i as f32 * 22.0, 18.0, box_ink);
+                text(line, tx + 20.0, top + i as f32 * text_lh, 18.0, box_ink);
             }
             if lines.len() > shown {
                 let more = trf!("{first}–{last} of {total} lines (wheel, PgUp / PgDn)", first = view.text_scroll + 1, last = (view.text_scroll + shown).min(lines.len()), total = lines.len());

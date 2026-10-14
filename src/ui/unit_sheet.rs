@@ -11,8 +11,29 @@ use razdor::rules::formation::{Formation, Slot};
 use razdor::rules::units::Stats;
 
 use super::assets::Assets;
-use super::chrome::{self, k, shadow_centered, shadow_right, shadow_text, BLUE_TEXT, CREAM, ORANGE_TEXT, RED_TEXT};
+use super::chrome::{self, k, BLUE_TEXT, CREAM, ORANGE_TEXT, RED_TEXT};
 use super::widgets::{measure, mouse_in, wrap};
+
+/// The army's font tints from the original's startup palette (4dbb0c), applied only
+/// in the native army presentation. Other screens retain their current palette.
+fn army_ink(color: Color) -> Color {
+    if !super::dt_font::native_metrics() { return color; }
+    if color == NAMED_INK || color == STRIP_INK { super::typography::Ink::Yellow.color() }
+    else { super::typography::color(color) }
+}
+
+fn shadow_text(s: &str, x: f32, y: f32, size: f32, color: Color) {
+    super::widgets::text(s, x, y, size, army_ink(color));
+}
+
+fn shadow_right(s: &str, x: f32, y: f32, size: f32, color: Color) {
+    let width = measure(s, size).width;
+    super::widgets::text(s, x - width, y, size, army_ink(color));
+}
+
+fn shadow_centered(s: &str, x: f32, y: f32, size: f32, color: Color) {
+    chrome::shadow_centered(s, x, y, size, army_ink(color));
+}
 
 /// What the panel shows of one unit.
 pub struct Sheet<'a> {
@@ -102,14 +123,14 @@ fn title_of(text: &str) -> &str {
     text.split(" - ").next().unwrap_or(text).trim()
 }
 
-fn hero_trait(h: HeroClass) -> (String, String) {
+fn hero_trait(h: HeroClass) -> (String, String, Color) {
     let n = HeroClass::ALL.iter().position(|&c| c == h).unwrap_or(0) + 1;
     let english = match h {
         HeroClass::Knight => tr("The army of this hero takes 10% less damage from enemy attacks (magic excepted)."),
         HeroClass::Archmage => tr("The Archmage casts spells twice as fast for 50% less mana, but his army gets no bonuses."),
         HeroClass::Ranger => tr("The army of this hero travels 20% faster, and the wounded heal 20% of their hits every day."),
     };
-    (format!("HeroBonus{n}"), chrome::ui_text("NewHero", &format!("Bonus{n}")).unwrap_or_else(|| english.to_string()))
+    (format!("HeroBonus{n}"), chrome::ui_text("NewHero", &format!("Bonus{n}")).unwrap_or_else(|| english.to_string()), super::typography::Ink::Yellow.color())
 }
 
 /// The state lines closing the panel's traits (492f24), each with its icon of the table
@@ -146,22 +167,26 @@ fn state_lines(dead: bool, unpaid: bool, back_row: bool, in_building: bool) -> V
     v
 }
 
-fn state_trait(line: StateLine) -> (String, String) {
+fn state_trait(line: StateLine) -> (String, String, Color) {
     let own = |key: &str| chrome::ui_text("Army", key);
-    match line {
+    let (art, text) = match line {
         StateLine::Resurrect => ("Bonus-Ressurrect".into(), own("Hint3").unwrap_or_else(|| tr("A dead unit can be raised only in a church or a town!").into())),
         // The original's no-payment text ae6c0c is never set: `Hint4` is read into c35000[0]
         // instead (4e3dad), so the line is the icon over an empty row (bug kept).
         StateLine::NoPayment => ("Bonus-NoPayment".into(), String::new()),
         StateLine::BackRow => ("Bonus-2Row".into(), own("Hint1").unwrap_or_else(|| tr("In the second row the unit gets a bonus to its ranged defence!").into())),
         StateLine::InCastle => ("Bonus-InCastle".into(), own("Hint2").unwrap_or_else(|| tr("In its own building the unit gets a bonus to all defences!").into())),
-    }
+    };
+    (art, text, BLUE_TEXT)
 }
 
 /// The traits the panel lists: the hero's class, the unit's bonuses (its items' too), then
 /// its state ([`state_lines`]).
-fn traits_of(s: &Sheet) -> Vec<(String, String)> {
-    let mut traits: Vec<(String, String)> = s.start.bonuses.iter().map(trait_line).collect();
+fn traits_of(s: &Sheet) -> Vec<(String, String, Color)> {
+    let mut traits: Vec<(String, String, Color)> = s.start.bonuses.iter().map(|bonus| {
+        let (art, text) = trait_line(bonus);
+        (art, text, super::typography::Ink::Green.color())
+    }).collect();
     if let Some(h) = s.hero {
         traits.insert(0, hero_trait(h));
     }
@@ -450,7 +475,9 @@ pub fn battle_stat_strip(strip: Rect, now: &Stats, base: &Stats, power: i32, cas
 #[allow(clippy::too_many_arguments)]
 fn stat_strip_impl(strip: Rect, now: &Stats, base: &Stats, power: i32, caster: bool, place: usize, hp: i32, row2: i32, building: i32, lit: bool, panel: StripPanel, battle: bool) {
     let k = k();
-    chrome::surface(strip, chrome::Skin::Strip);
+    // The hero's strip uses the same visible parchment grain as the reference hire card;
+    // the darker standard strip texture loses too much detail once tinted red.
+    chrome::surface(strip, if panel == StripPanel::Hero && !battle { chrome::Skin::Paper } else { chrome::Skin::Strip });
     // The original recolours the strip itself (0x48da5c): red for the hero, blue for a named
     // character; a tint over it here. The hero's red is a deeper one than the original's
     // (about 160,50,0 on this paper), which glared (a choice over the original).
@@ -458,14 +485,16 @@ fn stat_strip_impl(strip: Rect, now: &Stats, base: &Stats, power: i32, caster: b
         StripPanel::Plain => {}
         StripPanel::Hero if battle => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.5, 0.05, 0.03, 0.55)),
         StripPanel::Named if battle => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.05, 0.3, 0.95, 0.6)),
-        StripPanel::Hero => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.36, 0.07, 0.035, 1.0)),
-        StripPanel::Named => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.035, 0.16, 0.42, 1.0)),
+        // Preserve the paper's warm variation under the leader's red highlight, as in the
+        // reference card. The tint changes its color without flattening the texture.
+        StripPanel::Hero => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.48, 0.12, 0.035, 0.36)),
+        StripPanel::Named => draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.035, 0.16, 0.42, 0.62)),
     }
     if lit {
         draw_rectangle(strip.x, strip.y, strip.w, strip.h, Color::new(0.75, 0.25, 0.0, 0.4));
     }
     draw_rectangle_lines(strip.x, strip.y, strip.w, strip.h, 1.0, Color::new(0.0, 0.0, 0.0, 0.5));
-    let fs = (strip.h * 0.30).round().max(9.0);
+    let fs = super::dt_font::native_size(super::dt_font::Face::Body, (strip.h * 0.30).round().max(9.0));
     let lh = strip.h / 3.0;
     let (x0, x1) = (strip.x + 3.0 * k, strip.x + strip.w - 3.0 * k);
     let (att, ac) = attack_piece(now, base, power, caster, place);
@@ -474,6 +503,8 @@ fn stat_strip_impl(strip: Rect, now: &Stats, base: &Stats, power: i32, caster: b
     let room = x1 - x0 - 4.0 * k;
     let wide = measure(&att, fs).width + d.as_ref().map_or(0.0, |d| measure(d, fs).width);
     let fs1 = if wide > room { (fs * room / wide).floor().max(7.0) } else { fs };
+    let att_room = (room - d.as_ref().map_or(0.0, |d| measure(d, fs1).width)).max(0.0);
+    let att = super::widgets::ellipsize(&att, att_room, fs1);
     shadow_text(&att, x0, strip.y + lh - 2.0 * k, fs1, ac);
     if let Some(d) = d {
         let dc = strip_color(now[Stat::DefenceBlow] + now[Stat::DefenceShot], base[Stat::DefenceBlow] + base[Stat::DefenceShot]);
@@ -517,6 +548,10 @@ fn silhouette(r: Rect) {
 /// Draws the panel in `r`. `slots` shows the four item slots (empty ones too) and returns
 /// the one clicked; the item under the mouse goes to `hover`.
 pub fn draw(assets: &Assets, content: &Content, r: Rect, s: &Sheet, slots: bool, hover: &mut Option<ItemId>) -> Option<usize> {
+    super::typography::Role::Body.with(|| draw_in_face(assets, content, r, s, slots, hover))
+}
+
+fn draw_in_face(assets: &Assets, content: &Content, r: Rect, s: &Sheet, slots: bool, hover: &mut Option<ItemId>) -> Option<usize> {
     let k = k();
     chrome::unit_parchment(r);
     // The figure, behind the text.
@@ -542,11 +577,14 @@ pub fn draw(assets: &Assets, content: &Content, r: Rect, s: &Sheet, slots: bool,
     // does not fit, the description is cut short (a caster's long stat list with a trait, a
     // mod's long trait texts).
     let traits = traits_of(s);
-    let (small, slh, icon) = ((12.0 * k).round(), 13.2 * k, 24.0 * k);
+    let small = super::dt_font::native_size(super::dt_font::Face::Body, (12.0 * k).round());
+    let slh = super::dt_font::native_line_height(super::dt_font::Face::Body, 13.2 * k);
+    let icon = 24.0 * k;
     let trait_w = r.w - 44.0 * k - icon;
-    let traits_h: f32 = traits.iter().map(|(_, line)| trait_height(trait_rows(line, trait_w, small).len(), slh, k)).sum();
-    let lh = 13.6 * k;
-    let text_h = 17.0 * k + lh * (1 + stat_lines(content, s).len() + s.status.len()) as f32 + 6.0 * k + traits_h;
+    let traits_h: f32 = traits.iter().map(|(_, line, _)| trait_height(trait_rows(line, trait_w, small).len(), slh, k)).sum();
+    let lh = super::dt_font::native_line_height(super::dt_font::Face::Body, 13.6 * k);
+    let name_lh = super::dt_font::native_line_height(super::dt_font::Face::Subtitle, 17.0 * k);
+    let text_h = name_lh + lh * (1 + stat_lines(content, s).len() + s.status.len()) as f32 + 6.0 * k + traits_h;
     // Any unit but the hero shows its class's description (0x492f24: the type's text, the
     // `Descript` of Rus_Units.ini), in battle and in the army and building windows alike.
     let desc = if s.hero.is_none() { content.unit(s.kind).description.as_str() } else { "" };
@@ -586,12 +624,15 @@ pub fn draw(assets: &Assets, content: &Content, r: Rect, s: &Sheet, slots: bool,
     }
     let x0 = r.x + 24.0 * k;
     let x1 = r.x + r.w - 16.0 * k;
-    let name_size = (17.0 * k).round();
+    let name_size = super::dt_font::native_size(super::dt_font::Face::Subtitle, (17.0 * k).round());
     let mut y = name_y;
     let name_ink = if s.named { NAMED_INK } else { CREAM };
-    super::dt_font::with_face(super::dt_font::Face::Subtitle, || shadow_centered(s.name, r.x + r.w / 2.0, y, name_size, name_ink));
-    y += 17.0 * k;
-    let size = (12.0 * k).round();
+    super::typography::Role::Name.with(|| {
+        let name = super::widgets::ellipsize(s.name, r.w - 16.0 * k, name_size);
+        shadow_centered(&name, r.x + r.w / 2.0, y, name_size, name_ink);
+    });
+    y += name_lh;
+    let size = super::dt_font::native_size(super::dt_font::Face::Body, (12.0 * k).round());
     // Level and experience on one line.
     shadow_text(&razdor::trf!("Level {level}", level = s.level), x0, y, size, CREAM);
     shadow_right(&razdor::trf!("XP {xp} / {need}", xp = s.xp, need = s.need), x1, y, size, CREAM);
@@ -599,12 +640,16 @@ pub fn draw(assets: &Assets, content: &Content, r: Rect, s: &Sheet, slots: bool,
     for (label, value, color) in stat_lines(content, s) {
         let c = if color == CREAM { CREAM } else { color };
         let room = x1 - x0 - measure(&value, size).width - 6.0 * k;
-        shadow_text(&label, x0, y, super::widgets::fit_size(&label, room, size), c);
+        let label_size = super::widgets::fit_size(&label, room, size);
+        let label = super::widgets::ellipsize(&label, room, label_size);
+        shadow_text(&label, x0, y, label_size, c);
         shadow_right(&value, x1, y, size, c);
         y += lh;
     }
     for (line, color) in &s.status {
-        shadow_text(line, x0, y, super::widgets::fit_size(line, x1 - x0, size), *color);
+        let fitted = super::widgets::fit_size(line, x1 - x0, size);
+        let line = super::widgets::ellipsize(line, x1 - x0, fitted);
+        shadow_text(&line, x0, y, fitted, *color);
         y += lh;
     }
     // The description in what the traits leave, then the traits with their icons.
@@ -618,7 +663,7 @@ pub fn draw(assets: &Assets, content: &Content, r: Rect, s: &Sheet, slots: bool,
         shadow_text(&line, x0 - 4.0 * k, y, small, CREAM);
         y += slh;
     }
-    for (art, line) in traits {
+    for (art, line, ink) in traits {
         y += 5.0 * k;
         if y + slh > bottom + slh * 0.5 {
             break;
@@ -630,7 +675,7 @@ pub fn draw(assets: &Assets, content: &Content, r: Rect, s: &Sheet, slots: bool,
                 break;
             }
             let lx = if i < 2 { x0 + icon - 4.0 * k } else { x0 - 8.0 * k };
-            shadow_text(l, lx, y, small, BLUE_TEXT);
+            shadow_text(l, lx, y, small, ink);
             y += slh;
         }
         if lines.len() == 1 {

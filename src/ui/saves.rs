@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::ui::input::{is_key_pressed, is_mouse_button_down};
+use crate::ui::input::is_key_pressed;
 use macroquad::prelude::*;
 
 use razdor::i18n::{n_, tr};
@@ -69,6 +69,8 @@ impl SaveView {
 pub struct LoadView {
     /// "Clear all" asked about (Razdor's): every save of the tab but the pinned ones.
     pub confirm_clear: bool,
+    /// File and display name captured when its delete sign was released.
+    confirm_delete: Option<(PathBuf, String)>,
     pub tab: SaveKind,
     pub entries: Vec<ListedSave>,
     /// The first row shown when the missing metas were last asked for.
@@ -87,11 +89,17 @@ thread_local! {
     static LAST_TAB: std::cell::Cell<SaveKind> = const { std::cell::Cell::new(SaveKind::Auto) };
 }
 
+/// Final per-tab placement and artwork choices from the development tuner.
+const MANUAL_TAB_POSITION: (f32, f32) = (11.117_645, 408.0);
+const MANUAL_TAB_TEXTURES: (u8, u8) = (0, 0);
+const AUTO_TAB_POSITION: (f32, f32) = (166.852_94, 408.0);
+const AUTO_TAB_TEXTURES: (u8, u8) = (1, 1);
+
 impl LoadView {
     pub fn new(back: Back) -> LoadView {
         let first = LAST_TAB.with(|t| t.get());
         let other = if first == SaveKind::Auto { SaveKind::Manual } else { SaveKind::Auto };
-        let mut v = LoadView { confirm_clear: false, tab: first, entries: Vec::new(), asked: None, settled: false, selected: 0, scroll: 0, back };
+        let mut v = LoadView { confirm_clear: false, confirm_delete: None, tab: first, entries: Vec::new(), asked: None, settled: false, selected: 0, scroll: 0, back };
         v.refresh();
         if v.entries.is_empty() {
             v.tab = other;
@@ -337,8 +345,9 @@ impl Book {
         let k = self.k;
         super::dt_font::with_face(super::dt_font::Face::Title, || {
             let y = self.p(0.0, 53.0).y;
-            super::chrome::shadow_centered(left, self.p(157.0, 0.0).x, y, 16.0 * k, super::chrome::CREAM);
-            super::chrome::shadow_centered(right, self.p(437.0, 0.0).x, y, 16.0 * k, super::chrome::CREAM);
+            let heading = Color::new(155.0 / 255.0, 1.0, 155.0 / 255.0, 1.0);
+            super::chrome::shadow_centered(left, self.p(157.0, 0.0).x, y, 16.0 * k, heading);
+            super::chrome::shadow_centered(right, self.p(437.0, 0.0).x, y, 16.0 * k, heading);
         });
         let r = self.rect(17.0, 60.0, 560.0, 350.0);
         match super::chrome::win("S_Save") {
@@ -372,6 +381,13 @@ impl Book {
         for (i, row) in rows.iter().enumerate().skip(*scroll).take(Book::ROWS) {
             let r = self.row_rect(i - *scroll);
             let hover = !input_blocked() && r.contains(crate::ui::widgets::pointer().into());
+            let sign = 22.0 * k;
+            let row_hit = if deletable && selected == Some(i) {
+                Rect::new(r.x, r.y, r.w - 2.0 * sign - 10.0 * k, r.h)
+            } else {
+                r
+            };
+            let (_, row_down, row_pressed) = super::widgets::button_state(row_hit, true);
             if selected == Some(i) {
                 // The video's blue bar, the load sign on its left, the delete sign on its right.
                 let steps = 8;
@@ -380,33 +396,31 @@ impl Book {
                     let a = 0.85 - 0.5 * (t - 0.5).abs();
                     draw_rectangle(r.x, r.y + r.h * s as f32 / steps as f32, r.w, r.h / steps as f32 + 0.5, Color::new(0.12, 0.2, 0.62, a));
                 }
-                let sign = 22.0 * k;
-                if let Some(t) = super::chrome::win("LSign-Load") {
-                    super::chrome::tex(&t, Rect::new(r.x + 4.0 * k, r.y + (r.h - sign) / 2.0, sign, sign), WHITE);
-                }
                 if deletable {
                     // Razdor's pin, left of the delete sign.
                     let p = Rect::new(r.x + r.w - 2.0 * sign - 10.0 * k, r.y + (r.h - sign) / 2.0, sign, sign);
-                    let over = p.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-                    draw_pin(p, row.pinned, over);
+                    let (over, down, pressed) = super::widgets::button_state(p, true);
+                    draw_pin(p, row.pinned, down);
                     if over {
                         tooltip(&[(if row.pinned { tr("Unpin the save (P)") } else { tr("Pin the save (P): it is never overwritten and stays on top") }.to_string(), INK)]);
-                        if clicked() {
-                            pin = Some(i);
-                        }
+                    }
+                    if pressed {
+                        pin = Some(i);
                     }
                     let d = Rect::new(r.x + r.w - sign - 4.0 * k, r.y + (r.h - sign) / 2.0, sign, sign);
-                    let over = d.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-                    if let Some(t) = super::chrome::win(if over && is_mouse_button_down(MouseButton::Left) { "LSign-Delete-Down" } else { "LSign-Delete" }) {
+                    let (over, down, pressed) = super::widgets::button_state(d, true);
+                    if let Some(t) = super::chrome::win(if down { "LSign-Delete-Down" } else { "LSign-Delete" }) {
                         super::chrome::tex(&t, d, WHITE);
                     }
                     if over {
                         tooltip(&[(own("LoadGame", "DeleteHint", n_("Delete the saved game")), INK)]);
-                        if clicked() {
-                            delete = Some(i);
-                        }
+                    }
+                    if pressed {
+                        delete = Some(i);
                     }
                 }
+            } else if row_down {
+                draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.16, 0.24, 0.54, 0.55));
             } else if hover {
                 draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.1, 0.15, 0.45, 0.35));
             }
@@ -418,45 +432,80 @@ impl Book {
             let dim = |c: Color| if row.waiting { Color { a: c.a * 0.55, ..c } } else { c };
             // The name is centred on its column, never wider than the room right of the load
             // sign (its right edge at 43): 2 × (157 − 47).
+            let name_color = dim(ACCENT);
             super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
                 let size = fit_size(&row.name, NAME_ROOM * k, 16.0 * k);
-                super::chrome::shadow_centered(&ellipsize(&row.name, NAME_ROOM * k, size), self.p(157.0, 0.0).x, r.y + lh * 0.5 + size * 0.36, size, dim(super::chrome::CREAM));
+                super::chrome::shadow_centered(&ellipsize(&row.name, NAME_ROOM * k, size), self.p(157.0, 0.0).x, r.y + lh * 0.5 + size * 0.36, size, name_color);
             });
             let cx = self.p(437.0, 0.0).x;
             super::dt_font::with_face(super::dt_font::Face::Bold, || {
-                super::chrome::shadow_centered(&ellipsize(&row.scenario, 250.0 * k, 11.0 * k), cx, r.y + lh * 0.42, 11.0 * k, WHITE);
+                super::chrome::shadow_centered(&ellipsize(&row.scenario, 250.0 * k, 11.0 * k), cx, r.y + lh * 0.42, 11.0 * k, dim(ACCENT));
             });
-            super::chrome::shadow_centered(&ellipsize(&row.time, 250.0 * k, 11.0 * k), cx, r.y + lh * 0.9, 11.0 * k, dim(Color::new(0.85, 0.75, 0.45, 1.0)));
-            if hover && clicked() && delete.is_none() && pin.is_none() {
+            super::dt_font::with_face(super::dt_font::Face::Body, || {
+                super::chrome::shadow_centered(&ellipsize(&row.time, 250.0 * k, 11.0 * k), cx, r.y + lh * 0.9, 11.0 * k, dim(Color::new(1.0, 0.58, 0.20, 1.0)));
+            });
+            // Keep the play mark above long save names and the selected row highlight.
+            if selected == Some(i) {
+                if let Some(t) = super::chrome::win("LSign-Load") {
+                    super::chrome::tex(&t, Rect::new(r.x + 4.0 * k, r.y + (r.h - sign) / 2.0, sign, sign), WHITE);
+                }
+            }
+            // A held click on the selected row shows its load sign as pressed.
+            if row_hit.contains(crate::ui::widgets::pointer().into()) && row_down && selected == Some(i) {
+                draw_rectangle(r.x + 4.0 * k, r.y + (r.h - sign) / 2.0, sign, sign, Color::new(0.0, 0.0, 0.0, 0.28));
+            }
+            if row_pressed && delete.is_none() && pin.is_none() {
                 picked = Some(i);
             }
         }
         (picked, delete, pin)
     }
 
-    /// A torn-parchment tab hanging under the book (`load-button-1/2.lit`), the one not shown
-    /// greyed.
-    fn tab(&self, x: f32, label: &str, open: bool) -> bool {
+    /// A torn-parchment tab hanging under the book (`load-button-1/2.lit`: grey, and orange
+    /// for the open one), on a steel line running along the window.
+    fn tab(&self, x: f32, y: f32, label: &str, open: bool, textures: (u8, u8)) -> bool {
         let k = self.k;
-        let r = self.rect(x, 409.0, 133.0, 34.0);
-        let hover = !input_blocked() && r.contains(crate::ui::widgets::pointer().into());
-        match super::chrome::win(if open { "load-button-2" } else { "load-button-1" }) {
-            // The tab not shown is greyed, as the original's (its own art dimmed and cooled).
-            Some(t) => super::chrome::tex(&t, r, if open { WHITE } else if hover { Color::new(0.75, 0.75, 0.78, 1.0) } else { Color::new(0.55, 0.57, 0.62, 1.0) }),
-            None => super::chrome::surface(r, super::chrome::Skin::Paper),
+        // Convert the original 165x45 artwork to our 960x720 design coordinates.
+        let native = vec2(165.0, 45.0) * 0.9375;
+        let hit = self.rect(x, y, native.x, native.y);
+        let (_, down, pressed) = super::widgets::button_state(hit, !open);
+        // The original switches frames immediately: a held press is halfway between the
+        // idle and selected size; releasing over the tab selects its full-size state.
+        let scale = if open { 1.0 } else if down { 0.9 } else { 0.8 };
+        // Anchor the upper left to the book's lower edge, so the selected spine covers
+        // both its silver outline and the steel line and joins the parchment above.
+        let r = self.rect(x, y, native.x * scale, native.y * scale);
+        let selected = open;
+        let texture = if selected { textures.1 } else { textures.0 };
+        let name = if texture == 0 { "load-button-1" } else { "load-button-2" };
+        let fx = if selected { super::chrome::Fx::Plain } else { super::chrome::Fx::Grey };
+        if let Some(t) = super::chrome::win_fx(name, fx) {
+            super::chrome::tex(&t, r, WHITE);
+        } else {
+            super::chrome::surface(r, super::chrome::Skin::Paper);
         }
         super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
             let size = 15.0 * k;
-            super::chrome::shadow_centered(label, r.center().x, r.y + r.h * 0.55, size, if open { super::chrome::CREAM } else { WHITE });
+            // The right end is a torn tail; centre the caption over the solid spine.
+            super::chrome::shadow_centered(label, r.x + r.w * 0.4, r.y + r.h * 0.55, size, WHITE);
         });
-        hover && clicked()
+        pressed
+    }
+
+    /// The steel line the tabs hang from, running along the window (the original draws it
+    /// right of the tabs, under the book).
+    fn tab_line(&self) {
+        if let Some(t) = super::chrome::win("SteelLine") {
+            let r = self.rect(6.0, 418.0, 582.0, 5.0);
+            super::chrome::three_slice(&t, r, 40.0, WHITE);
+        }
     }
 
     fn button(&self, x: f32, w: f32, label: &str, enabled: bool) -> bool {
         let r = self.rect(x, 442.0, w, 28.0);
-        let hover = !input_blocked() && r.contains(crate::ui::widgets::pointer().into());
-        super::chrome::marble_button(r, label, enabled, hover);
-        enabled && hover && clicked()
+        let (_, down, pressed) = super::widgets::button_state(r, enabled);
+        super::chrome::marble_button(r, label, enabled, down);
+        pressed
     }
 }
 
@@ -521,8 +570,7 @@ pub fn save_screen(game: &Game, assets: &Assets, view: &mut SaveView, message: &
 }
 
 /// The load window ("Загрузка сохраненной игры"): the book of saves with the "Личные" and
-/// "Авто-сохр." tabs; a row's delete sign deletes it at once (the original asks first; a
-/// player's wish: the sign is not hit by chance), "Clear all" (Razdor's) deletes the tab's
+/// "Авто-сохр." tabs; a row's delete sign opens a confirmation. "Clear all" deletes the tab's
 /// saves but the pinned ones after a question. Loading itself is
 /// the app's (`pending` receives the file).
 pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pending: &mut Option<PathBuf>, error: &Option<String>) -> Option<Screen> {
@@ -530,6 +578,10 @@ pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pe
         Some(g) if view.back != Back::Title => world_view::backdrop(g, assets),
         _ => super::main_menu::backdrop(),
     }
+    let asking_delete = view.confirm_delete.is_some();
+    let asking = view.confirm_clear || asking_delete;
+    let previously_blocked = input_blocked();
+    if asking { set_input_blocked(true); }
     let (book, closed) = Book::at(&own("LoadGame", "Title", n_("Load a saved game")), game.is_some() && view.back != Back::Title);
     book.page(&own("LoadGame", "GameName", n_("Name of the saved game")), &own("LoadGame", "ScenarioName", n_("Name of the scenario")));
     fill_metas(&mut view.entries, &mut view.asked, &mut view.settled, view.scroll, Some(&mut view.selected));
@@ -538,7 +590,6 @@ pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pe
         let p = book.p(297.0, 230.0);
         super::chrome::shadow_centered(tr("No saves here yet."), p.x, p.y, 16.0 * book.k, super::chrome::CREAM);
     }
-    let asking = view.confirm_clear;
     let (picked, delete, pin) = book.rows(&rows, Some(view.selected), &mut view.scroll, true);
     // Razdor's pin: the icon, or P for the selected save.
     let pin = pin.or_else(|| key(KeyCode::P).then_some(view.selected));
@@ -562,23 +613,31 @@ pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pe
         view.selected = k;
     }
     if let Some(e) = delete.filter(|_| !asking).and_then(|k| view.entries.get(k)) {
-        if let Err(err) = save::delete(&e.path) {
-            razdor::diag!("{}: {err}", e.path.display());
-        }
-        let selected = view.selected;
-        view.refresh();
-        view.selected = selected.min(view.entries.len().saturating_sub(1));
+        let name = e.meta.as_ref().map(|_| row_of(e).name)
+            .unwrap_or_else(|| e.path.file_stem().unwrap_or_default().to_string_lossy().into_owned());
+        view.confirm_delete = Some((e.path.clone(), name));
     }
-    // The tabs hang from the page alone: the original draws no line under them.
-    for (x, tab, label) in [(17.0, SaveKind::Manual, own("LoadGame", "PrivateSave", n_("Private"))), (172.0, SaveKind::Auto, own("LoadGame", "AutoSave", n_("Autosaves")))] {
-        if book.tab(x, &label, view.tab == tab) && view.tab != tab && !asking {
-            view.tab = tab;
-            LAST_TAB.with(|t| t.set(tab));
-            view.refresh();
+    book.tab_line();
+    let tabs = [
+        (MANUAL_TAB_POSITION.0, MANUAL_TAB_POSITION.1, SaveKind::Manual, own("LoadGame", "PrivateSave", n_("Private")), MANUAL_TAB_TEXTURES),
+        (AUTO_TAB_POSITION.0, AUTO_TAB_POSITION.1, SaveKind::Auto, own("LoadGame", "AutoSave", n_("Autosaves")), AUTO_TAB_TEXTURES),
+    ];
+    // Paint the inactive spine first and the selected spine last, above the window edge.
+    let mut switched = None;
+    for open in [false, true] {
+        for (x, y, tab, label, textures) in &tabs {
+            if (view.tab == *tab) != open { continue; }
+            if book.tab(*x, *y, label, open, *textures) && !asking { switched = Some(*tab); }
         }
+    }
+    if let Some(tab) = switched {
+        super::audio::cue(super::audio::Cue::CastSpell);
+        view.tab = tab;
+        LAST_TAB.with(|t| t.set(tab));
+        view.refresh();
     }
     let clearable = view.entries.iter().any(|e| !e.pinned);
-    if !asking && book.button(17.0, 140.0, tr("Clear all"), clearable) {
+    if book.button(17.0, 140.0, tr("Clear all"), clearable) && !asking {
         view.confirm_clear = true;
         return None;
     }
@@ -587,11 +646,30 @@ pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pe
         text(&ellipsize(e, 195.0 * book.k, 12.0 * book.k), p.x, p.y, 12.0 * book.k, Color::new(1.0, 0.45, 0.4, 1.0));
     }
     let chosen = view.entries.get(view.selected);
-    if !asking && (book.button(369.0, 116.0, &own("LoadGame", "Load", n_("Load")), chosen.is_some()) || key(KeyCode::Enter)) && chosen.is_some() {
+    if (book.button(369.0, 116.0, &own("LoadGame", "Load", n_("Load")), chosen.is_some()) || key(KeyCode::Enter)) && !asking && chosen.is_some() {
         *pending = chosen.map(|e| e.path.clone());
     }
-    if !asking && (book.button(492.0, 95.0, &own("Buttons", "Cancel", n_("Cancel")), true) || closed) {
+    if (book.button(492.0, 95.0, &own("Buttons", "Cancel", n_("Cancel")), true) || closed) && !asking {
         return Some(view.back.screen());
+    }
+    set_input_blocked(previously_blocked);
+    if asking { super::chrome::grey_out(book.win); }
+    if asking_delete {
+        let (path, name) = view.confirm_delete.as_ref().expect("delete confirmation");
+        match delete_save_question(&book, name) {
+            Some(true) => {
+                if let Err(err) = save::delete(path) {
+                    razdor::diag!("{}: {err}", path.display());
+                }
+                let selected = view.selected;
+                view.confirm_delete = None;
+                view.refresh();
+                view.selected = selected.min(view.entries.len().saturating_sub(1));
+            }
+            Some(false) => view.confirm_delete = None,
+            None => {}
+        }
+        return None;
     }
     // "Clear all"'s question. It opens on the next frame, so the click that asked it cannot
     // also answer it.
@@ -624,6 +702,43 @@ pub fn load_screen(game: Option<&Game>, assets: &Assets, view: &mut LoadView, pe
 const VERSION_INK: Color = Color::new(0.22, 0.7, 1.0, 1.0);
 /// Its warning: the ae24a0 tint.
 const WARNING_INK: Color = Color::new(1.0, 1.0, 0.61, 1.0);
+/// The original's delete confirmation: a parchment panel and two green buttons.
+fn delete_save_question(book: &Book, name: &str) -> Option<bool> {
+    let k = book.k;
+    let r = Rect::new(book.win.center().x - 190.0 * k, book.win.center().y - 110.0 * k, 380.0 * k, 220.0 * k);
+    let title = own("MessageBox", "DeleteSave_Title", n_("Delete the save"));
+    super::chrome::window(r, &title, super::chrome::Skin::Marble, false);
+    let panel = Rect::new(r.x + 17.0 * k, r.y + 43.0 * k, r.w - 34.0 * k, 110.0 * k);
+    super::chrome::text_box(panel);
+    let size = 15.0 * k;
+    super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
+        let lines = wrap(tr("Do you really want to delete the saved game"), panel.w - 36.0 * k, size);
+        let name_lines = wrap(&format!("\"{name}\"?"), panel.w - 36.0 * k, size);
+        let step = 17.0 * k;
+        let total = (lines.len() + name_lines.len()) as f32 * step;
+        let mut y = panel.center().y - total * 0.5 + size;
+        for line in &lines {
+            super::chrome::shadow_centered(line, panel.center().x, y, size, ACCENT);
+            y += step;
+        }
+        for line in &name_lines {
+            super::chrome::shadow_centered(line, panel.center().x, y, size, Color::from_rgba(55, 180, 255, 255));
+            y += step;
+        }
+    });
+    super::chrome::silver_frame(Rect::new(r.x + 3.0 * k, r.y + 29.0 * k, r.w - 6.0 * k, 140.0 * k), k);
+    let yes = Rect::new(r.x + 55.0 * k, r.y + 179.0 * k, 90.0 * k, 32.0 * k);
+    let no = Rect::new(r.x + 235.0 * k, yes.y, yes.w, yes.h);
+    let (yes_label, no_label) = (own("Buttons", "Yes", n_("Yes")), own("Buttons", "No", n_("No")));
+    let (_, down, yes_pressed) = button_state(yes, true);
+    super::chrome::marble_button(yes, &yes_label, true, down);
+    let (_, down, no_pressed) = button_state(no, true);
+    super::chrome::marble_button(no, &no_label, true, down);
+    let answer = answer_key();
+    if yes_pressed || answer == Some(true) { Some(true) }
+    else if no_pressed || answer == Some(false) { Some(false) }
+    else { None }
+}
 
 /// What the "Выход из игры" window chose.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -815,9 +930,9 @@ fn exit_dialog(title: &str, warning: &str, asking: &mut bool, battle: bool, art:
         } else {
             Rect::new(inner.x + 10.0 * k + i as f32 * (bw + 10.0 * k), by, bw, 30.0 * k)
         };
-        let over = !*asking && b.contains(crate::ui::widgets::pointer().into()) && !input_blocked();
-        super::chrome::marble_button(b, label, true, over);
-        if over && clicked() {
+        let (_, down, pressed) = super::widgets::button_state(b, !*asking);
+        super::chrome::marble_button(b, label, true, down);
+        if pressed {
             match what {
                 Some(ExitChoice::Restart) => *asking = true,
                 Some(c) => choice = Some(*c),
@@ -888,15 +1003,16 @@ fn question_box(title: &str, text: &str, marked: bool) -> Option<bool> {
     let by = inner.y + inner.h - 38.0 * k;
     let yes = Rect::new(inner.center().x - bw - 8.0 * k, by, bw, 28.0 * k);
     let no = Rect::new(inner.center().x + 8.0 * k, by, bw, 28.0 * k);
-    let over = |r: Rect| r.contains(crate::ui::widgets::pointer().into());
     let (yes_label, no_label) = (own("Buttons", "Yes", n_("Yes")), own("Buttons", "No", n_("No")));
-    super::chrome::marble_button(yes, &yes_label, true, over(yes));
-    super::chrome::marble_button(no, &no_label, true, over(no));
+    let (_, yes_down, yes_pressed) = super::widgets::button_state(yes, true);
+    super::chrome::marble_button(yes, &yes_label, true, yes_down);
+    let (_, no_down, no_pressed) = super::widgets::button_state(no, true);
+    super::chrome::marble_button(no, &no_label, true, no_down);
     let answer = answer_key();
-    if (over(yes) && clicked()) || answer == Some(true) {
+    if yes_pressed || answer == Some(true) {
         return Some(true);
     }
-    if (over(no) && clicked()) || answer == Some(false) {
+    if no_pressed || answer == Some(false) {
         return Some(false);
     }
     None

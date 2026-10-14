@@ -18,7 +18,7 @@ use razdor::rules::game::Game;
 
 use super::assets::Assets;
 use super::audio::{cue, Cue};
-use super::chrome::{self, CREAM};
+use super::chrome;
 use super::dt_font::{with_face, Face};
 use super::widgets::*;
 use super::{screens, ScenarioEntry, Screen};
@@ -28,6 +28,8 @@ thread_local! {
     /// at k = 1, and the hero picked.
     static PICKED: Cell<usize> = const { Cell::new(0) };
     static SCROLL: Cell<f32> = const { Cell::new(0.0) };
+    /// Long scenario descriptions scroll without changing their font size.
+    static DESCRIPTION_SCROLL: Cell<(usize, usize)> = const { Cell::new((usize::MAX, 0)) };
     static HERO: Cell<usize> = const { Cell::new(0) };
     /// Whether the hero window is open (its class was set on opening).
     static HERO_OPEN: Cell<bool> = const { Cell::new(false) };
@@ -64,9 +66,9 @@ impl Win {
 
     fn button(&self, x: f32, w: f32, label: &str, enabled: bool) -> bool {
         let r = self.rect(x, 442.0, w, 28.0);
-        let hover = !input_blocked() && r.contains(crate::ui::widgets::pointer().into());
-        chrome::marble_button(r, label, enabled, hover);
-        enabled && hover && clicked()
+        let (_, down, pressed) = button_state(r, enabled);
+        chrome::marble_button(r, label, enabled, down);
+        pressed
     }
 }
 
@@ -271,8 +273,9 @@ pub fn scenario_select(scenarios: &[ScenarioEntry], has_install: bool) -> Option
         if r.y >= inside.y + inside.h || r.y + r.h <= inside.y {
             continue;
         }
-        let hover = over_list && r.contains(crate::ui::widgets::pointer().into());
+        let (hover, _, pressed) = button_state(r, over_list);
         let e = &scenarios[g.first];
+        let chapters = listed_chapters(scenarios, g);
         let head = Rect::new(r.x, r.y, r.w, head_h - 2.0 * k);
         // The picked row's bar lies under its name only, not its chapters, as the original's.
         if row == picked {
@@ -282,17 +285,24 @@ pub fn scenario_select(scenarios: &[ScenarioEntry], has_install: bool) -> Option
         }
         scenario_icon(e.scenario.header.scenario_picture_index, vec2(head.x + 14.0 * k, head.y + head.h / 2.0), 26.0 * k);
         let name = group_name(scenarios, g);
+        let name_ink = if e.scenario.header.scenario_picture_index == 5 {
+            super::typography::Ink::Green.color()
+        } else if !chapters.is_empty() {
+            super::typography::Ink::Yellow.color()
+        } else {
+            super::typography::Ink::Blue.color()
+        };
         with_face(Face::Subtitle, || {
             let size = fit_size(name, r.w - 40.0 * k, 15.0 * k);
-            chrome::shadow_text(&ellipsize(name, r.w - 40.0 * k, size), head.x + 32.0 * k, head.y + head.h * 0.5 + size * 0.36, size, CREAM);
+            chrome::shadow_text(&ellipsize(name, r.w - 40.0 * k, size), head.x + 32.0 * k, head.y + head.h * 0.5 + size * 0.36, size, name_ink);
         });
         let small = 12.0 * k;
-        for (n, &c) in listed_chapters(scenarios, g).iter().enumerate() {
+        with_face(Face::Body, || for (n, &c) in chapters.iter().enumerate() {
             let cy = r.y + head_h + n as f32 * chapter_h + chapter_h * 0.5 + small * 0.36;
-            chrome::shadow_text(&ellipsize(title(&scenarios[c]), r.w - 60.0 * k, small), r.x + 52.0 * k, cy, small, CREAM);
-        }
+            chrome::shadow_text(&ellipsize(title(&scenarios[c]), r.w - 60.0 * k, small), r.x + 52.0 * k, cy, small, super::typography::Ink::Orange.color());
+        });
         // A row is picked silently (the original's list makes no sound).
-        if hover && clicked() {
+        if pressed {
             if row == picked {
                 next = Some(Screen::ClassSelect { scenario: Some(g.first) });
             }
@@ -437,7 +447,11 @@ pub fn class_select(game: &mut Option<Game>, demo: &Arc<Content>, scenario: Opti
     }
     let (e, content) = scenario.expect("checked");
     super::main_menu::backdrop();
-    let (win, closed) = Win::open(&own("NewHero", "Title", n_("The hero's starting characteristics")));
+    let scale = chrome::k();
+    let r = Rect::new((screen_width() - 632.0 * scale) / 2.0, (202.0 * scale).min(screen_height() - 516.0 * scale), 632.0 * scale, 516.0 * scale);
+    let title = own("NewHero", "Title", n_("The hero's starting characteristics"));
+    let (_, closed) = chrome::window(r, &title, chrome::Skin::Marble, true);
+    let win = Win { r, k: scale };
     let k = win.k;
     // As the original (0x4c1804, 0x4743c8): only a class whose preset has a start cell is
     // offered; the window opens on the first one, or is not opened at all when there is
@@ -456,33 +470,26 @@ pub fn class_select(game: &mut Option<Game>, demo: &Arc<Content>, scenario: Opti
     // the window's top. The picked one is drawn as it is; another offered class from its blue
     // copy, a class the map leaves out from its dark one (65bcd8 / 65bce4). Under each the
     // window's silver chain; under the picked one the name field instead.
-    let side = 150.0;
-    let gap = (594.0 - 3.0 * side) / 4.0;
     for (i, hero) in HeroClass::ALL.into_iter().enumerate() {
-        let r = win.rect(gap + i as f32 * (side + gap), 40.0, side, side);
-        let hover = offered[i] && !input_blocked() && r.contains(crate::ui::widgets::pointer().into());
-        let tint = if i == pick {
+        let r = win.rect(38.0 + i as f32 * 197.0, 42.0, 160.0, 160.0);
+        let (hover, down, pressed) = button_state(r, offered[i]);
+        let tint = if !offered[i] {
+            Color::new(1.0, 0.24, 0.10, 1.0)
+        } else if i == pick {
             WHITE
-        } else if offered[i] {
-            Color::new(0.25, 0.62, 1.0, 1.0)
         } else {
-            Color::new(0.38, 0.3, 0.26, 1.0)
+            Color::new(0.22, 0.58, 1.0, 1.0)
         };
         match chrome::win(["Hero0", "hero1", "hero2"][i]) {
             Some(t) => chrome::tex(&t, r, tint),
             None => assets.draw_portrait(hero.unit(), razdor::rules::battle::Team::Player, r),
         }
         chrome::silver_frame(r, 1.0);
-        if hover && i != pick {
-            chrome::glow_frame(r, Color::new(0.35, 0.55, 1.0, 0.9), false);
-        }
+        if down || (hover && i != pick) { draw_rectangle_lines(r.x, r.y, r.w, r.h, k, chrome::SILVER); }
         if i != pick {
-            let plate = win.rect(gap + i as f32 * (side + gap) - 1.0, 40.0 + side + 4.0, side + 2.0, 21.0);
-            if let Some(t) = chrome::win("nameframe") {
-                chrome::tex(&t, plate, WHITE);
-            }
+            if let Some(t) = chrome::win("nameframe") { chrome::tex(&t, win.rect(38.0 + i as f32 * 197.0, 207.0, 160.0, 22.0), WHITE); }
         }
-        if hover && clicked() {
+        if pressed {
             // Choosing another class plays the menu press (interface.md §14); the class
             // already picked, nothing.
             let was = pick;
@@ -500,28 +507,24 @@ pub fn class_select(game: &mut Option<Game>, demo: &Arc<Content>, scenario: Opti
         screens::edit_name(&mut n);
         n.clone()
     });
-    // The name field under the picked portrait (0x65b2c1 = its x − 1, 4 px under it, 22 high):
-    // a dark box, the name in the ae24a0 tint, the caret blinking.
-    let field = win.rect(gap + pick as f32 * (side + gap) - 1.0, 40.0 + side + 4.0, side + 2.0, 21.0);
-    draw_rectangle(field.x, field.y, field.w, field.h, Color::new(0.0, 0.0, 0.0, 0.85));
+    let field = win.rect(38.0 + pick as f32 * 197.0, 207.0, 160.0, 22.0);
+    draw_rectangle(field.x, field.y, field.w, field.h, BLACK);
     chrome::silver_frame(field, 1.0);
     let caret = if (get_time() * 2.0) as i64 % 2 == 0 { "|" } else { "" };
     let shown = format!("{name}{caret}");
-    let size = 15.0 * k;
     with_face(Face::Subtitle, || {
-        chrome::shadow_centered(&shown, field.center().x, field.y + field.h * 0.5 + size * 0.36, size, NAME_INK);
+        let size = super::typography::Role::Name.size(16.0 * k);
+        chrome::shadow_centered(&ellipsize(&shown, field.w - 8.0 * k, size), field.center().x, field.center().y + size * 0.36, size, super::typography::Ink::Yellow.color());
     });
-    // The book: the class's name, its description and bonus on the left page, its starting
-    // characteristics on the right (0x4c1458, 0x4c1334 → 0x491fa4).
-    let book = win.rect(15.0, 230.0, 564.0, 204.0);
+    let book = win.rect(18.0, 240.0, 596.0, 210.0);
     match chrome::win("NewHero_Paper") {
         Some(t) => chrome::tex(&t, book, WHITE),
         None => chrome::text_box(book),
     }
     let n = pick + 1;
     let small = 12.0 * k;
-    let page_w = book.w / 2.0 - 52.0 * k;
-    let (left, right) = (book.x + 30.0 * k, book.x + book.w / 2.0 + 14.0 * k);
+    let page_w = 260.0 * k;
+    let (left, right) = (book.x + 28.0 * k, book.x + 314.0 * k);
     let unit = &content.unit(hero.unit());
     let ours = [
         n_("A veteran of many cruel battles, the Knight has superb experience of war. Under the Church's protection he can withstand hostile spells."),
@@ -554,36 +557,35 @@ pub fn class_select(game: &mut Option<Game>, demo: &Arc<Content>, scenario: Opti
     for (j, row) in bonus_rows.iter().enumerate() {
         chrome::shadow_text(row, left + icon + 6.0 * k, y + j as f32 * line_h, small, chrome::BLUE_TEXT);
     }
-    // The right page: the starting characteristics, labels on the left, values on the right,
-    // centred in its height.
+    // The starting characteristics (0x4c1334 → 0x491fa4); labels and values in their inks.
     let rows = hero_stats(&content, hero);
-    let stat_h = 18.0 * k;
-    let stat_size = 15.0 * k;
-    let page_r = book.x + book.w - 30.0 * k;
-    let mut y = book.y + ((book.h - rows.len() as f32 * stat_h) / 2.0).max(8.0 * k) + stat_size * 0.8;
     with_face(Face::Subtitle, || {
-        for (label, value) in &rows {
-            chrome::shadow_text(label, right, y, stat_size, NAME_INK);
-            let w = measure(value, stat_size).width;
-            chrome::shadow_text(value, page_r - w, y, stat_size, WHITE);
-            y += stat_h;
+        let size = super::typography::Role::Name.size(16.0 * k);
+        for (j, (label, value)) in rows.iter().enumerate() {
+            let y = book.y + 50.0 * k + j as f32 * 18.0 * k;
+            chrome::shadow_text(&ellipsize(label, 225.0 * k, size), right, y, size, super::typography::Ink::Yellow.color());
+            chrome::shadow_right(value, book.right() - 24.0 * k, y, size, super::typography::Ink::Plain.color());
         }
     });
-    if win.button(369.0, 116.0, &own("NewHero", "Start", n_("Start")), true) || key(KeyCode::Enter) {
+    draw_line(win.r.x, win.r.y + 460.0 * k, win.r.right(), win.r.y + 460.0 * k, k, chrome::SILVER);
+    let hero_button = |x, label: &str| {
+        let r = win.rect(x, 470.0, 94.0, 34.0);
+        let (_, down, pressed) = button_state(r, true);
+        chrome::marble_button(r, label, true, down);
+        pressed
+    };
+    if hero_button(424.0, &own("NewHero", "Start", n_("Start"))) || key(KeyCode::Enter) {
         cue(Cue::Button);
         *game = Some(screens::start_game(demo, Some((e, &content)), hero, &name));
         return leave_hero_window(Screen::WorldMap);
     }
     // Back or Esc returns to the main menu, not to the scenario list (0x4c0fd4).
-    if win.button(492.0, 95.0, &own("Buttons", "Cancel", n_("Cancel")), true) || closed || key(KeyCode::Escape) {
+    if hero_button(528.0, &own("Buttons", "Cancel", n_("Cancel"))) || closed || key(KeyCode::Escape) {
         return leave_hero_window(Screen::MainMenu);
     }
     None
 }
 
-/// The name in the hero window's field and its stat labels: the ae24a0 tint (Benguiat with
-/// blue − 100).
-const NAME_INK: Color = Color::new(1.0, 1.0, 0.61, 1.0);
 /// The class description: the ae24c0 tint, a light yellow.
 const DESC_INK: Color = Color::new(1.0, 0.86, 0.55, 1.0);
 

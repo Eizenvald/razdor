@@ -185,7 +185,7 @@ pub fn frame(
         let size = 12.0 * k;
         super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
             let ns = fit_size(&s.name, room, 17.0 * k);
-            chrome::shadow_centered(&s.name, tx, cr.y + 26.0 * k, ns, CREAM);
+            chrome::shadow_centered(&ellipsize(&s.name, room, ns), tx, cr.y + 26.0 * k, ns, CREAM);
         });
         let effect = effect_summary(s);
         // The card shows the cost function of `TimeCast` in hours, not the real wait (0x49bbe0).
@@ -273,9 +273,14 @@ pub(super) fn cast(game: &mut Game, spell: u32, target: CastTarget, message: &mu
 /// into the rest of the box, the name, a blank line, what it does, the mana and reading
 /// time and how long it lasts, the block centred in the box's height.
 pub fn spell_card(game: &Game, s: &SpellDef, r: Rect) {
+    super::typography::Role::Body.with(|| spell_card_in_face(game, s, r));
+}
+
+fn spell_card_in_face(game: &Game, s: &SpellDef, r: Rect) {
     use super::chrome::{self, CREAM};
     let k = chrome::k();
-    chrome::text_box(r);
+    chrome::surface(r, chrome::Skin::Brown);
+    chrome::silver_frame(r, k.max(1.0));
     let side = (r.h - 12.0 * k).min(100.0 * k);
     let icon = Rect::new(r.x + 6.0 * k, r.y + (r.h - side) / 2.0, side, side);
     chrome::spell_icon(s, icon);
@@ -289,17 +294,25 @@ pub fn spell_card(game: &Game, s: &SpellDef, r: Rect) {
         Duration::Instant => own("MomentaryEffect", n_("Instant effect")),
         Duration::Minutes(m) => format!("{} {}", own("TimeOfEffect", n_("Lasts:")), hours(m, true)),
     };
-    let (name_size, size) = (fit_size(&s.name, room, 17.0 * k), 12.0 * k);
-    let gold = Color::new(1.0, 0.72, 0.3, 1.0);
-    let mut lines: Vec<(String, Color)> = wrap(&effect_summary(s), room, size).into_iter().map(|l| (l, chrome::BLUE_TEXT)).collect();
+    let name_size = super::typography::Role::Name.size(17.0 * k);
+    let names = super::typography::Role::Name.with(|| wrap(&s.name, room, name_size));
+    let name_lh = super::typography::Role::Name.line_height(18.0 * k);
+    let size = super::typography::Role::Body.size(12.0 * k);
+    let gold = Color::from_rgba(235, 165, 75, 255);
+    let effect_ink = if magic::targets_enemy(s) { Color::from_rgba(255, 255, 155, 255) } else { Color::from_rgba(75, 185, 255, 255) };
+    let mut lines: Vec<(String, Color)> = wrap(&effect_summary(s), room, size).into_iter().map(|l| (l, effect_ink)).collect();
     lines.extend(wrap(&mana_line, room, size).into_iter().map(|l| (l, gold)));
     lines.extend(wrap(&last, room, size).into_iter().map(|l| (l, gold)));
-    let line_h = 13.0 * k;
-    // The name, a blank line, then the lines: centred in the box's height.
-    let block = name_size + line_h + lines.len() as f32 * line_h;
-    let mut y = r.y + ((r.h - block) / 2.0).max(4.0 * k) + name_size * 0.8;
-    super::dt_font::with_face(super::dt_font::Face::Subtitle, || chrome::shadow_centered(&s.name, tx, y, name_size, CREAM));
-    y += line_h * 2.0;
+    let line_h = super::typography::Role::Body.line_height(13.0 * k);
+    // A long name wraps at the same font size, as the two-line title in the reference.
+    let block = names.len() as f32 * name_lh + line_h * 0.5 + lines.len() as f32 * line_h;
+    let top = r.y + ((r.h - block) / 2.0).max(3.0 * k);
+    super::typography::Role::Name.with(|| {
+        for (n, name) in names.iter().enumerate() {
+            chrome::shadow_centered(name, tx, top + n as f32 * name_lh + name_size * 0.72, name_size, CREAM);
+        }
+    });
+    let mut y = top + names.len() as f32 * name_lh + line_h * 0.5 + size * 0.72;
     for (line, color) in lines {
         if y > r.y + r.h - 2.0 * k {
             break;

@@ -74,9 +74,9 @@ pub fn toggle() {
 
 /// The EN / RU switch: both codes, the current one lit; a click switches. True when it did.
 pub fn switch_button(x: f32, y: f32, w: f32, h: f32) -> bool {
-    let hover = mouse_in(x, y, w, h);
+    let (hover, down, pressed) = super::widgets::button_state(Rect::new(x, y, w, h), true);
     draw_rectangle(x, y, w, h, PANEL);
-    draw_rectangle_lines(x, y, w, h, 2.0, if hover { ACCENT } else { DIM });
+    draw_rectangle_lines(x, y, w, h, 2.0, if down { ACCENT } else if hover { INK } else { DIM });
     let size = (h * 0.55).clamp(12.0, 22.0);
     let cur = i18n::lang();
     let (en, slash, ru) = (Lang::En.label(), " / ", Lang::Ru.label());
@@ -90,7 +90,7 @@ pub fn switch_button(x: f32, y: f32, w: f32, h: f32) -> bool {
     if hover {
         tooltip(&[(tr("Interface language (F2)").to_string(), INK)]);
     }
-    if hover && clicked() {
+    if pressed {
         super::audio::cue(super::audio::Cue::Button);
         toggle();
         return true;

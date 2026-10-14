@@ -262,6 +262,7 @@ Time: {date} = Время: {date}
 {year} y, {month} m, {day} d, {clock} = {year} год, {month} месяц, {day} день, {clock}
 (save anew) = (сохранить заново)
 Delete the save = Удаление сохранения
+Do you really want to delete the saved game = Вы действительно желаете удалить сохраненную игру
 Delete the saved game = Удалить сохраненную игру
 Load a saved game = Загрузка сохраненной игры
 Name of the saved game = Имя сохраненной игры

@@ -42,6 +42,9 @@ daily (from pass_slice, see map-step.md):
   Tick::Noon     → new_day() → pay_noon() → NoonPay; Event::NewDay(DayReport) if a report shows
 ```
 
+The selected quest or rumour is reset when switching building tabs so an old row index cannot
+change the selected entry's type or the action button label.
+
 ## Key types
 
 | Type | File | What it is |
@@ -77,6 +80,12 @@ the barracks' draws (random order matters for the difftests). Buy/sell prices go
 the goods or the pack (`BuildingView::selling`): «Инвентарь» and «Торговая лавка» switch them
 (`market_switches`), the description pane swaps sides with the list; the filter (Razdor's) takes
 the column titles' line only while it is used (`item_filter::field_with`).
+
+**Sanctuary UI** (`sanctuary`, `spell_list`, 0x4ba854): the first spell starts selected.
+The list uses brown parchment with a separate light icon column and translucent selection.
+Known spells have blue names and prices; unavailable purchases are orange, affordable ones
+yellow. The compact card wraps the name without shrinking it; after learning, the local
+blue notice replaces the purchase action, with no extra success message outside the window.
 
 **Villages** (economy.md §3). Entering a village takes it (no attitude test) and collects the
 waiting gold and mana, unless it makes an offer: then the tribute waits for the answer. A village
