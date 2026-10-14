@@ -641,3 +641,28 @@ Results after the round's fixes (Razdor at the round's end against the recording
   - `armies[id 9].y`: 50 / 54
 - The original gave the same values on a second run (trace `random,ai,events`). Files: states, screenshots, `trace-around.jsonl` in `~/.cache/razdor-difftest/explore/C1014-173722/`.
 
+## C1014-180347: РК1-Начало пути, step 26 `click_map 47 27`
+
+- Found 2026-10-14 by explore.py (hero 1); unconfirmed.
+- Repro: 27 actions (shrunk from 33, 4 tries): `~/.cache/razdor-difftest/explore/C1014-180347/repro.jsonl`; `python -m tools.difftest.run --actions <it> --trace random`.
+- Step-local run, fields classed NEW (Razdor / original):
+  - `armies[id 1].x`: 9 / 7
+  - `armies[id 1].y`: 10 / 6
+  - `armies[id 9].x`: 20 / 30
+  - `armies[id 9].y`: 47 / 48
+  - `clock`: 624297931 / 624298061
+- rng: Razdor is 53 draw(s) ahead of the original
+- rng: draws this step: Razdor 231, original 178; the n agree for the first 16
+- rng: original from there: Random(17) AI wander points 0x4a2594, Random(14) AI wander points 0x4a25d8, Random(17) AI wander points 0x4a2594, Random(14) AI wander points 0x4a25d8, Random(17) AI wander points 0x4a2594, Random(14) AI wander points 0x4a25d8, Random(17) AI wander points 0x4a2594, Random(14) AI wander points 0x4a25d8 ...
+- rng: Razdor from there: Random(40) rules/ai.rs:1820, Random(40) rules/ai.rs:1821, Random(40) rules/ai.rs:1820, Random(40) rules/ai.rs:1821, Random(40) rules/ai.rs:1820, Random(40) rules/ai.rs:1821, Random(40) rules/ai.rs:1820, Random(40) rules/ai.rs:1821 ...
+- The original gave the same values on a second run (trace `random,ai,events`). Files: states, screenshots, `trace-around.jsonl` in `~/.cache/razdor-difftest/explore/C1014-180347/`.
+
+## C1014-181146: ДС1-С чего все начиналось, step 5 `click_map 94 16`
+
+- Found 2026-10-14 by explore.py (hero 2); unconfirmed.
+- Repro: 6 actions (shrunk from 9, 1 tries): `~/.cache/razdor-difftest/explore/C1014-181146/repro.jsonl`; `python -m tools.difftest.run --actions <it> --trace random`.
+- Step-local run, fields classed NEW (Razdor / original):
+  - `armies[id 2].x`: 39 / 37
+  - `armies[id 2].y`: 45 / 42
+- The original gave the same values on a second run (trace `random,ai,events`). Files: states, screenshots, `trace-around.jsonl` in `~/.cache/razdor-difftest/explore/C1014-181146/`.
+
