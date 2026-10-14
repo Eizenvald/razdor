@@ -1455,12 +1455,24 @@ fn button_label(r: Rect, label: &str, enabled: bool, hover: bool, quest_red: boo
     // Button labels in the buttons' and names' face.
     super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
         let mut size: f32 = (r.h * 0.56).clamp(12.0, (22.0 * k()).max(12.0)).round();
+        // In the original's fonts a label is the sheet at the button's own scale (the
+        // original's buttons are 36 px high), never larger: 0.56 of a tall button made
+        // labels run edge to edge on large screens.
+        if super::dt_font::mode() == super::dt_font::FontMode::Original {
+            size = size.min(label_size_original(r.h));
+        }
         while size > 7.0 && measure(label, size).width > r.w - 10.0 {
             size -= 1.0;
         }
         let d = measure(label, size);
         shadow_text(label, r.x + (r.w - d.width) / 2.0, r.y + (r.h + d.offset_y) / 2.0 - 1.0, size, color);
     });
+}
+
+/// A button label's size in the original's fonts: the Benguiat sheet at the button's
+/// scale against the original's 36 px buttons, snapped like the sheets.
+fn label_size_original(h: f32) -> f32 {
+    super::dt_font::sheet_size(super::dt_font::Face::Subtitle, super::dt_font::whole_scale(h / 36.0))
 }
 
 /// The small pill buttons of the barracks ("Hire" green, "Heal" blue). They pay: the
@@ -1879,6 +1891,16 @@ mod tests {
     /// The defeat window's red button (0x4dba90): channels turned (2, 3, 1), then (0, 64, 128)
     /// taken off inside the 1 px edge, which keeps its silver. Measured on the original: the
     /// face (65, 39, 26) after the turn reads (76, 3, 0) on screen.
+    #[test]
+    fn a_label_in_the_original_s_font_grows_with_the_button_by_whole_steps() {
+        // The sheet at ×1 on the original's 36 px button, ×2 on a 72 px one; a 61 px button
+        // (2560×1440's ×1.7) keeps its exact scale instead of filling it edge to edge.
+        let one = label_size_original(36.0);
+        assert!((label_size_original(72.0) - 2.0 * one).abs() < 1e-3);
+        assert!((label_size_original(61.2) - 1.7 * one).abs() < 1e-3);
+        assert!(label_size_original(61.2) < 61.2 * 0.56);
+    }
+
     #[test]
     fn the_defeat_button_is_turned_and_darkened_inside_its_edge() {
         let mut b = Image { width: 3, height: 3, rgba: [39, 26, 65, 255].repeat(9) };

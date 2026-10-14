@@ -416,9 +416,11 @@ impl Book {
             }
             let lh = r.h;
             let dim = |c: Color| if row.waiting { Color { a: c.a * 0.55, ..c } } else { c };
+            // The name is centred on its column, never wider than the room right of the load
+            // sign (its right edge at 43): 2 × (157 − 47).
             super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
-                let size = fit_size(&row.name, 250.0 * k, 16.0 * k);
-                super::chrome::shadow_centered(&ellipsize(&row.name, 250.0 * k, size), self.p(157.0, 0.0).x, r.y + lh * 0.5 + size * 0.36, size, dim(super::chrome::CREAM));
+                let size = fit_size(&row.name, NAME_ROOM * k, 16.0 * k);
+                super::chrome::shadow_centered(&ellipsize(&row.name, NAME_ROOM * k, size), self.p(157.0, 0.0).x, r.y + lh * 0.5 + size * 0.36, size, dim(super::chrome::CREAM));
             });
             let cx = self.p(437.0, 0.0).x;
             super::dt_font::with_face(super::dt_font::Face::Bold, || {
@@ -457,6 +459,10 @@ impl Book {
         enabled && hover && clicked()
     }
 }
+
+/// The widest a save's name is drawn in its column, in the book's pixels: centred at 157,
+/// it stays right of the selected row's load sign (21..43) with 4 px to spare.
+const NAME_ROOM: f32 = 220.0;
 
 /// The save window ("Сохранение активной игры"): the book of manual saves under "(save
 /// anew)"; a click on a save takes its name to replace it, typing edits the name.
