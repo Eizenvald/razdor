@@ -581,8 +581,27 @@ def cargo_outside_repo(rest, cwd):
     if any(ch in manifest for ch in "$`*?[{"):
         return False
     real = os.path.realpath(manifest)
+    if not os.path.isfile(real):
+        return False
     repo = os.path.realpath(os.environ.get("CLAUDE_PROJECT_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-    return os.path.isfile(real) and not (real == repo or real.startswith(repo + os.sep))
+    if real == repo or real.startswith(repo + os.sep):
+        return False
+    # Every worktree and clone-free checkout of Razdor shares this repository's git store
+    # (dt-original's worktree, agents' worktrees anywhere): those are the game too. A clone
+    # elsewhere is caught by its own top-level Cargo.toml naming the razdor package.
+    def common(d):
+        out = git_out(["rev-parse", "--path-format=absolute", "--git-common-dir"], d).strip()
+        return os.path.realpath(out) if out else ""
+    here = common(os.path.dirname(real))
+    if here and here == common(repo):
+        return False
+    try:
+        with open(real, encoding="utf-8", errors="replace") as f:
+            if re.search(r'^\s*name\s*=\s*"razdor"', f.read(), re.M):
+                return False
+    except OSError:
+        return False
+    return True
 
 
 def launches_game(argv, cwd=None):

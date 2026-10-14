@@ -153,3 +153,4 @@ block	clean	CARGO_BUILD_JOBS=4 taskset -c 16-19 cargo run -p razdor --release
 block	clean	CARGO_BUILD_JOBS=4 taskset -c 16-19 cargo run -p helper
 block	clean	CARGO_BUILD_JOBS=4 taskset -c 16-19 cargo run --manifest-path ./Cargo.toml
 block	clean	CARGO_BUILD_JOBS=4 taskset -c 16-19 cargo run --manifest-path $X/Cargo.toml
+block	clean	cd /mnt/ai_models/razdor-orig-port && CARGO_BUILD_JOBS=4 taskset -c 16-19 cargo run --release
