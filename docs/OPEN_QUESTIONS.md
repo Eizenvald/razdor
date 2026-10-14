@@ -23,8 +23,9 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
   1 px overlay (0x4dba90 → 0x48dd40).
 - **Victory with no next map** (2026-10-14). The original goes to the main menu; Razdor shows
   its own victory screen.
-- **Original fonts on dt-original** (2026-10-14). Drawing the install's font sheets (43706d4,
-  a5a6351) is parity but is tied to main's «Шрифт» setting, so it was not cherry-picked; port
-  the drawing to dt-original as its only mode.
 
 ## Settled
+
+- **Original fonts on dt-original** (2026-10-14). Ported as dt-original's only mode (sheets,
+  shadow sheets, scale rule, Benguiat for event and village texts; no «Шрифт» setting):
+  dt-original 8b94705.
