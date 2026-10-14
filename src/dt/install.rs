@@ -350,12 +350,24 @@ pub fn load_dotenv() {
         crate::diag!(".env: {}", file.canonicalize().unwrap_or(file.clone()).display());
         for (key, value) in parse_dotenv(&text) {
             if std::env::var_os(&key).is_none() {
-                crate::diag!("  {key}={value:?}");
+                crate::diag!("  {}", logged_env(&key, &value));
                 std::env::set_var(key, value);
             } else {
                 crate::diag!("  {key} already set, the file's value is not used");
             }
         }
+    }
+}
+
+/// How a `.env` variable is written to the log: Razdor's own settings with their value, any
+/// other key (a bot token, an API key the same file holds for other tools) by name only, so
+/// a log a player shares never carries a secret.
+fn logged_env(key: &str, value: &str) -> String {
+    let secret = ["TOKEN", "KEY", "SECRET", "PASSWORD", "PASS"].iter().any(|w| key.to_ascii_uppercase().contains(w));
+    if key.starts_with("RAZDOR_") && !secret {
+        format!("{key}={value:?}")
+    } else {
+        format!("{key} set (value not logged)")
     }
 }
 
@@ -415,6 +427,14 @@ mod tests {
         std::fs::create_dir_all(&empty).unwrap();
         assert_eq!(locate_with(Some(empty.clone().into()), None, None, std::slice::from_ref(&empty)), None);
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn only_razdor_settings_are_logged_with_their_value() {
+        assert_eq!(logged_env("RAZDOR_DT_DIR", "/games/dt"), "RAZDOR_DT_DIR=\"/games/dt\"");
+        assert_eq!(logged_env("DISCORD_BOT_TOKEN", "abc"), "DISCORD_BOT_TOKEN set (value not logged)");
+        assert_eq!(logged_env("OPENAI_API_KEY", "sk"), "OPENAI_API_KEY set (value not logged)");
+        assert_eq!(logged_env("RAZDOR_UPDATE_TOKEN", "x"), "RAZDOR_UPDATE_TOKEN set (value not logged)");
     }
 
     #[test]
