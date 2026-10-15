@@ -590,7 +590,8 @@ mod tests {
             }
             s
         };
-        for (file, path, s) in &maps {
+        // The shipped maps (translated copies made by this tool are not sources).
+        for (file, path, s) in maps.iter().filter(|(f, _, _)| !is_translated_file(f)) {
             let mut job = Job::new(&[(file.clone(), s.clone())], "English", false);
             let batch: Vec<usize> = (0..job.entries.len()).collect();
             let answers: HashMap<String, String> = batch
