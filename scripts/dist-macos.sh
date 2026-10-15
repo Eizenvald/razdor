@@ -29,9 +29,14 @@ lipo -create -output dist/razdor-macos \
     target/aarch64-apple-darwin/release/razdor \
     target/x86_64-apple-darwin/release/razdor
 lipo -info dist/razdor-macos
+# The map translator, the same way.
+lipo -create -output dist/razdor-translate-macos \
+    target/aarch64-apple-darwin/release/razdor-translate \
+    target/x86_64-apple-darwin/release/razdor-translate
+lipo -info dist/razdor-translate-macos
 
 touch dist/SHA256SUMS
-grep -v ' razdor-macos$' dist/SHA256SUMS > dist/SHA256SUMS.new || true
-(cd dist && shasum -a 256 razdor-macos >> SHA256SUMS.new && mv SHA256SUMS.new SHA256SUMS)
+grep -v ' razdor-macos$\| razdor-translate-macos$' dist/SHA256SUMS > dist/SHA256SUMS.new || true
+(cd dist && shasum -a 256 razdor-macos razdor-translate-macos >> SHA256SUMS.new && mv SHA256SUMS.new SHA256SUMS)
 ls -l dist
 cat dist/SHA256SUMS

@@ -1,6 +1,7 @@
 #!/bin/sh
 # Builds the release programs into dist/: `razdor` for Linux (x86_64) and `Razdor.exe` for
-# Windows (x86_64). Either one, put into a Discord Times folder (next to DiscordTimes.exe),
+# Windows (x86_64), and the map translator beside them (`razdor-translate`,
+# `Razdor-translate.exe`). Either one, put into a Discord Times folder (next to DiscordTimes.exe),
 # plays that install; elsewhere it uses RAZDOR_DT_DIR (also read from a .env file).
 # dist/SHA256SUMS lists their SHA-256: publish it with the files, and check a download with
 # `sha256sum -c SHA256SUMS` (Linux) or `Get-FileHash Razdor.exe` (Windows PowerShell).
@@ -31,6 +32,7 @@ done
 REMAP="$REMAP --remap-path-prefix=$PWD=razdor"
 RUSTFLAGS="$REMAP" cargo build --release
 cp target/release/razdor dist/razdor
+cp target/release/razdor-translate dist/razdor-translate
 
 if [ -n "${LLVM_MINGW:-}" ]; then
     PATH="$LLVM_MINGW/bin:$PATH"
@@ -47,7 +49,8 @@ CC_x86_64_pc_windows_gnullvm=x86_64-w64-mingw32-clang \
 AR_x86_64_pc_windows_gnullvm=llvm-ar \
     cargo build --release --target x86_64-pc-windows-gnullvm
 cp target/x86_64-pc-windows-gnullvm/release/razdor.exe dist/Razdor.exe
+cp target/x86_64-pc-windows-gnullvm/release/razdor-translate.exe dist/Razdor-translate.exe
 
-(cd dist && sha256sum razdor Razdor.exe > SHA256SUMS)
+(cd dist && sha256sum razdor Razdor.exe razdor-translate Razdor-translate.exe > SHA256SUMS)
 ls -l dist
 cat dist/SHA256SUMS

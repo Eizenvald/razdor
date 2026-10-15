@@ -1,5 +1,7 @@
 # The release pipeline: pushing a tag vX.Y.Z builds razdor (Linux) and Razdor.exe (Windows)
 # with scripts/dist.sh, razdor-macos (macOS, universal) with scripts/dist-macos.sh on a Mac,
+# and the map translator beside each (razdor-translate, Razdor-translate.exe,
+# razdor-translate-macos),
 # and publishes them as the GitHub release vX.Y.Z, with that version's changelog file
 # (changelog/X.Y.Z.md) and the programs' SHA-256 as its notes. The game's update window
 # (src/update.rs) shows the notes up to their first `## ` heading: keep the pipeline's own
@@ -47,7 +49,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: razdor-macos
-          path: dist/razdor-macos
+          path: |
+            dist/razdor-macos
+            dist/razdor-translate-macos
           if-no-files-found: error
 
   release:
@@ -88,10 +92,10 @@ jobs:
           name: razdor-macos
           path: dist
 
-      - name: SHA-256 of all three
+      - name: SHA-256 of all of them
         run: |
-          chmod +x dist/razdor-macos
-          (cd dist && sha256sum razdor Razdor.exe razdor-macos > SHA256SUMS)
+          chmod +x dist/razdor-macos dist/razdor-translate-macos
+          (cd dist && sha256sum razdor Razdor.exe razdor-macos razdor-translate Razdor-translate.exe razdor-translate-macos > SHA256SUMS)
           cat dist/SHA256SUMS
 
       - name: The programs of a run by hand
@@ -103,6 +107,9 @@ jobs:
             dist/razdor
             dist/Razdor.exe
             dist/razdor-macos
+            dist/razdor-translate
+            dist/Razdor-translate.exe
+            dist/razdor-translate-macos
             dist/SHA256SUMS
 
       - name: Release notes from changelog/X.Y.Z.md
@@ -115,6 +122,7 @@ jobs:
             echo "## Загрузка"
             echo "- **Razdor.exe**: Windows (x86_64). **razdor**: Linux (x86_64). **razdor-macos**: macOS 11+ (Apple Silicon и Intel). **SHA256SUMS**: их контрольные суммы."
             echo "- Положите программу рядом с \`DiscordTimes.exe\` в папке игры и запустите её. Дальше Раздор обновляется сам (Настройки → «Ещё…» → «Обновления»)."
+            echo "- **Razdor-translate.exe**, **razdor-translate**, **razdor-translate-macos**: переводчик карт и данных игры на английский языковой моделью (см. README, «Переводчик карт»); кладётся туда же. Сам он не обновляется."
             echo "- macOS: программа не подписана разработчиком; после загрузки выполните \`xattr -d com.apple.quarantine razdor-macos\` (или правый щелчок → «Открыть») перед первым запуском."
             echo
             echo "## SHA-256"
@@ -133,4 +141,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --title "Раздор ${GITHUB_REF_NAME#v}" --notes-file notes.md \
-            dist/Razdor.exe dist/razdor dist/razdor-macos dist/SHA256SUMS
+            dist/Razdor.exe dist/razdor dist/razdor-macos \
+            dist/Razdor-translate.exe dist/razdor-translate dist/razdor-translate-macos dist/SHA256SUMS
