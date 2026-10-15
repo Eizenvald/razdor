@@ -226,7 +226,19 @@ fn oval(i: usize, label: &str, hot: Option<usize>) -> bool {
     false
 }
 
-/// The button's word: its row of `SMText_RUS` in Russian, else the text.
+/// How much bigger than the sheet the words of `SMText_RUS` are drawn.
+const WORD_SCALE: f32 = 1.05;
+/// The engraved words' capital height and the widest word's width (sheet pixels of
+/// `SMText_RUS`: «Н» of «Новая Игра» is 16 rows, «Н» of «Настройки» 15; «Новая Игра» 124
+/// columns): an English word is drawn as tall, and at most as wide.
+const WORD_CAP: f32 = 15.5;
+const WORD_WIDTH: f32 = 124.0;
+/// The dark rim round a word (video pixels).
+const WORD_RIM: f32 = 1.5;
+const WORD_EDGE: Color = Color::new(0.12, 0.05, 0.25, 0.8);
+
+/// The button's word: its row of `SMText_RUS` in Russian, else the text, as large and with
+/// the same rim.
 fn word(i: usize, label: &str, c: Vec2, hover: bool) {
     let k = chrome::k();
     let color = if hover { Color::new(1.0, 0.93, 0.80, 1.0) } else { Color::new(0.93, 0.90, 1.0, 1.0) };
@@ -235,15 +247,18 @@ fn word(i: usize, label: &str, c: Vec2, hover: bool) {
         Some(t) => {
             let rh = t.height() / BUTTONS.len() as f32;
             let src = Rect::new(0.0, i as f32 * rh, t.width(), rh);
-            let (w, h) = (t.width() * 1.05 * k, rh * 1.05 * k);
+            let (w, h) = (t.width() * WORD_SCALE * k, rh * WORD_SCALE * k);
             let dst = Rect::new(c.x - w / 2.0, c.y - h / 2.0, w, h);
             // A dark rim, then the word.
-            for (dx, dy) in [(-1.5, 0.0), (1.5, 0.0), (0.0, -1.5), (0.0, 1.5)] {
-                chrome::tex_src(&t, src, Rect::new(dst.x + dx * k, dst.y + dy * k, dst.w, dst.h), Color::new(0.12, 0.05, 0.25, 0.8));
+            for (dx, dy) in [(-WORD_RIM, 0.0), (WORD_RIM, 0.0), (0.0, -WORD_RIM), (0.0, WORD_RIM)] {
+                chrome::tex_src(&t, src, Rect::new(dst.x + dx * k, dst.y + dy * k, dst.w, dst.h), WORD_EDGE);
             }
             chrome::tex_src(&t, src, dst, color);
         }
-        None => chrome::strong_centered(label, c.x, c.y + 8.0 * k, 24.0 * k, color),
+        None => {
+            let box_ = (WORD_CAP * WORD_SCALE * k, WORD_WIDTH * WORD_SCALE * k);
+            chrome::engraved_centered(label, c, box_, (WORD_RIM * k, (0.6 * k).max(1.0)), color, WORD_EDGE);
+        }
     }
 }
 

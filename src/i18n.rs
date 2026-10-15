@@ -394,6 +394,7 @@ mod tests {
         "shadow_right(",
         "strong_text(",
         "strong_centered(",
+        "engraved_centered(",
         "strong_right(",
         "window(",
         "title_bar(",

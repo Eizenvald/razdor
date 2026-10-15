@@ -123,7 +123,11 @@ All text goes through `widgets::measure` / `widgets::text` in the current face
 
 Traps: never call `widgets::measure`/`text` from inside a `with_current` closure (it holds the
 sheet cache's borrow; use `measure_ttf`). Sheet widths change with the mode, so lay text out
-by `measure`, not by fixed pixel widths.
+by `measure`, not by fixed pixel widths. Inside a frame (`dt_font::with_native_metrics`, the
+whole content) the original mode ignores the size asked for and draws the face's own sheet
+size, so a Razdor word standing in for one of the original's word pictures (the title menu's
+words in English, `main_menu::word`) goes through `chrome::engraved_centered`: Becker at the
+picture's capital height in every mode, with the picture's dark rim.
 
 ## What a mod can replace
 

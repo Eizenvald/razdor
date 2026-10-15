@@ -1024,19 +1024,38 @@ pub fn shadow_text(s: &str, x: f32, y: f32, size: f32, color: Color) {
     text(s, x, y, size, color);
 }
 
-/// Text with a heavier dark edge, readable over a picture (the unit panel's stats over the
-/// figure).
-pub fn strong_text(s: &str, x: f32, y: f32, size: f32, color: Color) {
-    let dark = Color::new(0.08, 0.04, 0.0, 0.8 * color.a);
-    for (dx, dy) in [(1.0, 1.0), (1.0, 0.0), (0.0, 1.0), (-0.6, 0.0), (0.0, -0.6)] {
-        text(s, x + dx, y + dy, size, dark);
-    }
-    text(s, x, y, size, color);
+/// The font size at which a word stands in for an engraved word picture: its capitals
+/// `cap` px tall, shrunk so it is at most `max_w` wide. `cap_per_size` and `width_per_size`
+/// are the word's capital height and width per unit of font size.
+pub fn engraved_size(cap: f32, max_w: f32, cap_per_size: f32, width_per_size: f32) -> f32 {
+    let tall = cap / cap_per_size.max(1e-3);
+    if width_per_size > 0.0 { tall.min(max_w / width_per_size) } else { tall }
 }
 
-pub fn strong_centered(s: &str, cx: f32, y: f32, size: f32, color: Color) {
-    let w = measure(s, size).width;
-    strong_text(s, cx - w / 2.0, y, size, color);
+/// A Razdor word in place of the original's engraved word picture (the title menu's words
+/// in English): Becker, the titles' TrueType face, whatever the font mode, so the size asked
+/// for is the size drawn (the interface's text sizes follow the original's sheets, which
+/// made the word as small as the body text), with a real space. Capitals `cap` px tall,
+/// centred on `c` and at most `max_w` wide; a dark rim `rim` px wide like the pictures',
+/// drawn twice `bold` px apart for their weight.
+pub fn engraved_centered(s: &str, c: Vec2, (cap, max_w): (f32, f32), (rim, bold): (f32, f32), color: Color, edge: Color) {
+    let font = super::widgets::face_font(super::dt_font::Face::Title.index(), super::dt_font::FontMode::Modern);
+    let at = |size: u16| measure_text(s, font.as_ref(), size, 1.0);
+    let probe = at(100);
+    let cap_per_size = measure_text("H", font.as_ref(), 100, 1.0).offset_y / 100.0;
+    let size = engraved_size(cap, max_w - bold, cap_per_size, probe.width / 100.0).round().max(1.0) as u16;
+    let m = at(size);
+    let x = (c.x - (m.width + bold) / 2.0).round();
+    let y = (c.y + cap_per_size * size as f32 / 2.0).round();
+    let draw = |x: f32, y: f32, color: Color| {
+        for dx in [0.0, bold] {
+            draw_text_ex(s, x + dx, y, TextParams { font: font.as_ref(), font_size: size, color, ..Default::default() });
+        }
+    };
+    for (dx, dy) in [(-rim, 0.0), (rim, 0.0), (0.0, -rim), (0.0, rim), (rim, rim)] {
+        draw(x + dx, y + dy, edge);
+    }
+    draw(x, y, color);
 }
 
 
@@ -1934,6 +1953,21 @@ pub fn effect(rel: &str, c: Vec2, size: f32, t: f32, color: Color) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The title menu's English words (an owner's report): sized by the engraved words'
+    /// capitals, not by the interface's sheet text size, and narrowed only when too wide.
+    #[test]
+    fn an_engraved_word_is_as_tall_as_asked_unless_too_wide() {
+        // Capitals 0.7 of the size: 16 px capitals need size ~22.9.
+        let s = engraved_size(16.0, 130.0, 0.7, 2.0);
+        assert!((s - 16.0 / 0.7).abs() < 1e-4, "{s}");
+        assert!(s * 0.7 > 15.9, "the word keeps its capital height");
+        // A long word (width 8 per unit of size) is narrowed to 130 px.
+        let s = engraved_size(16.0, 130.0, 0.7, 8.0);
+        assert!((s * 8.0 - 130.0).abs() < 1e-4, "{s}");
+        // An empty word keeps the height rule.
+        assert!((engraved_size(16.0, 130.0, 0.7, 0.0) - 16.0 / 0.7).abs() < 1e-4);
+    }
 
     /// The card highlight as the original's pictures (4dc118) and pulse (4cd2a2): grey rings
     /// 255 − 24 per pixel less the state's colour; brightness 8..15..8 every 1.5 s. The
