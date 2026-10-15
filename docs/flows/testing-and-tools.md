@@ -111,6 +111,28 @@ Other diagnostics: `razdor.log` in the data folder (`razdor::diag`, `RAZDOR_LOG=
 The window is `src/ui/editor/`. Started with `--editor` or from the main menu. Its
 parity work with the original DTMapEdit is paused.
 
+## The map translator (`razdor-translate`)
+
+Not part of the original game (asked for by the owner): a second program that writes English
+copies of the install's maps (`Name.DTm` → `Name_en.DTm` in `Maps_Rus`) with any
+OpenAI-compatible model. The window (`src/bin/razdor-translate/view.rs`) reuses the game's
+`ui` module through `#[path]`; with `--map <name>` it runs without a window (`--help`).
+
+- `src/translate/job.rs`: a job is one map, or a whole campaign (`job::campaign` follows the
+  next-map links), and its distinct Russian strings. Names (buildings, owners, armies,
+  leaders, named characters, titles) go first, then prose with the names they mention as a
+  glossary (`Job::glossary`). The army-name tail from `#` and the event-title flag script
+  from `%` are never sent. `Job::english` rebuilds each map and relinks the next map to the
+  next chapter's copy. Progress is saved after every answer to
+  `<data dir>/razdor/translate/<first map>.json` and taken over by a later job.
+- `src/translate/text.rs`: what the model must keep (`#\`, CR LF, `#` words as `{N}`, the
+  markup marks) and the checks on each answer; a refused string is retried alone, given up
+  after `job::MAX_TRIES`.
+- `src/translate/llm.rs`: `chat` through the system `curl` (the key in a private curl config
+  file), batches sized by the settings' context (`Settings::batch_chars`); settings in
+  `translate.json` next to the remembered install path. the API's reasoning_effort and
+  response_format options are dropped by themselves when a server refuses them.
+
 ## Traps
 
 - A test that returns early without the install looks green: when a change touches maps,

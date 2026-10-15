@@ -1,0 +1,51 @@
+# Razdor interface in Russian: the map translator (razdor-translate). "English = Russian", one
+# per line; {name} is a value filled in by the program. See src/i18n.rs.
+
+# Header and the map list
+Map translator = Переводчик карт
+English copies of the install's maps, made by a language model = Английские копии карт игры, переведённые языковой моделью
+No Discord Times install found: start Razdor once to choose it. = Игра «Времена раздора» не найдена: запустите Razdor и укажите папку игры.
+No maps = Нет карт
+Campaign: {n} chapters = Кампания: глав — {n}
+
+# The model's settings
+Language model (OpenAI-compatible API) = Языковая модель (API, совместимый с OpenAI)
+Address = Адрес
+Test = Проверить
+Model = Модель
+API key = Ключ API
+none (a local server) = нет (локальный сервер)
+Paste = Вставить
+Context (tokens) = Контекст (токенов)
+Reasoning = Размышления
+none: thinking off (Ollama); empty: the server's default = none — без размышлений (Ollama); пусто — как решит сервер
+Connected; the model is there. = Связь есть, модель найдена.
+Connected, but no model {m}. There are: {list} = Связь есть, но модели {m} нет. Есть: {list}
+No connection: {why} = Нет связи: {why}
+Ollama: http://localhost:11434/v1, no key. OpenAI: https://api.openai.com/v1 with a key. = Ollama: http://localhost:11434/v1, без ключа. OpenAI: https://api.openai.com/v1, с ключом.
+Settings not saved: {e} = Настройки не сохранены: {e}
+
+# The chosen map
+Choose a map or a campaign on the left. = Выберите карту или кампанию слева.
+{total} texts ({names} names), {done} translated, {failed} given up; {chars} characters left = Текстов: {total} (имён: {names}), переведено: {done}, не удалось: {failed}; осталось символов: {chars}
+Translate = Перевести
+Go on = Продолжить
+Stop = Остановить
+Retry given up = Повторить неудачные
+Write English maps = Записать английские карты
+Replace English maps = Заменить английские карты
+Untranslated texts stay in Russian in the written maps. = Непереведённые тексты останутся в картах на русском.
+
+# The log
+Started: model {m}, {n} characters per batch = Начато: модель {m}, по {n} символов за запрос
+Sending {items}: {first}... = Отправлено {items}: {first}...
+Taken {taken} of {of} in {s} s = Принято {taken} из {of} за {s} с
+Failed: {why} = Ошибка: {why}
+Stopping after this answer... = Остановка после этого ответа...
+Stopped. = Остановлено.
+Stopped: {why} = Остановлено: {why}
+All texts translated. Write the English maps. = Все тексты переведены. Запишите английские карты.
+Done; {n} texts given up (Retry given up). = Готово; не удалось перевести текстов: {n} (кнопка «Повторить неудачные»).
+English copies exist already: press again to replace them. = Английские копии уже есть: нажмите ещё раз, чтобы заменить их.
+Written: {f} = Записано: {f}
+Not written: {why} = Не записано: {why}

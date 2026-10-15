@@ -33,3 +33,10 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 opt-level = 2
 debug = false
+
+# The map translator (src/bin/razdor-translate): its own window, built on Razdor's ui module.
+# Its unit tests are the library's (`razdor::translate`); the ui module's run with the game.
+[[bin]]
+name = "razdor-translate"
+path = "src/bin/razdor-translate/main.rs"
+test = false
