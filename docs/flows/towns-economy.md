@@ -78,7 +78,8 @@ wage to take back.
 the barracks' draws (random order matters for the difftests). Buy/sell prices go through
 `relation_price` and `merchant_price`. The market tab (`building_view::market`, 0x4bca8c) shows
 the goods or the pack (`BuildingView::selling`): «Инвентарь» and «Торговая лавка» switch them
-(`market_switches`), the description pane swaps sides with the list; the filter (Razdor's) takes
+(`market_list_buttons`; the button of the list shown is disabled and drawn greyed, as the
+original's 0x479bbc), the description pane swaps sides with the list; the filter (Razdor's) takes
 the column titles' line only while it is used (`item_filter::field_with`).
 
 **Sanctuary UI** (`sanctuary`, `spell_list`, 0x4ba854): the first spell starts selected.

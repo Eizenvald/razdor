@@ -8,6 +8,14 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
 
 ## Open
 
+- **Disabled button look** (2026-10-15, the market's list buttons). Razdor greys a disabled
+  button as its `Up` art at 0.9 of its luminance with a grey caption (`chrome::marble_button`).
+  The original's Button.Draw (0x479bbc) uses the widget's own disabled picture +0x53; for the
+  market's «Инвентарь» / «Торговая лавка» that is `Btn3Down` greyed 100/200/100 (0x48db5c),
+  ×1300/1024 − 26 (0x48da5c, built at 0x4d985f), the caption in its normal colour moved by
+  (1, 1). Other windows set +0x53 per widget (the load window's «Загрузить» may look enabled
+  for that reason): read each window's +0x53 before matching the look everywhere.
+
 - **dt-original: real-data tests with translator output in the install** (2026-10-15). An
   install holding `*_en.DTm` maps from razdor-translate fails dt-original's shipped-map tests
   (they count 15 maps); main leaves `_en` copies out, dt-original has no translator. Run
