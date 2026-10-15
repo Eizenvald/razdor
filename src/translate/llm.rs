@@ -64,9 +64,11 @@ impl Settings {
             std::fs::create_dir_all(d)?;
         }
         let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
-        crate::editor::files::write_atomically(&path, json.as_bytes())?;
-        private(&path);
-        Ok(())
+        // It may hold the key: written owner-only from the start, then renamed into place.
+        let tmp = path.with_extension("json.tmp");
+        let _ = std::fs::remove_file(&tmp);
+        write_private(&tmp, json.as_bytes())?;
+        std::fs::rename(&tmp, &path)
     }
 
     /// Characters of Russian per batch: about 2.5 characters a token, the answer as long
@@ -85,14 +87,17 @@ impl Settings {
     }
 }
 
-/// Only the owner may read the file (it may hold the key).
-fn private(path: &std::path::Path) {
+/// Creates `path` readable by its owner only from the start, never reusing a file (or a
+/// symlink planted) there: the shared temp folder is open to every user.
+fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut o = std::fs::OpenOptions::new();
+    o.write(true).create_new(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+        use std::os::unix::fs::OpenOptionsExt;
+        o.mode(0o600);
     }
-    let _ = path;
+    o.open(path)?.write_all(bytes)
 }
 
 /// The instructions sent with every batch.
@@ -168,8 +173,7 @@ fn request(s: &Settings, url: &str, body: Option<&Value>) -> Result<(u32, String
     if !s.api_key.trim().is_empty() {
         lines.push_str(&format!("header = \"Authorization: Bearer {}\"\n", s.api_key.trim().replace('"', "")));
     }
-    std::fs::write(&conf, lines).map_err(|e| format!("{}: {e}", conf.display()))?;
-    private(&conf);
+    write_private(&conf, lines.as_bytes()).map_err(|e| format!("{}: {e}", conf.display()))?;
     let mut cmd = curl();
     cmd.args(["--max-time", &s.timeout.to_string(), "-w", "\n%{http_code}", "-K"]).arg(&conf);
     if body.is_some() {
@@ -273,6 +277,20 @@ mod tests {
         assert_eq!(got["1"], "Hello");
         assert!(parse_answer("no json here").is_err());
         assert!(parse_answer("{\"1\": ").is_err());
+    }
+
+    #[test]
+    fn the_key_file_is_private_and_never_reused() {
+        let path = std::env::temp_dir().join(format!("razdor-translate-test-{}.curl", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        write_private(&path, b"x").unwrap();
+        assert!(write_private(&path, b"y").is_err(), "an existing file is not reused");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]
