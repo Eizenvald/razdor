@@ -169,6 +169,46 @@ impl Content {
         Content::new(dt.units.clone(), dt.artefacts.clone(), dt.spells.clone(), options, formation)
     }
 
+    /// [`Content::from_dt`] with the names and descriptions in English when `english` and the
+    /// install has English texts (`crate::dt::english`; Razdor's own, not the original's).
+    pub fn from_dt_in(dt: &DtInstall, english: bool) -> Content {
+        let mut c = Content::from_dt(dt);
+        if english {
+            if let Some(d) = &dt.english {
+                d.apply(&mut c.units, &mut c.items, &mut c.spells);
+            }
+        }
+        c
+    }
+
+    /// This content with the names and descriptions of `dt`'s data in Russian, or in English
+    /// when `english` and the install has English texts; everything else kept (a running
+    /// game after an EN / RU switch).
+    pub fn retitled(&self, dt: &DtInstall, english: bool) -> Content {
+        let mut c = self.clone();
+        for u in &mut c.units {
+            if let Some(d) = dt.units.iter().find(|d| d.id == u.id) {
+                (u.name, u.description) = (d.name.clone(), d.description.clone());
+            }
+        }
+        for a in &mut c.items {
+            if let Some(d) = dt.artefacts.iter().find(|d| d.id == a.id) {
+                (a.name, a.description) = (d.name.clone(), d.description.clone());
+            }
+        }
+        for s in &mut c.spells {
+            if let Some(d) = dt.spells.iter().find(|d| d.id == s.id) {
+                s.name = d.name.clone();
+            }
+        }
+        if english {
+            if let Some(d) = &dt.english {
+                d.apply(&mut c.units, &mut c.items, &mut c.spells);
+            }
+        }
+        c
+    }
+
     /// The built-in demo: `data/units.ini`, `data/items.ini` and `data/spells.ini` (our own
     /// content). The options are the vanilla defaults except for faster XP (the player's
     /// modifier and the difficulty factor at 100%), so the short demo shows levels.

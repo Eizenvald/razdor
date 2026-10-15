@@ -114,6 +114,13 @@ Input goes through `src/ui/input.rs` (mouse/keys with gamepad emulation from
 - The original's interface texts are read from the install, never copied:
   `chrome::ui_text`, `chrome::ui_markup` (with the original's `#\ * | @ ^` marks, drawn by
   `widgets::markup_rows`), `chrome::ui_line`, `chrome::options_value` (`[Options]`).
+- English data texts (Razdor's own, made by `razdor-translate`): `razdor::dt::english`
+  reads `Eng_*.ini` next to the Russian files. In English, `chrome::ui_text` and
+  `chrome::ui_markup` take a translated text first, and the install's unit, item and spell
+  names and descriptions are swapped in by Russian text (`Content::from_dt_in`; on an EN / RU
+  switch `App::follow_language` retitles the content and the game under way with
+  `Content::retitled`). The Russian data is always loaded as it is: upgrades match units by
+  their Russian name.
 - Fonts: the settings' «Шрифт» (`dt_font::FontMode`): the install's bitmap sheets by default,
   or the bundled TrueType faces (`widgets::load_font`); see `assets-and-drawing.md` §Fonts.
   Pick a face with `dt_font::with_face`; measure with `widgets::measure`, since widths

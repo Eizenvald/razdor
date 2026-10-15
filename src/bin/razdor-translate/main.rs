@@ -16,6 +16,8 @@ const HELP: &str = "razdor-translate: English copies of Discord Times maps, by a
 
 Without arguments: the window.
   --list                     the install's maps and campaigns
+  --data                     translate the game data (units, items, spells, the game's
+                             texts) into Eng_*.ini files for Razdor in English
   --map <name>               translate this map (with its whole campaign), then write the
                              English copies into the game's maps folder, replacing older ones
                              (the name: a file name, its stem, or the start of it)
@@ -57,19 +59,23 @@ fn cli(args: &[String]) -> Option<i32> {
         }
         return Some(0);
     }
-    let Some(name) = value("--map") else {
+    let data = has("--data");
+    let name = value("--map");
+    if name.is_none() && !data {
         eprintln!("{HELP}");
         return Some(2);
-    };
-    let found = pairs
-        .iter()
-        .position(|(f, _)| f == &name)
-        .or_else(|| pairs.iter().position(|(f, _)| f.trim_end_matches(".DTm") == name))
-        .or_else(|| pairs.iter().position(|(f, _)| f.to_lowercase().starts_with(&name.to_lowercase())));
-    let Some(at) = found else {
+    }
+    let found = name.as_ref().map(|name| {
+        pairs
+            .iter()
+            .position(|(f, _)| f == name)
+            .or_else(|| pairs.iter().position(|(f, _)| f.trim_end_matches(".DTm") == name))
+            .or_else(|| pairs.iter().position(|(f, _)| f.to_lowercase().starts_with(&name.to_lowercase())))
+    });
+    if let (Some(name), Some(None)) = (&name, found) {
         eprintln!("No map {name:?} in {} (see --list).", maps_dir.display());
         return Some(2);
-    };
+    }
     let mut s = Settings::load();
     if let Some(v) = value("--endpoint") {
         s.endpoint = v;
@@ -91,18 +97,18 @@ fn cli(args: &[String]) -> Option<i32> {
             eprintln!("settings: {e}");
         }
     }
-    let chain: Vec<(String, razdor::dt::dtm::Scenario)> = translate::job::campaign(&pairs, at).into_iter().map(|k| pairs[k].clone()).collect();
-    let (mut job, path) = translate::open_job(&chain);
-    println!(
-        "{} map(s): {}; {} strings, {} done; model {} at {}, context {}",
-        chain.len(),
-        chain.iter().map(|(f, _)| f.as_str()).collect::<Vec<_>>().join(", "),
-        job.entries.len(),
-        job.done(),
-        s.model,
-        s.endpoint,
-        s.context
-    );
+    let (mut job, path, target, what) = if data {
+        let data = translate::data::install_texts(&install);
+        let (job, path) = translate::data::open_job(&data);
+        (job, path, translate::Target::Data { install: install.clone(), data }, "the game data".to_string())
+    } else {
+        let at = found.flatten().expect("a map was found");
+        let chain: Vec<(String, razdor::dt::dtm::Scenario)> = translate::job::campaign(&pairs, at).into_iter().map(|k| pairs[k].clone()).collect();
+        let (job, path) = translate::open_job(&chain);
+        let what = format!("{} map(s): {}", chain.len(), chain.iter().map(|(f, _)| f.as_str()).collect::<Vec<_>>().join(", "));
+        (job, path, translate::Target::Maps(maps_dir.clone()), what)
+    };
+    println!("{what}; {} strings, {} done; model {} at {}, context {}", job.entries.len(), job.done(), s.model, s.endpoint, s.context);
     if let Some(p) = &path {
         println!("progress file: {}", p.display());
     }
@@ -125,7 +131,7 @@ fn cli(args: &[String]) -> Option<i32> {
     if has("--no-write") {
         return Some(0);
     }
-    match translate::write_maps(&job, &maps_dir, true) {
+    match target.write(&job, true) {
         Ok(files) => {
             for f in files {
                 println!("wrote {}", f.display());

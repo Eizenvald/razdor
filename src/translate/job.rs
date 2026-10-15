@@ -108,6 +108,10 @@ pub struct JobMap {
 pub struct Job {
     pub maps: Vec<JobMap>,
     pub entries: Vec<Entry>,
+    /// Names translated elsewhere (the game data's units, items and spells), offered in the
+    /// glossary like the job's own; not saved with the job.
+    #[serde(skip)]
+    pub outside_glossary: Vec<(String, String)>,
 }
 
 /// An entry is given up on (left for "retry") after this many refused answers.
@@ -162,30 +166,43 @@ pub fn campaign(maps: &[(String, Scenario)], at: usize) -> Vec<usize> {
 impl Job {
     /// The job for `maps` (file name, scenario), in play order.
     pub fn new(maps: &[(String, Scenario)]) -> Job {
-        let mut entries: Vec<Entry> = Vec::new();
-        let mut index: HashMap<String, usize> = HashMap::new();
+        let mut texts = Vec::new();
         for (_, s) in maps {
             let mut s = s.clone();
             for (value, f) in fields(&mut s) {
-                if f == Field::NextMap {
-                    continue;
-                }
-                let (_, core, _) = split(value, f);
-                if !has_cyrillic(core) {
-                    continue;
-                }
-                let name = f != Field::Text;
-                match index.get(core) {
-                    Some(&i) => entries[i].name &= name,
-                    None => {
-                        index.insert(core.to_string(), entries.len());
-                        entries.push(Entry { src: core.to_string(), name, ..Entry::default() });
-                    }
+                if f != Field::NextMap {
+                    texts.push((split(value, f).1.to_string(), f != Field::Text));
                 }
             }
         }
-        let maps = maps.iter().map(|(f, _)| JobMap { file: f.clone(), out: english_file(f) }).collect();
-        Job { maps, entries }
+        let mut job = Job::from_texts(texts.iter().map(|(t, n)| (t.as_str(), *n)));
+        job.maps = maps.iter().map(|(f, _)| JobMap { file: f.clone(), out: english_file(f) }).collect();
+        job
+    }
+
+    /// The job for `texts` (text, whether it is a name): each distinct text with Cyrillic in
+    /// it once, a name only if it is a name everywhere.
+    pub fn from_texts<'a>(texts: impl IntoIterator<Item = (&'a str, bool)>) -> Job {
+        let mut entries: Vec<Entry> = Vec::new();
+        let mut index: HashMap<&str, usize> = HashMap::new();
+        for (core, name) in texts {
+            if !has_cyrillic(core) {
+                continue;
+            }
+            match index.get(core) {
+                Some(&i) => entries[i].name &= name,
+                None => {
+                    index.insert(core, entries.len());
+                    entries.push(Entry { src: core.to_string(), name, ..Entry::default() });
+                }
+            }
+        }
+        Job { entries, ..Job::default() }
+    }
+
+    /// The English of `src`, once translated.
+    pub fn english_of(&self, src: &str) -> Option<&str> {
+        self.entries.iter().find(|e| e.src == src)?.en.as_deref()
     }
 
     /// Takes over the English of `old` for the strings both jobs share.
@@ -263,15 +280,21 @@ impl Job {
             w.chars().take(keep).collect()
         };
         let text_words: Vec<String> = batch.iter().flat_map(|&i| words(&self.entries[i].src)).collect();
-        let mut out = Vec::new();
-        for (i, e) in self.entries.iter().enumerate() {
-            let Some(en) = &e.en else { continue };
-            if !e.name || batch.contains(&i) || e.src.chars().count() > 60 {
+        let own = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(i, e)| e.name && !batch.contains(i))
+            .filter_map(|(_, e)| Some((e.src.as_str(), e.en.as_deref()?)));
+        let outside = self.outside_glossary.iter().map(|(ru, en)| (ru.as_str(), en.as_str()));
+        let mut out: Vec<(String, String)> = Vec::new();
+        for (ru, en) in own.chain(outside) {
+            if ru.chars().count() > 60 || out.iter().any(|(r, _)| r == ru) {
                 continue;
             }
-            let name_words: Vec<String> = words(&e.src).into_iter().filter(|w| w.chars().count() >= 3).collect();
+            let name_words: Vec<String> = words(ru).into_iter().filter(|w| w.chars().count() >= 3).collect();
             if !name_words.is_empty() && name_words.iter().all(|w| text_words.iter().any(|t| t.starts_with(&stem(w)))) {
-                out.push((e.src.clone(), en.clone()));
+                out.push((ru.to_string(), en.to_string()));
                 if out.len() >= limit {
                     break;
                 }

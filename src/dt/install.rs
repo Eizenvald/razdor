@@ -48,6 +48,9 @@ pub struct DtInstall {
     pub settings: PlayOptions,
     /// Sorted by file name.
     pub maps: Vec<MapEntry>,
+    /// English names, descriptions and interface texts made by `razdor-translate`, if any
+    /// (Razdor's own, not the original's: [`super::english`]).
+    pub english: Option<super::english::Dictionary>,
 }
 
 fn io_err(path: &Path) -> impl FnOnce(std::io::Error) -> DtError + '_ {
@@ -159,6 +162,7 @@ impl DtInstall {
             options,
             settings,
             maps: list_maps(dir)?,
+            english: super::english::Dictionary::load(dir),
         })
     }
 

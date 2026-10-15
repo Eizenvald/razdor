@@ -128,6 +128,12 @@ install they run against (`razdor::dt::install::locate`), replacing older copies
   from `%` are never sent. `Job::english` rebuilds each map and relinks the next map to the
   next chapter's copy. Progress is saved after every answer to
   `<data dir>/razdor/translate/<first map>.json` and taken over by a later job.
+- `src/translate/data.rs`: the "Game data" item (`--data`): the names and descriptions of
+  units, items and spells and every Russian interface text, translated into `Eng_*.ini` next to
+  the Russian files (`razdor::dt::english::english_file`), only the translated keys under the
+  same sections; references by name (`NextUnitN`) are never touched. Its names join every map
+  job's glossary (`Job::outside_glossary`, `data::glossary`). `translate::Target` writes either
+  kind.
 - `src/translate/text.rs`: what the model must keep (`#\`, CR LF, `#` words as `{N}`, the
   markup marks) and the checks on each answer; a refused string is retried alone, given up
   after `job::MAX_TRIES`.

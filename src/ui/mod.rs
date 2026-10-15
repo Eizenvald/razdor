@@ -192,7 +192,8 @@ impl App {
         // original reads `OptValue10` (interface.md §16): F = 100 instead of 120.
         let impossible = audio.settings.impossible;
         let dt_content = assets.dt.as_ref().map(|d| {
-            let mut c = Content::from_dt(&d.install);
+            // In English, the names made by razdor-translate when the install has them.
+            let mut c = Content::from_dt_in(&d.install, razdor::i18n::lang() == razdor::i18n::Lang::En);
             if let Some(on) = impossible {
                 c.options.difficulty_factor = if on { 100 } else { 120 };
             }
@@ -295,7 +296,19 @@ impl App {
         let now = razdor::i18n::lang();
         if now != self.lang {
             self.lang = now;
+            let demo_game = self.game.as_ref().is_some_and(|g| Arc::ptr_eq(&g.content, &self.demo));
             self.demo = Arc::new(Content::builtin());
+            // The install's names and descriptions in the new language (English from the
+            // files razdor-translate made, if any), for new games and the game under way.
+            if let Some(d) = self.assets.dt.as_ref() {
+                let en = now == razdor::i18n::Lang::En;
+                if let Some(c) = self.dt_content.as_mut() {
+                    *c = Arc::new(c.retitled(&d.install, en));
+                }
+                if let Some(g) = self.game.as_mut().filter(|_| !demo_game) {
+                    g.content = Arc::new(g.content.retitled(&d.install, en));
+                }
+            }
         }
     }
 

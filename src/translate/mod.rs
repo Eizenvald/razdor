@@ -4,8 +4,11 @@
 //!
 //! - [`text`]: one string to the model and back (placeholders, checks).
 //! - [`job`]: the strings of a map or campaign, batches, progress, the English maps.
+//! - [`data`]: the install's own texts (units, items, spells, interface) and their English
+//!   files for Razdor.
 //! - [`llm`]: the API and its settings.
 
+pub mod data;
 pub mod job;
 pub mod llm;
 pub mod text;
@@ -37,6 +40,8 @@ pub fn open_job(maps: &[(String, Scenario)]) -> (Job, Option<PathBuf>) {
     if let Some(old) = path.as_deref().and_then(Job::load) {
         job.take_over(&old);
     }
+    // The game data's names: a map's texts call a unit what its card calls it.
+    job.outside_glossary = data::glossary();
     (job, path)
 }
 
@@ -112,6 +117,26 @@ pub fn write_maps(job: &Job, maps_dir: &Path, overwrite: bool) -> Result<Vec<Pat
         written.push(target);
     }
     Ok(written)
+}
+
+/// Where a job's English goes.
+#[derive(Clone, Debug)]
+pub enum Target {
+    /// English copies of maps, in this maps folder.
+    Maps(PathBuf),
+    /// English files of the install's data, next to its Russian ones.
+    Data { install: PathBuf, data: data::DataTexts },
+}
+
+impl Target {
+    /// Writes `job`'s English; returns the files written. Maps that exist are replaced only
+    /// with `overwrite`; the data's English files are always replaced.
+    pub fn write(&self, job: &Job, overwrite: bool) -> Result<Vec<PathBuf>, String> {
+        match self {
+            Target::Maps(dir) => write_maps(job, dir, overwrite),
+            Target::Data { install, data } => data::write(job, data, install),
+        }
+    }
 }
 
 /// The install's maps folder.

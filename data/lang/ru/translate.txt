@@ -7,6 +7,8 @@ English copies of the install's maps, made by a language model = Английс�
 No Discord Times install found: start Razdor once to choose it. = Игра «Времена раздора» не найдена: запустите Razdor и укажите папку игры.
 No maps = Нет карт
 Campaign: {n} chapters = Кампания: глав — {n}
+Game data = Данные игры
+Units, items, spells and the game's texts: for Razdor in English = Воины, предметы, заклинания и тексты игры: для Раздора на английском
 
 # The model's settings
 Language model (OpenAI-compatible API) = Языковая модель (API, совместимый с OpenAI)

@@ -27,6 +27,8 @@ type ModelList = Result<Vec<String>, String>;
 /// A line of the list: one map, or a whole campaign.
 struct Item {
     title: String,
+    /// The install's own texts rather than maps (`chapters` is empty).
+    data: bool,
     /// Indexes into [`View::maps`], in play order.
     chapters: Vec<usize>,
 }
@@ -40,7 +42,10 @@ struct Shared {
 }
 
 pub struct View {
+    install: Option<PathBuf>,
     maps_dir: Option<PathBuf>,
+    /// Where the chosen item's English goes.
+    target: Option<translate::Target>,
     maps: Vec<(String, Scenario)>,
     items: Vec<Item>,
     selected: Option<usize>,
@@ -65,7 +70,9 @@ impl View {
         let items = items(&maps);
         let settings = Settings::load();
         let v = View {
+            install: install.clone(),
             maps_dir,
+            target: None,
             maps,
             items,
             selected: None,
@@ -108,6 +115,12 @@ impl View {
 
     /// Chooses the first item with a map whose file starts with `name`.
     pub fn pick(&mut self, name: &str) {
+        if name == "data" {
+            if let Some(i) = self.items.iter().position(|it| it.data) {
+                self.select(i);
+            }
+            return;
+        }
         let want = name.to_lowercase();
         if let Some(i) = self.items.iter().position(|it| it.chapters.iter().any(|&k| self.maps[k].0.to_lowercase().starts_with(&want))) {
             self.select(i);
@@ -120,8 +133,16 @@ impl View {
         }
         self.selected = Some(i);
         self.confirm_replace = false;
+        if self.items[i].data {
+            let Some(install) = self.install.clone() else { return };
+            let data = translate::data::install_texts(&install);
+            self.job = Some(translate::data::open_job(&data));
+            self.target = Some(translate::Target::Data { install, data });
+            return;
+        }
         let chapters: Vec<(String, Scenario)> = self.items[i].chapters.iter().map(|&k| self.maps[k].clone()).collect();
         self.job = Some(translate::open_job(&chapters));
+        self.target = self.maps_dir.clone().map(translate::Target::Maps);
     }
 
     pub fn frame(&mut self) {
@@ -182,10 +203,16 @@ impl View {
             if hover && widgets::clicked() {
                 clicked = Some(i);
             }
-            let english = self.maps_dir.as_ref().is_some_and(|d| item.chapters.iter().all(|&k| d.join(job::english_file(&self.maps[k].0)).exists()));
+            let english = if item.data {
+                self.install.as_ref().is_some_and(|d| d.join(razdor::dt::english::english_file(razdor::dt::install::UNITS_FILE)).exists())
+            } else {
+                self.maps_dir.as_ref().is_some_and(|d| item.chapters.iter().all(|&k| d.join(job::english_file(&self.maps[k].0)).exists()))
+            };
             let title = if english { format!("{}  [EN]", item.title) } else { item.title.clone() };
             text_fit(&title, row.x + 8.0, row.y + 19.0, row.w - 16.0, 17.0, if english { GREEN } else { INK });
-            let sub = if item.chapters.len() > 1 {
+            let sub = if item.data {
+                tr("Units, items, spells and the game's texts: for Razdor in English").to_string()
+            } else if item.chapters.len() > 1 {
                 trf!("Campaign: {n} chapters", n = item.chapters.len())
             } else {
                 self.maps[item.chapters[0]].0.clone()
@@ -302,7 +329,7 @@ impl View {
         if button(r.x + 22.0 + w, y, w, 32.0, tr("Retry given up"), !busy && failed > 0) {
             self.start(true);
         }
-        let can_write = !busy && done > 0 && self.maps_dir.is_some();
+        let can_write = !busy && done > 0 && self.target.is_some();
         let write_x = r.x + 32.0 + 2.0 * w;
         if self.confirm_replace {
             if red_button(write_x, y, w, 32.0, tr("Replace English maps"), can_write) {
@@ -324,7 +351,7 @@ impl View {
         }
         let (mut job, path) = (job.clone(), path.clone());
         let s = self.settings.clone();
-        let maps_dir = self.maps_dir.clone();
+        let target = self.target.clone();
         let shared = self.shared.clone();
         self.stop.store(false, Ordering::Relaxed);
         let stop = self.stop.clone();
@@ -350,7 +377,7 @@ impl View {
             match result {
                 // Done: the English copies go straight into the game's maps folder, replacing
                 // older copies made by this tool.
-                Ok(()) if job.complete() => match maps_dir.as_deref().map(|d| translate::write_maps(&job, d, true)) {
+                Ok(()) if job.complete() => match target.as_ref().map(|t| t.write(&job, true)) {
                     Some(Ok(files)) => {
                         push(tr("All texts translated.").to_string(), GREEN);
                         for f in files {
@@ -371,8 +398,8 @@ impl View {
     }
 
     fn write(&mut self, overwrite: bool) {
-        let (Some((job, _)), Some(dir)) = (self.job.as_ref(), self.maps_dir.as_ref()) else { return };
-        match translate::write_maps(job, dir, overwrite) {
+        let (Some((job, _)), Some(target)) = (self.job.as_ref(), self.target.as_ref()) else { return };
+        match target.write(job, overwrite) {
             Ok(files) => {
                 self.confirm_replace = false;
                 for f in files {
@@ -417,8 +444,12 @@ fn items(maps: &[(String, Scenario)]) -> Vec<Item> {
         let first = &maps[chapters[0]].1;
         let title = if chapters.len() > 1 && !first.campaign_name.trim().is_empty() { first.campaign_name.trim() } else { first.title.trim() };
         let title = if title.is_empty() { maps[chapters[0]].0.clone() } else { title.to_string() };
-        out.push(Item { title, chapters });
+        out.push(Item { title, data: false, chapters });
     }
     out.sort_by_key(|it| (it.chapters.len() == 1, it.title.clone()));
+    // The install's own texts first: maps translated after them use their names.
+    if !maps.is_empty() {
+        out.insert(0, Item { title: tr("Game data").to_string(), data: true, chapters: Vec::new() });
+    }
     out
 }

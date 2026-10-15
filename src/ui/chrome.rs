@@ -58,6 +58,8 @@ struct Chrome {
     visual_images: HashMap<String, Option<Image>>,
     animations: HashMap<String, Option<Vec<Texture2D>>>,
     texts: Option<Option<Ini>>,
+    /// `Eng_DiscordTimes.ini` made by razdor-translate, read in English (`razdor::dt::english`).
+    english_texts: Option<Option<Ini>>,
 }
 
 thread_local! {
@@ -68,7 +70,7 @@ thread_local! {
 pub fn set_install(dir: PathBuf) {
     gfx::prefetch(dir.clone(), WINDOWS_AHEAD.iter().map(|n| format!("Graphics/{n}")).collect());
     CHROME.with(|c| {
-        *c.borrow_mut() = Some(Chrome { dir, textures: HashMap::new(), visual_textures: HashMap::new(), visual_images: HashMap::new(), animations: HashMap::new(), texts: None })
+        *c.borrow_mut() = Some(Chrome { dir, textures: HashMap::new(), visual_textures: HashMap::new(), visual_images: HashMap::new(), animations: HashMap::new(), texts: None, english_texts: None })
     });
 }
 
@@ -562,11 +564,27 @@ pub fn ui_text(section: &str, key: &str) -> Option<String> {
     CHROME.with(|c| {
         let mut c = c.borrow_mut();
         let c = c.as_mut()?;
+        if let Some(en) = english_of(c, section, key) {
+            return Some(en.replace("#\\", "\n"));
+        }
         if c.texts.is_none() {
             c.texts = Some(read_texts(&c.dir));
         }
         text_of(c.texts.as_ref()?.as_ref()?, section, key)
     })
+}
+
+/// In English, the install's interface text translated by razdor-translate, if there is one
+/// (Razdor's own: the original reads only the Russian file).
+fn english_of(c: &mut Chrome, section: &str, key: &str) -> Option<String> {
+    if razdor::i18n::lang() != razdor::i18n::Lang::En {
+        return None;
+    }
+    if c.english_texts.is_none() {
+        let name = razdor::dt::english::english_file(SETTINGS_FILE);
+        c.english_texts = Some(find_path(&c.dir, &name).ok().and_then(|p| std::fs::read(p).ok()).map(|b| Ini::from_cp1251(&b)));
+    }
+    c.english_texts.as_ref()?.as_ref()?.section(section)?.get_nonempty(key).map(str::to_string)
 }
 
 /// An interface text of the install as written, its marks kept (`#\` line breaks, `*` `|`
@@ -575,6 +593,9 @@ pub fn ui_markup(section: &str, key: &str) -> Option<String> {
     CHROME.with(|c| {
         let mut c = c.borrow_mut();
         let c = c.as_mut()?;
+        if let Some(en) = english_of(c, section, key) {
+            return Some(en);
+        }
         if c.texts.is_none() {
             c.texts = Some(read_texts(&c.dir));
         }
