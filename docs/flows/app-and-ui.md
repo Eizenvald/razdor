@@ -103,6 +103,15 @@ Building a window (`src/ui/chrome.rs`):
   `chrome::hint_text`, `widgets::button`, `widgets::text_field`, `widgets::scrollbar`,
   `widgets::tabs`. Clicks: `widgets::clicked` / `widgets::mouse_in` (they respect
   `input_blocked`). Sounds: `audio::cue(Cue::Button)`.
+- Text input: every field (`widgets::text_field`, `widgets::number_field`, the drop-down's
+  filter, the inventory filter `item_filter::field`, the hero's name
+  `screens::hero_name_field`, the save's name, the console) edits through
+  `widgets::edit_keys` over a `text_edit::TextEdit` (caret and selection; pure, unit-tested)
+  and draws with `widgets::edit_line` / `widgets::edit_rows` (the mouse places the caret and
+  selects). Keys: typing replaces the selection, Backspace / Delete / arrows repeat while
+  held (`widgets::key_repeat`, the original's typematic timing `widgets::repeats`), Shift
+  selects, Ctrl+A / C / X / V. Never read macroquad's typed characters or Backspace's press in a field
+  of your own: take `widgets::typed_chars` and `widgets::edit_keys`.
 - Tooltips: `widgets::tooltip` (translucent, follows the mouse), `widgets::hint_box` (the
   original's hint box), `widgets::panel_hint` (bottom panel). Clip with `widgets::Clip`.
 - Message windows: build a `dialog::Dialog` and push it on `App::dialogs` (screens get

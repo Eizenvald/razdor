@@ -515,20 +515,15 @@ pub fn class_select(game: &mut Option<Game>, demo: &Arc<Content>, scenario: Opti
     }
     HERO.with(|h| h.set(pick));
     let hero = HeroClass::ALL[pick];
-    // The hero's name, typed.
-    let name = screens::HERO_NAME.with(|n| {
-        let mut n = n.borrow_mut();
-        screens::edit_name(&mut n);
-        n.clone()
-    });
+    // The hero's name, typed (centred, as the original draws its edit box's text, 0x47a624).
     let field = win.rect(38.0 + pick as f32 * 197.0, 207.0, 160.0, 22.0);
     draw_rectangle(field.x, field.y, field.w, field.h, BLACK);
     chrome::silver_frame(field, 1.0);
-    let caret = if (get_time() * 2.0) as i64 % 2 == 0 { "|" } else { "" };
-    let shown = format!("{name}{caret}");
-    with_face(Face::Subtitle, || {
+    let name = with_face(Face::Subtitle, || {
         let size = super::typography::Role::Name.size(16.0 * k);
-        chrome::shadow_centered(&ellipsize(&shown, field.w - 8.0 * k, size), field.center().x, field.center().y + size * 0.36, size, super::typography::Ink::Yellow.color());
+        let look = LineLook { size, color: super::typography::Ink::Yellow.color(), centred: true, shadow: true };
+        let room = Rect::new(field.x + 4.0 * k, field.y, field.w - 8.0 * k, field.h);
+        screens::hero_name_field(room, field.center().y + size * 0.36, look)
     });
     let book = win.rect(18.0, 240.0, 596.0, 210.0);
     match chrome::win("NewHero_Paper") {
@@ -663,9 +658,11 @@ fn leave_hero_window(next: Screen) -> Option<Screen> {
 /// Fills the name field as the original does on every opening of the window (0x4cff70):
 /// with `[NewHero] PrivateHeroName` as text, not as a hint. Start takes the field as it
 /// stands (0x4c10d9), so a name left untouched is that text («(нет имени)», or the name a
-/// mod writes there).
+/// mod writes there). Razdor's choice (a player's wish): that text is selected, so the first
+/// key typed replaces it; the original keeps it with the caret at its end (0x47ae5c).
 fn fill_name_field() {
     let name = own("NewHero", "PrivateHeroName", n_("(no name)"));
+    screens::HERO_EDIT.with(|e| e.set(super::text_edit::TextEdit::all(&name)));
     screens::HERO_NAME.with(|n| *n.borrow_mut() = name);
 }
 
@@ -704,6 +701,11 @@ mod tests {
         let name = screens::HERO_NAME.with(|n| n.borrow().clone());
         assert_eq!(name, own("NewHero", "PrivateHeroName", n_("(no name)")), "the last game's name is gone; the field holds the text itself");
         assert!(!name.is_empty(), "a name left untouched is that text, not an empty one");
+        let mut ed = screens::HERO_EDIT.with(|e| e.get());
+        assert_eq!(ed.selected(&name), name, "all of it selected (Razdor's choice)");
+        let mut typed = name.clone();
+        assert!(ed.type_chars(&mut typed, &['И'], 24));
+        assert_eq!(typed, "И", "the first key replaces the default name");
     }
 
     /// The list's order (0x4e21d8): the tutorial first, then by map width; one size keeps

@@ -55,20 +55,18 @@ pub fn field_with(key: &str, query: &mut String, r: Rect, shortcuts: &[KeyCode],
             } else if !ctrl && !shortcut && chars.first().is_some_and(|c| c.is_alphanumeric()) {
                 // A letter typed over the list starts the search with it.
                 take_focus(key);
-                apply_typing(query, &chars, 0, false, false, 60);
+                let mut ed = super::text_edit::TextEdit::at_end();
+                ed.type_chars(query, &chars, 60);
+                set_focus_edit(key, ed);
             } else if is_key_pressed(KeyCode::Escape) && !query.is_empty() {
                 query.clear();
                 reply.keys_taken = true;
             }
         } else {
             reply.keys_taken = true;
-            let mut chars = Vec::new();
-            while let Some(c) = get_char_pressed() {
-                chars.push(c);
-            }
-            if !ctrl {
-                apply_typing(query, &chars, backspace_repeat(), false, false, 60);
-            }
+            let mut ed = focus_edit(key);
+            edit_keys(query, &mut ed, &typed_chars(), EditRules::line(60));
+            set_focus_edit(key, ed);
             if is_key_pressed(KeyCode::Escape) {
                 query.clear();
                 clear_focus();
@@ -95,12 +93,10 @@ pub fn field_with(key: &str, query: &mut String, r: Rect, shortcuts: &[KeyCode],
     if query.is_empty() && !active {
         text_fit(tr("Search: type a name (Ctrl+F)"), r.x + 6.0 * k, ty, room, size, DIM);
     } else {
-        let caret = if active && (get_time() * 2.0) as i64 % 2 == 0 { "|" } else { "" };
-        let mut shown = format!("{query}{caret}");
-        while measure(&shown, size).width > room && !shown.is_empty() {
-            shown.remove(0);
-        }
-        text(&shown, r.x + 6.0 * k, ty, size, INK);
+        let mut ed = focus_edit(key);
+        let look = LineLook { size, color: INK, centred: false, shadow: false };
+        edit_line(field_id(key), query, &mut ed, active, true, Rect::new(r.x + 6.0 * k, r.y, room, r.h), ty, look);
+        set_focus_edit(key, ed);
     }
     reply
 }

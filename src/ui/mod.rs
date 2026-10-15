@@ -30,6 +30,7 @@ pub mod spell_badges;
 pub mod spellbook;
 pub mod story;
 pub mod terrain;
+pub mod text_edit;
 pub mod typography;
 pub mod unit_drag;
 pub mod unit_sheet;

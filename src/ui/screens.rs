@@ -1,4 +1,3 @@
-use crate::ui::input::{is_key_pressed};
 use macroquad::prelude::*;
 
 use std::sync::Arc;
@@ -16,6 +15,7 @@ use razdor::rules::units::Stats;
 
 use super::assets::Assets;
 use super::audio::{cue, Cue};
+use super::text_edit::TextEdit;
 use super::widgets::*;
 use super::{ScenarioEntry, Screen};
 
@@ -25,35 +25,38 @@ const NAME_MAX: usize = 24;
 thread_local! {
     /// The hero's name typed on the class screen (kept between frames and games).
     pub(super) static HERO_NAME: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+    /// The name field's caret and selection.
+    pub(super) static HERO_EDIT: std::cell::Cell<TextEdit> = const { std::cell::Cell::new(TextEdit::at_end()) };
 }
 
-/// Applies this frame's typing to `name`: printable characters are added (up to
-/// [`NAME_MAX`]), Backspace removes the last one, and again while held (the original's edit
-/// box 0x47a624 takes each repeated WM_KEYDOWN, 0x475748).
-pub(super) fn edit_name(name: &mut String) {
-    while let Some(c) = get_char_pressed() {
-        if !c.is_control() && name.chars().count() < NAME_MAX {
-            name.push(c);
+/// The hero's name field: this frame's keys edit the name (printable characters up to
+/// [`NAME_MAX`]; held Backspace repeats, as the original's edit box 0x47a624 takes each
+/// repeated WM_KEYDOWN, 0x475748), then it is drawn in `r` on the baseline `y`, the mouse
+/// placing the caret and selecting. Razdor's own, beyond the original's box (caret at the
+/// end only): the caret, the selection, the clipboard ([`edit_keys`]). Returns the name.
+pub(super) fn hero_name_field(r: Rect, y: f32, look: LineLook) -> String {
+    HERO_NAME.with(|n| {
+        let mut n = n.borrow_mut();
+        let mut ed = HERO_EDIT.with(|e| e.get());
+        if !input_blocked() {
+            edit_keys(&mut n, &mut ed, &typed_chars(), EditRules::line(NAME_MAX));
         }
-    }
-    if !input_blocked() {
-        for _ in 0..backspace_repeat() {
-            name.pop();
-        }
-    }
+        edit_line(field_id("hero:name"), &n, &mut ed, true, true, r, y, look);
+        HERO_EDIT.with(|e| e.set(ed));
+        n.clone()
+    })
 }
 
 /// The name field of the class screen: what was typed, or the class names as a hint.
-fn name_field(name: &str, x: f32, y: f32, w: f32) {
+fn name_field(x: f32, y: f32, w: f32) -> String {
     text_fit(tr("Hero's name (type it; empty: the class's name):"), x, y - 8.0, w, 18.0, DIM);
     draw_rectangle(x, y, w, 36.0, PANEL);
     draw_rectangle_lines(x, y, w, 36.0, 2.0, ACCENT);
-    let caret = if (get_time() * 2.0) as i64 % 2 == 0 { "|" } else { "" };
+    let name = hero_name_field(Rect::new(x + 10.0, y, w - 20.0, 36.0), y + 25.0, LineLook { size: 20.0, color: INK, centred: false, shadow: false });
     if name.is_empty() {
-        text(&format!("{caret}{}", tr("(the class's name)")), x + 10.0, y + 25.0, 20.0, DIM);
-    } else {
-        text(&format!("{name}{caret}"), x + 10.0, y + 25.0, 20.0, INK);
+        text(tr("(the class's name)"), x + 14.0, y + 25.0, 20.0, DIM);
     }
+    name
 }
 
 /// The attack line of a card: melee `A`, ranged `S` or magic `Pwr` with the school.
@@ -200,12 +203,7 @@ pub fn class_select(
     }
     let (w, h, gap) = (300.0, 380.0, 30.0);
     let x0 = (screen_width() - (3.0 * w + 2.0 * gap)) / 2.0;
-    let name = HERO_NAME.with(|n| {
-        let mut n = n.borrow_mut();
-        edit_name(&mut n);
-        n.clone()
-    });
-    name_field(&name, (screen_width() - 420.0) / 2.0, 600.0, 420.0);
+    let name = name_field((screen_width() - 420.0) / 2.0, 600.0, 420.0);
     for (i, hero) in HeroClass::ALL.into_iter().enumerate() {
         let kind = hero.unit();
         let x = x0 + i as f32 * (w + gap);

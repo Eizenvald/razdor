@@ -6,7 +6,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::ui::input::is_key_pressed;
 use macroquad::prelude::*;
 
 use razdor::i18n::{n_, tr};
@@ -47,6 +46,8 @@ impl Back {
 
 pub struct SaveView {
     pub name: String,
+    /// The name's caret and selection.
+    pub edit: super::text_edit::TextEdit,
     pub entries: Vec<ListedSave>,
     /// The first row shown when the missing metas were last asked for.
     asked: Option<usize>,
@@ -62,7 +63,7 @@ pub struct SaveView {
 impl SaveView {
     pub fn new(game: &Game, back: Back) -> SaveView {
         let name = format!("{} {}", game.world.title.trim(), save::date_name(&game.clock));
-        SaveView { name, entries: listed(SaveKind::Manual), asked: None, settled: false, scroll: 0, error: None, back }
+        SaveView { name, edit: Default::default(), entries: listed(SaveKind::Manual), asked: None, settled: false, scroll: 0, error: None, back }
     }
 }
 
@@ -256,16 +257,18 @@ struct Row {
     pinned: bool,
     /// The save's meta is still being read: the file's time only, dimmed.
     waiting: bool,
+    /// The name's selected bytes, lit (the name being typed).
+    mark: Option<std::ops::Range<usize>>,
 }
 
 fn row_of(e: &ListedSave) -> Row {
     let Some(m) = &e.meta else {
-        return Row { name: "…".to_string(), scenario: String::new(), time: razdor::trf!("Time: {date}", date = saved_label(e.written)), pinned: e.pinned, waiting: true };
+        return Row { name: "…".to_string(), scenario: String::new(), time: razdor::trf!("Time: {date}", date = saved_label(e.written)), pinned: e.pinned, waiting: true, mark: None };
     };
     let name = if m.name == save::QUICK_SAVE { tr(save::QUICK_SAVE).to_string() } else { m.name.clone() };
     // A game in which the cheat console worked says so after its scenario.
     let scenario = if m.cheats { razdor::trf!("{title} (cheats)", title = m.title) } else { m.title.clone() };
-    Row { name, scenario, time: razdor::trf!("Time: {date}", date = saved_label(m.saved_at)), pinned: e.pinned, waiting: false }
+    Row { name, scenario, time: razdor::trf!("Time: {date}", date = saved_label(m.saved_at)), pinned: e.pinned, waiting: false, mark: None }
 }
 
 /// Razdor's pin of a save: a round head with a needle, gold when pinned, grey when not.
@@ -435,7 +438,15 @@ impl Book {
             let name_color = dim(ACCENT);
             super::dt_font::with_face(super::dt_font::Face::Subtitle, || {
                 let size = fit_size(&row.name, NAME_ROOM * k, 16.0 * k);
-                super::chrome::shadow_centered(&ellipsize(&row.name, NAME_ROOM * k, size), self.p(157.0, 0.0).x, r.y + lh * 0.5 + size * 0.36, size, name_color);
+                let shown = ellipsize(&row.name, NAME_ROOM * k, size);
+                let (cx, y) = (self.p(157.0, 0.0).x, r.y + lh * 0.5 + size * 0.36);
+                // The selection of the name being typed, lit (when it is shown whole).
+                if let Some(m) = row.mark.clone().filter(|m| shown == row.name && m.end <= shown.len()) {
+                    let x0 = cx - measure(&shown, size).width / 2.0;
+                    let (a, b) = (measure(&shown[..m.start], size).width, measure(&shown[..m.end], size).width);
+                    draw_rectangle(x0 + a, y - size * 0.82, b - a, size * 1.05, SELECTION);
+                }
+                super::chrome::shadow_centered(&shown, cx, y, size, name_color);
             });
             let cx = self.p(437.0, 0.0).x;
             super::dt_font::with_face(super::dt_font::Face::Bold, || {
@@ -509,6 +520,18 @@ impl Book {
     }
 }
 
+/// The name being typed as its row shows it, and the bytes of it to light: the selection,
+/// or else the caret put in at its place (`|`, a space while it blinks off).
+fn typed_name(name: &str, edit: super::text_edit::TextEdit, caret_on: bool) -> (String, Option<std::ops::Range<usize>>) {
+    let mut edit = edit;
+    edit.fit(name);
+    if edit.has_selection() {
+        return (name.to_string(), Some(edit.selected_bytes(name)));
+    }
+    let at = name.char_indices().nth(edit.caret).map_or(name.len(), |(b, _)| b);
+    (format!("{}{}{}", &name[..at], if caret_on { '|' } else { ' ' }, &name[at..]), None)
+}
+
 /// The widest a save's name is drawn in its column, in the book's pixels: centred at 157,
 /// it stays right of the selected row's load sign (21..43) with 4 px to spare.
 const NAME_ROOM: f32 = 220.0;
@@ -519,21 +542,17 @@ pub fn save_screen(game: &Game, assets: &Assets, view: &mut SaveView, message: &
     world_view::backdrop(game, assets);
     let (book, closed) = Book::at(&own("SaveGame", "Title", n_("Save the game")), true);
     book.page(&own("SaveGame", "GameName", n_("Name of the saved game")), &own("SaveGame", "ScenarioName", n_("Name of the scenario")));
-    while let Some(c) = get_char_pressed() {
-        if !c.is_control() && view.name.chars().count() < 60 {
-            view.name.push(c);
-        }
-    }
-    // Held Backspace repeats, as in the original's edit box (0x47a624, 0x475748).
-    for _ in 0..backspace_repeat() {
-        view.name.pop();
+    // Held Backspace repeats, as in the original's edit box (0x47a624, 0x475748); the caret,
+    // the selection and the clipboard are Razdor's own (`widgets::edit_keys`).
+    if !input_blocked() {
+        edit_keys(&mut view.name, &mut view.edit, &typed_chars(), EditRules::line(60));
     }
     fill_metas(&mut view.entries, &mut view.asked, &mut view.settled, view.scroll.saturating_sub(1), None);
     let same = view.entries.iter().position(|e| e.meta.as_ref().is_some_and(|m| m.name == view.name));
     // The first row is the name being typed (a new save, or the one it replaces).
-    let caret = if (get_time() * 2.0) as i64 % 2 == 0 { "|" } else { " " };
-    let typed = if view.name.is_empty() { own("Buttons", "NewSave", n_("(save anew)")) } else { format!("{}{caret}", view.name) };
-    let mut rows = vec![Row { name: typed, scenario: game.world.title.clone(), time: razdor::trf!("Time: {date}", date = game.clock.label()), pinned: false, waiting: false }];
+    let (typed, mark) = typed_name(&view.name, view.edit, (get_time() * 2.0) as i64 % 2 == 0);
+    let typed = if view.name.is_empty() { own("Buttons", "NewSave", n_("(save anew)")) } else { typed };
+    let mut rows = vec![Row { name: typed, scenario: game.world.title.clone(), time: razdor::trf!("Time: {date}", date = game.clock.label()), pinned: false, waiting: false, mark }];
     rows.extend(view.entries.iter().map(row_of));
     if let (Some(k), _, _) = book.rows(&rows, Some(same.map_or(0, |i| i + 1)), &mut view.scroll, false) {
         // A save whose meta is not read yet gives no name to take.
@@ -542,6 +561,7 @@ pub fn save_screen(game: &Game, assets: &Assets, view: &mut SaveView, message: &
             Some(Some(m)) => view.name = m.name.clone(),
             Some(None) => {}
         }
+        view.edit = Default::default();
     }
     let dir = save::games_dir();
     let warning = if dir.is_none() { Some(tr("No data folder for saves: set RAZDOR_SAVE_DIR.")) } else { view.error.as_deref() };

@@ -37,6 +37,8 @@ pub enum Kind {
 pub struct Console {
     pub open: bool,
     line: String,
+    /// The line's caret and selection.
+    edit: super::text_edit::TextEdit,
     log: Vec<(String, Kind)>,
     recall: Vec<String>,
     /// The command Up brought back (index into `recall`).
@@ -82,20 +84,19 @@ impl Console {
             self.open = false;
             return (false, None);
         }
-        let mut chars = Vec::new();
-        while let Some(c) = get_char_pressed() {
-            chars.push(c);
-        }
+        let chars = typed_chars();
         if key || is_key_pressed(KeyCode::Escape) || chars.iter().copied().any(is_toggle) {
             self.open = false;
             return (true, None);
         }
         let typed: Vec<char> = chars.into_iter().filter(|c| !is_toggle(*c)).collect();
-        apply_typing(&mut self.line, &typed, backspace_repeat(), false, false, 200);
+        let rules = EditRules { max_chars: 200, multiline: false, allow: |c| !is_toggle(c) };
+        edit_keys(&mut self.line, &mut self.edit, &typed, rules);
         if is_key_pressed(KeyCode::Up) && !self.recall.is_empty() {
             let at = self.recall_at.map_or(self.recall.len() - 1, |i| i.saturating_sub(1));
             self.recall_at = Some(at);
             self.line = self.recall[at].clone();
+            self.edit = Default::default();
         }
         if is_key_pressed(KeyCode::Down) {
             match self.recall_at {
@@ -108,6 +109,7 @@ impl Console {
                     self.line.clear();
                 }
             }
+            self.edit = Default::default();
         }
         let most = self.log.len().saturating_sub(SHOWN);
         if is_key_pressed(KeyCode::PageUp) || wheel_raw() > 0.0 {
@@ -119,6 +121,7 @@ impl Console {
         let mut entered = None;
         if enter_pressed() && !self.line.trim().is_empty() {
             let line = std::mem::take(&mut self.line).trim().to_string();
+            self.edit = Default::default();
             if self.recall.last() != Some(&line) {
                 self.recall.push(line.clone());
                 if self.recall.len() > RECALLED {
@@ -155,14 +158,13 @@ impl Console {
             };
             text_fit(line, pad, pad + pitch * (i as f32 + 0.8), w - 2.0 * pad, size, color);
         }
-        let caret = if (get_time() * 2.0) as i64 % 2 == 0 { "|" } else { "" };
         let ly = pad + pitch * (SHOWN as f32 + 0.8) + 4.0 * k;
         draw_rectangle(pad * 0.5, ly - size - 2.0 * k, w - pad, pitch + 2.0 * k, FIELD_BG);
-        let mut shown = format!("> {}{caret}", self.line);
-        while measure(&shown, size).width > w - 3.0 * pad && shown.chars().count() > 2 {
-            shown.remove(2);
-        }
-        text(&shown, pad, ly, size, ACCENT);
+        text("> ", pad, ly, size, ACCENT);
+        let x = pad + measure("> ", size).width;
+        let mut edit = self.edit;
+        let look = LineLook { size, color: ACCENT, centred: false, shadow: false };
+        edit_line(field_id("console"), &self.line, &mut edit, true, false, Rect::new(x, ly - size, w - 2.0 * pad - x, pitch), ly, look);
         if self.scroll > 0 {
             let note = tr("PgDn: newer lines");
             let nw = measure(note, size * 0.85).width;

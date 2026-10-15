@@ -111,7 +111,7 @@ pub fn allowed(place: Place, key: Global, g: Guard) -> bool {
 pub fn screen_keys(place: Place) -> Vec<(&'static str, &'static str)> {
     match place {
         Place::Title => vec![(n_("Click"), n_("the menu's buttons; a scenario twice: go on")), ("F9", n_("load the quick save")), ("Esc", n_("in the main menu: quit the game"))],
-        Place::ClassSelect => vec![(n_("Type"), n_("the hero's name")), ("Backspace", n_("delete a letter"))],
+        Place::ClassSelect => vec![(n_("Type"), n_("the hero's name")), ("Backspace", n_("delete a letter")), (n_("Mouse, Shift + arrows"), n_("move the cursor, select")), ("Ctrl+A / C / X / V", n_("select all, copy, cut, paste"))],
         Place::WorldMap => vec![
             (n_("Click"), n_("show the route; a second click on the spot: walk there")),
             (n_("Click / any key while walking"), n_("stop after the step under way")),
@@ -172,7 +172,7 @@ pub fn screen_keys(place: Place) -> Vec<(&'static str, &'static str)> {
         ],
         Place::Spellbook => vec![(n_("Click"), n_("pick a spell")), ("Enter", n_("cast on your army")), ("F5", n_("quick save")), ("B / Esc", n_("close"))],
         Place::Menu => vec![("F5", n_("quick save")), ("Esc", n_("back to the game"))],
-        Place::Save => vec![(n_("Type"), n_("the save's name")), ("Enter", n_("save")), ("Esc", n_("cancel"))],
+        Place::Save => vec![(n_("Type"), n_("the save's name")), ("Ctrl+A / C / X / V", n_("select all, copy, cut, paste")), ("Enter", n_("save")), ("Esc", n_("cancel"))],
         Place::Load => vec![(n_("Click"), n_("pick a save")), ("Enter", n_("load it")), ("Esc", n_("cancel"))],
         Place::End => vec![(n_("Click"), n_("the buttons")), ("F9", n_("load the quick save"))],
         Place::Editor => vec![],

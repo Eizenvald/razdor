@@ -3,6 +3,8 @@ use std::cell::RefCell;
 use crate::ui::input::{get_keys_pressed, get_keys_released, is_key_down, is_key_pressed, is_mouse_button_down, is_mouse_button_pressed, is_mouse_button_released, mouse_position, mouse_wheel};
 use macroquad::prelude::*;
 
+use super::text_edit::{self, TextEdit};
+
 pub const INK: Color = Color::new(0.93, 0.90, 0.82, 1.0);
 pub const DIM: Color = Color::new(0.65, 0.62, 0.55, 1.0);
 pub const ACCENT: Color = Color::new(0.95, 0.78, 0.30, 1.0);
@@ -754,10 +756,12 @@ pub fn level_label(level: i32, xp: i32, need: i32) -> String {
 // screen using them calls [`fields_begin_frame`] first and [`fields_end_frame`] last.
 // ------------------------------------------------------------------------------------------
 
-/// The field that has the keyboard: its id and, for number fields, the digits typed so far.
+/// The field that has the keyboard: its id, its caret and selection, and, for number
+/// fields, the digits typed so far.
 struct Focus {
     id: u64,
     buf: String,
+    edit: TextEdit,
 }
 
 /// An open drop-down list.
@@ -767,6 +771,7 @@ struct Popup {
     options: Vec<(i64, String)>,
     scroll: usize,
     filter: String,
+    edit: TextEdit,
 }
 
 thread_local! {
@@ -776,8 +781,10 @@ thread_local! {
     static PICKED: std::cell::Cell<Option<(u64, i64)>> = const { std::cell::Cell::new(None) };
     /// Some field took this frame's click.
     static CLAIMED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    /// When Backspace went down (for key repeat).
-    static HELD: std::cell::Cell<Option<f64>> = const { std::cell::Cell::new(None) };
+    /// The editing keys held down and when each went down (for key repeat).
+    static HELD: RefCell<Vec<(KeyCode, f64)>> = const { RefCell::new(Vec::new()) };
+    /// The field whose text the mouse is selecting (pressed in it, not let go yet).
+    static DRAG: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
 }
 
 pub const FIELD_BG: Color = Color::new(0.07, 0.07, 0.065, 1.0);
@@ -833,26 +840,31 @@ fn focused(id: u64) -> bool {
 }
 
 fn set_focus(id: u64, buf: String) {
-    FOCUS.with(|f| *f.borrow_mut() = Some(Focus { id, buf }));
+    FOCUS.with(|f| *f.borrow_mut() = Some(Focus { id, buf, edit: TextEdit::at_end() }));
 }
 
-/// Applies typing to `s`: `chars` are added (control characters skipped) up to
-/// `max_chars`, then `backspaces` characters are removed, and `newline` adds a line break
-/// in a multi-line field. True if `s` changed.
-pub fn apply_typing(s: &mut String, chars: &[char], backspaces: usize, newline: bool, multiline: bool, max_chars: usize) -> bool {
-    let before = s.clone();
-    for &c in chars {
-        if !c.is_control() && s.chars().count() < max_chars {
-            s.push(c);
+/// The caret and selection of the focused field `id` (the end when it has none).
+fn edit_of(id: u64) -> TextEdit {
+    FOCUS.with(|f| f.borrow().as_ref().filter(|f| f.id == id).map_or(TextEdit::at_end(), |f| f.edit))
+}
+
+/// Keeps `edit` as the caret and selection of field `id`, if it still has the keyboard.
+fn store_edit(id: u64, edit: TextEdit) {
+    FOCUS.with(|f| {
+        if let Some(f) = f.borrow_mut().as_mut().filter(|f| f.id == id) {
+            f.edit = edit;
         }
-    }
-    for _ in 0..backspaces {
-        s.pop();
-    }
-    if newline && multiline && s.chars().count() < max_chars {
-        s.push('\n');
-    }
-    *s != before
+    });
+}
+
+/// The caret and selection of the field of `key` (a field that draws itself, like the
+/// inventory filter).
+pub fn focus_edit(key: &str) -> TextEdit {
+    edit_of(field_id(key))
+}
+
+pub fn set_focus_edit(key: &str, edit: TextEdit) {
+    store_edit(field_id(key), edit);
 }
 
 /// Parses a typed number, clamped to `min..=max`. Empty or `-` alone gives `None`.
@@ -860,18 +872,26 @@ pub fn parse_number(text: &str, min: i64, max: i64) -> Option<i64> {
     text.trim().parse::<i64>().ok().map(|v| v.clamp(min, max))
 }
 
-/// Backspace pressed this frame, or held: see [`repeats`].
-pub fn backspace_repeat() -> usize {
-    if is_key_pressed(KeyCode::Backspace) {
-        HELD.with(|h| h.set(Some(get_time())));
+/// `k` pressed this frame (1), or its repeats while held ([`repeats`]). Call it once a frame
+/// for each key.
+pub fn key_repeat(k: KeyCode) -> usize {
+    if is_key_pressed(k) {
+        HELD.with(|h| {
+            let mut h = h.borrow_mut();
+            h.retain(|e| e.0 != k);
+            h.push((k, get_time()));
+        });
         return 1;
     }
-    if !is_key_down(KeyCode::Backspace) {
-        HELD.with(|h| h.set(None));
-        return 0;
-    }
-    let Some(t0) = HELD.with(|h| h.get()) else { return 0 };
-    repeats(get_time() - t0, get_frame_time() as f64)
+    let down = is_key_down(k);
+    let t0 = HELD.with(|h| {
+        let mut h = h.borrow_mut();
+        if !down {
+            h.retain(|e| e.0 != k);
+        }
+        h.iter().find(|e| e.0 == k).map(|e| e.1)
+    });
+    t0.map_or(0, |t0| repeats(get_time() - t0, get_frame_time() as f64))
 }
 
 /// A held key's repeats in the frame of `dt` seconds ending `held` seconds after it went
@@ -892,14 +912,212 @@ pub fn repeats(held: f64, dt: f64) -> usize {
     (due(t) - due(t - dt)).max(0.0) as usize
 }
 
-/// This frame's typing for the focused field.
-fn typed() -> (Vec<char>, usize, bool) {
+/// Ctrl (or a Mac's Command) is held without Alt: keys are shortcuts, not text (Windows'
+/// AltGr comes as Ctrl+Alt, and types).
+pub fn shortcut_held() -> bool {
+    let ctrl = [KeyCode::LeftControl, KeyCode::RightControl, KeyCode::LeftSuper, KeyCode::RightSuper].into_iter().any(is_key_down);
+    ctrl && !is_key_down(KeyCode::LeftAlt) && !is_key_down(KeyCode::RightAlt)
+}
+
+/// This frame's typed characters (none while [`shortcut_held`]: Ctrl+V is no `v`).
+pub fn typed_chars() -> Vec<char> {
     let mut chars = Vec::new();
     while let Some(c) = get_char_pressed() {
         chars.push(c);
     }
+    if shortcut_held() {
+        chars.clear();
+    }
+    chars
+}
+
+/// What a field takes.
+#[derive(Clone, Copy)]
+pub struct EditRules {
+    pub max_chars: usize,
+    /// Enter and pasted line breaks break the line.
+    pub multiline: bool,
+    /// The characters it takes (typed or pasted).
+    pub allow: fn(char) -> bool,
+}
+
+impl EditRules {
+    /// One line of any text, at most `max_chars` long.
+    pub fn line(max_chars: usize) -> EditRules {
+        EditRules { max_chars, multiline: false, allow: |_| true }
+    }
+}
+
+/// What a frame's keys did to an edited text.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Edited {
+    pub changed: bool,
+    pub enter: bool,
+}
+
+/// Applies this frame's keys to `s` as a normal edit box does (Razdor's own: the original's
+/// edit box only adds and deletes at the end, interface.md §5): the `chars` typed go in at
+/// the caret, over the selection; Backspace, Delete, Left and Right repeat while held; Shift
+/// with Left, Right, Home and End selects; Ctrl+A selects all; Ctrl+C and Ctrl+X copy and
+/// cut the selection, Ctrl+V (or Shift+Insert) pastes; Enter breaks the line in a
+/// multi-line field.
+pub fn edit_keys(s: &mut String, ed: &mut TextEdit, chars: &[char], rules: EditRules) -> Edited {
+    use macroquad::miniquad::window::{clipboard_get, clipboard_set};
+    ed.fit(s);
+    let before = s.clone();
+    let shift = is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
+    let cmd = shortcut_held();
+    if cmd && is_key_pressed(KeyCode::A) {
+        ed.select_all(s);
+    }
+    if cmd && (is_key_pressed(KeyCode::C) || is_key_pressed(KeyCode::Insert)) && ed.has_selection() {
+        clipboard_set(ed.selected(s));
+    }
+    if cmd && is_key_pressed(KeyCode::X) {
+        if let Some(cut) = ed.cut(s) {
+            clipboard_set(&cut);
+        }
+    }
+    if (cmd && is_key_pressed(KeyCode::V)) || (shift && !cmd && is_key_pressed(KeyCode::Insert)) {
+        if let Some(pasted) = clipboard_get() {
+            let pasted: String = text_edit::clean(&pasted, rules.multiline).chars().filter(|&c| c == '\n' || (rules.allow)(c)).collect();
+            ed.paste(s, &pasted, rules.max_chars, rules.multiline);
+        }
+    }
+    let typed: Vec<char> = chars.iter().copied().filter(|&c| (rules.allow)(c)).collect();
+    ed.type_chars(s, &typed, rules.max_chars);
+    for _ in 0..key_repeat(KeyCode::Backspace) {
+        ed.backspace(s);
+    }
+    for _ in 0..key_repeat(KeyCode::Delete) {
+        ed.delete(s);
+    }
+    for _ in 0..key_repeat(KeyCode::Left) {
+        ed.left(s, shift);
+    }
+    for _ in 0..key_repeat(KeyCode::Right) {
+        ed.right(s, shift);
+    }
+    if is_key_pressed(KeyCode::Home) {
+        ed.home(s, shift);
+    }
+    if is_key_pressed(KeyCode::End) {
+        ed.end(s, shift);
+    }
     let enter = enter_pressed();
-    (chars, backspace_repeat(), enter)
+    if enter && rules.multiline {
+        ed.replace(s, "\n", rules.max_chars);
+    }
+    Edited { changed: *s != before, enter }
+}
+
+/// How an edited line is drawn.
+#[derive(Clone, Copy)]
+pub struct LineLook {
+    pub size: f32,
+    pub color: Color,
+    /// Centred in its box (else from its left edge).
+    pub centred: bool,
+    /// With the interface's shadow (`chrome::shadow_text`).
+    pub shadow: bool,
+}
+
+/// The band behind selected text.
+pub const SELECTION: Color = Color::new(0.20, 0.32, 0.62, 0.85);
+
+/// The caret's blink: on half of each second.
+fn caret_on() -> bool {
+    (get_time() * 2.0) as i64 % 2 == 0
+}
+
+/// Caret and selection by the mouse for the field `id` drawn in `hit`: a press in it puts
+/// the caret at `at(x, y)` (Shift: selects to there), and dragging on selects.
+fn edit_mouse(id: u64, ed: &mut TextEdit, s: &str, hit: Rect, at: impl Fn(f32, f32) -> usize) {
+    let (mx, my) = pointer();
+    let shift = is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
+    if clicked() && hit.contains(vec2(mx, my)) {
+        ed.move_to(s, at(mx, my), shift);
+        DRAG.with(|d| d.set(Some(id)));
+    } else if is_mouse_button_down(MouseButton::Left) && DRAG.with(|d| d.get()) == Some(id) {
+        ed.move_to(s, at(mx, my), true);
+    }
+    if !is_mouse_button_down(MouseButton::Left) && DRAG.with(|d| d.get()) == Some(id) {
+        DRAG.with(|d| d.set(None));
+    }
+}
+
+/// Draws the line `s` in `r`, on the baseline `y`: the part that keeps the caret in sight,
+/// and when `active` the selection's band and the blinking caret. With `mouse`, a press in
+/// `r` places the caret and a drag selects ([`edit_mouse`]).
+#[allow(clippy::too_many_arguments)]
+pub fn edit_line(id: u64, s: &str, ed: &mut TextEdit, active: bool, mouse: bool, r: Rect, y: f32, look: LineLook) {
+    ed.fit(s);
+    let size = look.size;
+    let xs = text_edit::caret_xs(s, |c| measure(c.encode_utf8(&mut [0; 4]), size).width);
+    let n = xs.len() - 1;
+    let first = text_edit::first_shown(&xs, if active { ed.caret } else { n }, r.w);
+    let last = (first..=n).rev().find(|&i| xs[i] - xs[first] <= r.w).unwrap_or(first);
+    let x0 = if look.centred { r.center().x - (xs[last] - xs[first]) / 2.0 } else { r.x };
+    let x_of = |i: usize| x0 + xs[i] - xs[first];
+    if active && mouse {
+        let shown: Vec<f32> = xs[first..=last].iter().map(|x| x - xs[first]).collect();
+        edit_mouse(id, ed, s, r, |mx, _| first + text_edit::index_at(&shown, mx - x0));
+    }
+    if active && ed.has_selection() {
+        let sel = ed.selection();
+        let (a, b) = (sel.start.clamp(first, last), sel.end.clamp(first, last));
+        if b > a {
+            draw_rectangle(x_of(a), y - size * 0.82, x_of(b) - x_of(a), size * 1.05, SELECTION);
+        }
+    }
+    let part: String = s.chars().skip(first).take(last - first).collect();
+    if look.shadow {
+        super::chrome::shadow_text(&part, x0, y, size, look.color);
+    } else {
+        text(&part, x0, y, size, look.color);
+    }
+    if active && caret_on() && (first..=last).contains(&ed.caret) {
+        let cx = x_of(ed.caret).round();
+        draw_line(cx, y - size * 0.8, cx, y + size * 0.15, (size / 12.0).max(1.0), look.color);
+    }
+}
+
+/// Draws the multi-line text `s` in `r`, wrapped, `pitch` apart: the rows that keep the
+/// caret in sight, and when `active` the selection's band, the blinking caret, and the
+/// mouse placing the caret and selecting ([`edit_mouse`]).
+#[allow(clippy::too_many_arguments)]
+pub fn edit_rows(id: u64, s: &str, ed: &mut TextEdit, active: bool, r: Rect, size: f32, pitch: f32, color: Color) {
+    ed.fit(s);
+    let advance = |c: char| measure(c.encode_utf8(&mut [0; 4]), size).width;
+    let rows = text_edit::wrap_rows(s, r.w, advance);
+    let chars: Vec<char> = s.chars().collect();
+    let fit = (r.h / pitch).floor().max(1.0) as usize;
+    let skip = if active { (text_edit::row_of(&rows, ed.caret) + 1).saturating_sub(fit) } else { 0 };
+    let row_text = |i: usize| chars[rows[i].clone()].iter().collect::<String>();
+    if active {
+        edit_mouse(id, ed, s, r, |mx, my| {
+            let i = (skip + ((my - r.y) / pitch).floor().max(0.0) as usize).min(rows.len() - 1);
+            rows[i].start + text_edit::index_at(&text_edit::caret_xs(&row_text(i), advance), mx - r.x)
+        });
+    }
+    let caret_row = text_edit::row_of(&rows, ed.caret);
+    let sel = ed.selection();
+    for (j, i) in (skip..rows.len()).take(fit).enumerate() {
+        let y = r.y + size * 0.82 + j as f32 * pitch;
+        let row = rows[i].clone();
+        let xs = text_edit::caret_xs(&row_text(i), advance);
+        if active && ed.has_selection() {
+            let (a, b) = (sel.start.clamp(row.start, row.end), sel.end.clamp(row.start, row.end));
+            if b > a {
+                draw_rectangle(r.x + xs[a - row.start], y - size * 0.82, xs[b - row.start] - xs[a - row.start], size * 1.05, SELECTION);
+            }
+        }
+        text(&row_text(i), r.x, y, size, color);
+        if active && caret_on() && i == caret_row {
+            let cx = (r.x + xs[ed.caret.clamp(row.start, row.end) - row.start]).round();
+            draw_line(cx, y - size * 0.8, cx, y + size * 0.15, (size / 12.0).max(1.0), color);
+        }
+    }
 }
 
 /// A text field. Click to type (any script the keyboard gives, Cyrillic included); Enter
@@ -915,33 +1133,27 @@ pub fn text_field(key: &str, x: f32, y: f32, w: f32, h: f32, value: &mut String,
         }
     }
     let active = focused(id);
+    let mut ed = edit_of(id);
     let mut changed = false;
     if active && !input_blocked() {
-        let (chars, back, enter) = typed();
-        changed = apply_typing(value, &chars, back, enter, multiline, 2000);
-        if (enter && !multiline) || is_key_pressed(KeyCode::Escape) {
+        let out = edit_keys(value, &mut ed, &typed_chars(), EditRules { max_chars: 2000, multiline, allow: |_| true });
+        changed = out.changed;
+        if (out.enter && !multiline) || is_key_pressed(KeyCode::Escape) {
             clear_focus();
         }
     }
+    let active = focused(id);
     draw_rectangle(x, y, w, h, FIELD_BG);
     draw_rectangle_lines(x, y, w, h, if active { 2.0 } else { 1.0 }, if active { ACCENT } else if hover { INK } else { DIM });
     let size = 17.0;
-    let caret = if active && (get_time() * 2.0) as i64 % 2 == 0 { "|" } else { "" };
     if multiline {
-        let lines = wrap(&format!("{value}{caret}"), w - 10.0, size);
-        let fit = ((h - 6.0) / 19.0).floor().max(1.0) as usize;
-        let skip = if active { lines.len().saturating_sub(fit) } else { 0 };
-        for (i, line) in lines.iter().skip(skip).take(fit).enumerate() {
-            text(line, x + 5.0, y + 17.0 + i as f32 * 19.0, size, INK);
-        }
+        edit_rows(id, value, &mut ed, active, Rect::new(x + 5.0, y + 3.0, w - 10.0, h - 6.0), size, 19.0, INK);
     } else {
-        // Show the end of a long line.
-        let mut shown: String = format!("{value}{caret}");
-        while measure(&shown, size).width > w - 10.0 && !shown.is_empty() {
-            shown.remove(0);
-        }
-        text(&shown, x + 5.0, y + (h + 12.0) / 2.0, size, INK);
+        // A long line shows its end, or the part around the caret while typed in.
+        let look = LineLook { size, color: INK, centred: false, shadow: false };
+        edit_line(id, value, &mut ed, active, true, Rect::new(x + 5.0, y, w - 10.0, h), y + (h + 12.0) / 2.0, look);
     }
+    store_edit(id, ed);
     changed
 }
 
@@ -954,6 +1166,7 @@ pub fn number_field(key: &str, x: f32, y: f32, w: f32, value: i64, min: i64, max
     let bw = 22.0;
     let step = if is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift) { 10 } else { 1 };
     let mut out = None;
+    let mut focusing = false;
     let clamp = |v: i64| v.clamp(min, max);
     if small_button(x, y, bw, h, "-", value > min) {
         claim();
@@ -973,19 +1186,21 @@ pub fn number_field(key: &str, x: f32, y: f32, w: f32, value: i64, min: i64, max
         if clicked() {
             claim();
             if !focused(id) {
-                set_focus(id, String::new());
+                // The number as it stands, all of it selected: typing replaces it.
+                set_focus(id, value.to_string());
+                focusing = true;
             }
         }
     }
     let active = focused(id);
     let mut shown = value.to_string();
+    let mut ed = edit_of(id);
     if active && !input_blocked() {
-        let (chars, back, enter) = typed();
         let mut buf = FOCUS.with(|f| f.borrow().as_ref().map(|f| f.buf.clone()).unwrap_or_default());
-        let digits: Vec<char> = chars.into_iter().filter(|c| c.is_ascii_digit() || (*c == '-' && min < 0)).collect();
-        apply_typing(&mut buf, &digits, back, false, false, 7);
+        let allow: fn(char) -> bool = if min < 0 { |c| c.is_ascii_digit() || c == '-' } else { |c| c.is_ascii_digit() };
+        let keys = edit_keys(&mut buf, &mut ed, &typed_chars(), EditRules { max_chars: 7, multiline: false, allow });
         let away = clicked() && !hover;
-        if enter || away {
+        if keys.enter || away {
             if let Some(v) = parse_number(&buf, min, max) {
                 out = Some(v);
             }
@@ -998,14 +1213,18 @@ pub fn number_field(key: &str, x: f32, y: f32, w: f32, value: i64, min: i64, max
                     f.buf = buf.clone();
                 }
             });
-            let caret = if (get_time() * 2.0) as i64 % 2 == 0 { "|" } else { "" };
-            shown = format!("{buf}{caret}");
+            shown = buf;
         }
     }
+    let active = focused(id);
     draw_rectangle(tx, y, tw, h, FIELD_BG);
     draw_rectangle_lines(tx, y, tw, h, if active { 2.0 } else { 1.0 }, if active { ACCENT } else if hover { INK } else { DIM });
-    let d = measure(&shown, 17.0);
-    text(&shown, tx + (tw - d.width) / 2.0, y + 17.0, 17.0, INK);
+    let look = LineLook { size: 17.0, color: INK, centred: true, shadow: false };
+    edit_line(id, &shown, &mut ed, active, true, Rect::new(tx + 4.0, y, tw - 8.0, h), y + 17.0, look);
+    if focusing {
+        ed = TextEdit::all(&shown);
+    }
+    store_edit(id, ed);
     out.filter(|v| *v != value)
 }
 
@@ -1100,7 +1319,7 @@ pub fn dropdown(key: &str, x: f32, y: f32, w: f32, current: i64, options: &[(i64
         let px = x.min(screen_width() - pw).max(0.0);
         let at = options.iter().position(|o| o.0 == current).unwrap_or(0);
         POPUP.with(|p| {
-            *p.borrow_mut() = Some(Popup { id, rect: Rect::new(px, py, pw, ph), options: options.to_vec(), scroll: at.saturating_sub(POPUP_ROWS / 2), filter: String::new() })
+            *p.borrow_mut() = Some(Popup { id, rect: Rect::new(px, py, pw, ph), options: options.to_vec(), scroll: at.saturating_sub(POPUP_ROWS / 2), filter: String::new(), edit: TextEdit::at_end() })
         });
     }
     picked.filter(|v| *v != current)
@@ -1119,8 +1338,7 @@ pub fn draw_popup() {
         let Some(pop) = p.as_mut() else { return };
         let r = pop.rect;
         // Typing filters; Backspace deletes from the filter.
-        let (chars, back, _) = typed();
-        apply_typing(&mut pop.filter, &chars, back, false, false, 40);
+        edit_keys(&mut pop.filter, &mut pop.edit, &typed_chars(), EditRules::line(40));
         let needle = pop.filter.to_lowercase();
         let shown: Vec<&(i64, String)> = pop.options.iter().filter(|o| needle.is_empty() || o.1.to_lowercase().contains(&needle) || o.0.to_string() == needle).collect();
         let max_scroll = shown.len().saturating_sub(POPUP_ROWS);
@@ -1362,22 +1580,6 @@ mod tests {
             assert_eq!(answer_of([k].into_iter()), None, "{k:?}");
         }
         assert_eq!(answer_of(std::iter::empty()), None);
-    }
-
-    #[test]
-    fn typing_edits_text() {
-        let mut s = String::from("Ка");
-        assert!(apply_typing(&mut s, &['м', 'е', 'н', 'ь'], 0, false, false, 100));
-        assert_eq!(s, "Камень");
-        assert!(apply_typing(&mut s, &[], 2, false, false, 100));
-        assert_eq!(s, "Каме");
-        // Control characters are not text; Enter breaks lines only in multi-line fields.
-        assert!(!apply_typing(&mut s, &['\u{8}', '\r'], 0, true, false, 100));
-        assert!(apply_typing(&mut s, &[], 0, true, true, 100));
-        assert_eq!(s, "Каме\n");
-        let mut t = String::new();
-        apply_typing(&mut t, &['a', 'b', 'c'], 0, false, false, 2);
-        assert_eq!(t, "ab");
     }
 
     #[test]
