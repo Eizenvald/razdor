@@ -83,7 +83,6 @@ pub enum Screen {
     Squad { selected: items_view::ArmySel, scroll: usize, back: Option<BuildingView> },
     Battle(Box<BattleView>),
     /// The journal: its tab, selected line and scrolling.
-    Journal(story::JournalView),
     /// The hero window (the bar's flag, the original's side window 5).
     Hero(items_view::HeroView),
     /// The spell book, with the selected cell.
@@ -557,7 +556,6 @@ impl App {
             Screen::Squad { .. } => Place::Army,
             Screen::Battle(_) | Screen::CustomBattle(_) => Place::Battle,
             Screen::CustomSetup => Place::Custom,
-            Screen::Journal(_) => Place::Journal,
             Screen::Hero(_) => Place::Hero,
             Screen::Spellbook { .. } => Place::Spellbook,
             Screen::Menu(_) | Screen::Settings => Place::Menu,
@@ -692,7 +690,6 @@ impl App {
             Screen::Building(_) => "building",
             Screen::Squad { .. } => "army",
             Screen::Battle(_) => "battle",
-            Screen::Journal(_) => "journal",
             Screen::Hero(_) => "hero",
             Screen::Spellbook { .. } => "spell book",
             Screen::Menu(_) => "menu",
@@ -854,7 +851,6 @@ impl App {
                 items_view::squad(game, &self.assets, selected, scroll, back, &mut self.message)
             }
             (Screen::Battle(view), Some(game)) => view.frame(game, &self.assets, &mut self.message, &mut self.dialogs),
-            (Screen::Journal(view), Some(game)) => story::journal(game, &self.assets, view),
             (Screen::Hero(view), Some(game)) => items_view::hero_window(game, &self.assets, view, &mut self.message),
             (Screen::Spellbook { selected }, Some(game)) => {
                 spellbook::frame(game, &self.assets, selected, &mut self.message)
@@ -1107,7 +1103,7 @@ impl App {
             // under the window); from a battle or a menu it is on the hero again.
             let over_map = matches!(
                 self.screen,
-                Screen::Building(_) | Screen::Squad { .. } | Screen::Journal(_) | Screen::Hero(_) | Screen::Spellbook { .. } | Screen::Menu(_) | Screen::Settings | Screen::Save(_) | Screen::Load(_)
+                Screen::Building(_) | Screen::Squad { .. } | Screen::Hero(_) | Screen::Spellbook { .. } | Screen::Menu(_) | Screen::Settings | Screen::Save(_) | Screen::Load(_)
             );
             if matches!(next, Screen::WorldMap) && !matches!(self.screen, Screen::WorldMap) && !over_map {
                 self.map_view.reset();
@@ -1119,7 +1115,7 @@ impl App {
             // window the events are checked now (0x4b8d28(0) → 0x4b8f63).
             let side_window = matches!(
                 self.screen,
-                Screen::Building(_) | Screen::Squad { .. } | Screen::Journal(_) | Screen::Hero(_) | Screen::Spellbook { .. } | Screen::Menu(_) | Screen::Settings | Screen::Save(_) | Screen::Load(_)
+                Screen::Building(_) | Screen::Squad { .. } | Screen::Hero(_) | Screen::Spellbook { .. } | Screen::Menu(_) | Screen::Settings | Screen::Save(_) | Screen::Load(_)
             );
             if let (true, true, Some(g)) = (matches!(next, Screen::WorldMap), side_window, self.game.as_mut()) {
                 let events = g.window_closed();

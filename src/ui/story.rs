@@ -15,9 +15,6 @@ use razdor::rules::game::Game;
 use razdor::rules::journal::Tab;
 
 use super::dialog::{Dialog, Picture, Resource};
-use super::widgets::*;
-use super::world_view;
-use super::Screen;
 
 pub const QUEST_ADDED: &str = n_("Quest added to the journal");
 pub const QUEST_COMPLETED: &str = n_("Quest completed");
@@ -136,24 +133,8 @@ fn notice(line: &str, event: Option<EventId>, message: &mut Option<String>, dial
     *message = Some(line.to_string());
 }
 
-/// The journal screen: its tab, the selected line, and how far the list and the text are
-/// scrolled.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct JournalView {
-    pub tab: Tab,
-    pub selected: usize,
-    pub scroll: usize,
-    pub text_scroll: usize,
-}
-
-impl Default for JournalView {
-    fn default() -> Self {
-        JournalView { tab: Tab::Active, selected: 0, scroll: 0, text_scroll: 0 }
-    }
-}
-
 /// What an empty tab says.
-fn empty_note(tab: Tab) -> &'static str {
+pub(super) fn empty_note(tab: Tab) -> &'static str {
     match tab {
         Tab::Active => tr("No quests under way."),
         Tab::Completed => tr("No quest completed yet."),
@@ -164,14 +145,14 @@ fn empty_note(tab: Tab) -> &'static str {
 
 /// A line of the journal's list: a chapter's heading or an entry (by index in the rows).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Line {
+pub(super) enum Line {
     Heading(u32),
     Row(usize),
 }
 
 /// The list's lines: the rows, each run of one chapter under its heading when the rows come
 /// from more than one.
-fn journal_lines(rows: &[razdor::rules::journal::Row]) -> Vec<Line> {
+pub(super) fn journal_lines(rows: &[razdor::rules::journal::Row]) -> Vec<Line> {
     let several = rows.windows(2).any(|w| w[0].chapter != w[1].chapter);
     let mut lines = Vec::with_capacity(rows.len() + 4);
     for (k, row) in rows.iter().enumerate() {
@@ -181,199 +162,6 @@ fn journal_lines(rows: &[razdor::rules::journal::Row]) -> Vec<Line> {
         lines.push(Line::Row(k));
     }
     lines
-}
-
-/// The journal (a Razdor extra on top of the original's quest list): tabs for the active
-/// quests, those completed, the rumours heard and the story messages, newest first; the
-/// list on the left, the selected entry's date and full text on the right. Wheel or arrows
-/// scroll; Left / Right change the tab; J, Esc or Back close it.
-pub fn journal(game: &Game, assets: &super::assets::Assets, view: &mut JournalView) -> Option<Screen> {
-    let bar_pick = world_view::window_backdrop(game, assets, None);
-    let (sw, sh) = (screen_width(), screen_height());
-    let bar = super::chrome::bar_height();
-    let (w, h) = (1000.0f32.min(sw - 20.0), 640.0f32.min(sh - bar - 8.0));
-    let (x, y) = ((sw - w) / 2.0, ((sh - bar - h) / 2.0).max(4.0));
-    super::chrome::window(Rect::new(x, y, w, h), tr("The hero's journal"), super::chrome::Skin::Marble, false);
-
-    // The tabs, with their counts.
-    let mut switch = None;
-    let tw = ((w - 32.0) / 4.0).min(230.0);
-    for (k, tab) in Tab::ALL.into_iter().enumerate() {
-        let n = game.journal_rows(tab).len();
-        let bx = x + 16.0 + k as f32 * (tw + 4.0);
-        if button(bx, y + 36.0, tw, 34.0, &format!("{} ({n})", tab.label()), true) {
-            switch = Some(tab);
-        }
-        if view.tab == tab {
-            draw_rectangle_lines(bx - 3.0, y + 33.0, tw + 6.0, 40.0, 2.0, Color::new(1.0, 0.6, 0.2, 1.0));
-        }
-    }
-    let rows = game.journal_rows(view.tab);
-    view.selected = view.selected.min(rows.len().saturating_sub(1));
-
-    // The list.
-    let (lx, ly, lw) = (x + 16.0, y + 80.0, 360.0f32.min(w * 0.4));
-    let lh = h - 146.0;
-    super::chrome::parchment(Rect::new(lx, ly, lw, lh), false);
-    let ink = Color::new(0.45, 0.28, 0.14, 1.0);
-    let rh = 42.0;
-    let fits = (((lh - 12.0) / rh).floor() as usize).max(1);
-    // A campaign's history runs over several maps: each map's entries go under a heading
-    // with its title, as soon as the list holds more than one.
-    let lines = journal_lines(&rows);
-    let line_of = |k: usize| lines.iter().position(|l| *l == Line::Row(k)).unwrap_or(0);
-    if mouse_in(lx, ly, lw, lh) {
-        let wh = wheel();
-        if wh < 0.0 && view.scroll + fits < lines.len() {
-            view.scroll += 1;
-        } else if wh > 0.0 {
-            view.scroll = view.scroll.saturating_sub(1);
-        }
-    }
-    // Razdor's scrollbar on the right when the lines do not all fit (a touch screen has no
-    // wheel); as the selection is kept in sight, a scroll past it selects the nearest entry
-    // in view.
-    let bar_w = if lines.len() > fits { 16.0 } else { 0.0 };
-    if scrollbar(Rect::new(lx + lw - 16.0, ly + 6.0, 12.0, lh - 12.0), &mut view.scroll, fits, lines.len()) {
-        let sel = line_of(view.selected);
-        let end = (view.scroll + fits).min(lines.len());
-        if sel < view.scroll || sel >= end {
-            let near = |l: &&Line| matches!(l, Line::Row(_));
-            let pick = if sel < view.scroll { lines[view.scroll..end].iter().find(near) } else { lines[view.scroll..end].iter().rev().find(near) };
-            if let Some(&Line::Row(k)) = pick {
-                view.selected = k;
-                view.text_scroll = 0;
-            }
-        }
-    }
-    // Keep the selected line in sight, with its chapter's heading when it is just above.
-    let sel = line_of(view.selected);
-    let top = if sel > 0 && matches!(lines[sel - 1], Line::Heading(_)) { sel - 1 } else { sel };
-    if top < view.scroll {
-        view.scroll = top;
-    } else if sel >= view.scroll + fits {
-        view.scroll = sel + 1 - fits;
-    }
-    view.scroll = view.scroll.min(lines.len().saturating_sub(fits));
-    if rows.is_empty() {
-        text_fit(empty_note(view.tab), lx + 16.0, ly + 30.0, lw - 28.0, 18.0, ink);
-    }
-    for (n, line) in lines.iter().enumerate().skip(view.scroll).take(fits) {
-        let ry = ly + 6.0 + (n - view.scroll) as f32 * rh;
-        let k = match *line {
-            Line::Heading(chapter) => {
-                let mut head = game.journal.chapter_heading(chapter);
-                while measure(&head, 19.0).width > lw - 30.0 - bar_w && head.chars().count() > 3 {
-                    head.pop();
-                }
-                text_centered(&head, lx + (lw - bar_w) / 2.0, ry + 27.0, 19.0, Color::new(0.55, 0.12, 0.06, 1.0));
-                draw_line(lx + 14.0, ry + rh - 6.0, lx + lw - 14.0 - bar_w, ry + rh - 6.0, 1.0, Color::new(0.55, 0.36, 0.2, 0.7));
-                continue;
-            }
-            Line::Row(k) => k,
-        };
-        let row = &rows[k];
-        if view.selected == k {
-            draw_rectangle(lx + 4.0, ry, lw - 8.0 - bar_w, rh - 2.0, Color::new(0.72, 0.6, 0.4, 1.0));
-        }
-        let mut title = row.title.clone();
-        while measure(&title, 18.0).width > lw - 30.0 - bar_w && title.chars().count() > 3 {
-            title.pop();
-        }
-        text(&title, lx + 14.0, ry + 18.0, 18.0, ink);
-        let date = row.date.map_or_else(|| tr("date unknown").to_string(), |d| d.label());
-        text(&date, lx + 14.0, ry + 35.0, 14.0, Color::new(0.4, 0.36, 0.3, 1.0));
-        if mouse_in(lx, ry, lw - bar_w, rh - 2.0) && clicked() && view.selected != k {
-            view.selected = k;
-            view.text_scroll = 0;
-        }
-    }
-    if lines.len() > fits {
-        let line = trf!("{first}–{last} of {total}", first = view.scroll + 1, last = (view.scroll + fits).min(lines.len()), total = lines.len());
-        text(&line, lx + 8.0, ly + lh + 18.0, 15.0, DIM);
-    }
-
-    // The selected entry: title, date and text.
-    let (tx, tw) = (lx + lw + 16.0, w - lw - 48.0);
-    super::chrome::text_box(Rect::new(tx, ly, tw, lh));
-    let box_ink = Color::new(1.0, 0.86, 0.58, 1.0);
-    match rows.get(view.selected) {
-        Some(row) => {
-            super::typography::Role::Name.with(|| text_centered(&ellipsize(&row.title, tw - 40.0, 21.0), tx + tw / 2.0, ly + 32.0, 21.0, box_ink));
-            let mut sub = row.date.map_or_else(|| tr("Date unknown").to_string(), |d| d.label());
-            if view.tab == Tab::Completed {
-                sub = format!("{}: {sub}", tr(QUEST_COMPLETED));
-            }
-            if let Some(m) = row.elapsed {
-                sub = trf!("Time since it was received: {t}", t = razdor::rules::clock::duration_label(m as f64));
-            }
-            text_centered(&sub, tx + tw / 2.0, ly + 56.0, 16.0, super::dialog::MANA);
-            let lines: Vec<String> = row
-                .text
-                .lines()
-                .map(str::trim)
-                .filter(|l| !l.is_empty())
-                .flat_map(|p| {
-                    let mut v = wrap(p, tw - 40.0, 18.0);
-                    v.push(String::new());
-                    v
-                })
-                .collect();
-            let (top, bottom) = (ly + 88.0, ly + lh - 14.0);
-            let text_lh = super::typography::Role::Body.line_height(22.0);
-            let shown = (((bottom - top) / text_lh).floor() as usize).max(1);
-            if mouse_in(tx, ly, tw, lh) {
-                let wh = wheel();
-                if wh < 0.0 && view.text_scroll + shown < lines.len() {
-                    view.text_scroll += 1;
-                } else if wh > 0.0 {
-                    view.text_scroll = view.text_scroll.saturating_sub(1);
-                }
-            }
-            if key(KeyCode::PageDown) && view.text_scroll + shown < lines.len() {
-                view.text_scroll += shown.saturating_sub(1).max(1);
-            }
-            if key(KeyCode::PageUp) {
-                view.text_scroll = view.text_scroll.saturating_sub(shown.saturating_sub(1).max(1));
-            }
-            view.text_scroll = view.text_scroll.min(lines.len().saturating_sub(shown));
-            // Razdor's scrollbar right of the text when it does not all fit.
-            scrollbar(Rect::new(tx + tw - 16.0, top - 18.0, 12.0, bottom - top + 18.0), &mut view.text_scroll, shown, lines.len());
-            for (i, line) in lines.iter().skip(view.text_scroll).take(shown).enumerate() {
-                text(line, tx + 20.0, top + i as f32 * text_lh, 18.0, box_ink);
-            }
-            if lines.len() > shown {
-                let more = trf!("{first}–{last} of {total} lines (wheel, PgUp / PgDn)", first = view.text_scroll + 1, last = (view.text_scroll + shown).min(lines.len()), total = lines.len());
-                text(&more, tx + 8.0, ly + lh + 18.0, 15.0, DIM);
-            }
-        }
-        None => text_centered(tr("What the hero learns is written here."), tx + tw / 2.0, ly + lh / 2.0, 19.0, box_ink),
-    }
-
-    let back = button(x + w / 2.0 - 70.0, y + h - 50.0, 140.0, 38.0, tr("Back"), true);
-    if back || key(KeyCode::Escape) || key(KeyCode::J) {
-        return Some(Screen::WorldMap);
-    }
-    let at = Tab::ALL.iter().position(|&t| t == view.tab).unwrap_or(0);
-    if key(KeyCode::Right) {
-        switch = Some(Tab::ALL[(at + 1) % Tab::ALL.len()]);
-    }
-    if key(KeyCode::Left) {
-        switch = Some(Tab::ALL[(at + Tab::ALL.len() - 1) % Tab::ALL.len()]);
-    }
-    if let Some(tab) = switch.filter(|&t| t != view.tab) {
-        *view = JournalView { tab, ..JournalView::default() };
-        return None;
-    }
-    if key(KeyCode::Down) && view.selected + 1 < rows.len() {
-        view.selected += 1;
-        view.text_scroll = 0;
-    }
-    if key(KeyCode::Up) && view.selected > 0 {
-        view.selected -= 1;
-        view.text_scroll = 0;
-    }
-    bar_pick
 }
 
 #[cfg(test)]

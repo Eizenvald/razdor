@@ -8,6 +8,7 @@ use razdor::rules::content::{ArtefactType, Content, ItemId, Stat, UnitId};
 use razdor::rules::experience::is_percent_stat;
 use razdor::rules::game::{Game, PACK_SIZE};
 use razdor::rules::items::{EquipError, Given, ItemFrom};
+use razdor::rules::journal::Tab;
 use razdor::rules::units::Unit;
 
 use super::assets::Assets;
@@ -1108,13 +1109,22 @@ pub(super) fn row_text(f: razdor::rules::formation::Formation, slot: razdor::rul
 }
 
 /// The hero window's state (side window 5, built by 0x4d8638): the pack's scroll, the
-/// diary's picked entry (0x6668bf) and how far its list and its entry are scrolled.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// diary's tab, its picked entry (0x6668bf) and how far its list and its entry are scrolled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HeroView {
     pub scroll: usize,
+    /// The diary's tab: the quests under way (the original's diary), or Razdor's history of
+    /// completed quests, rumours and messages (asked for by the owner).
+    pub tab: Tab,
     pub pick: usize,
     pub list_scroll: usize,
     pub text_scroll: usize,
+}
+
+impl Default for HeroView {
+    fn default() -> Self {
+        HeroView { scroll: 0, tab: Tab::Active, pick: 0, list_scroll: 0, text_scroll: 0 }
+    }
 }
 
 /// The hero window's right side is laid out in the original's pixels (window-relative, x from
@@ -1122,13 +1132,51 @@ pub struct HeroView {
 /// original's (632 px).
 const HERO_S: f32 = 586.0 / 632.0;
 
-/// The rows of the hero window's diary: the quests under way on this map, oldest first, as
-/// the original's list (0x68e500, a quest added by 0x49c170 as it is received and taken out
-/// by 0x49c2b8 when it is completed).
-fn diary_rows(game: &Game) -> Vec<razdor::rules::journal::Row> {
-    let mut rows = game.journal_rows(razdor::rules::journal::Tab::Active);
-    rows.reverse();
+/// The rows of the hero window's diary for `tab`. The quests under way, oldest first, are the
+/// original's list (0x68e500, a quest added by 0x49c170 as it is received and taken out by
+/// 0x49c2b8 when it is completed); the other tabs are Razdor's history (asked for by the
+/// owner): completed quests, rumours and messages of the whole campaign, newest first.
+fn diary_rows(game: &Game, tab: Tab) -> Vec<razdor::rules::journal::Row> {
+    let mut rows = game.journal_rows(tab);
+    if tab == Tab::Active {
+        rows.reverse();
+    }
     rows
+}
+
+/// A diary tab's short title (the four share the width of the original's list title).
+fn diary_tab_label(tab: Tab) -> &'static str {
+    match tab {
+        Tab::Active => n_("Quests"),
+        Tab::Completed => n_("Done"),
+        Tab::Rumours => n_("Rumours"),
+        Tab::Messages => n_("Messages"),
+    }
+}
+
+/// A history entry's lines (Razdor's tabs, in the diary entry's fonts): the title, then when
+/// it happened, then its text.
+fn history_entry(row: &razdor::rules::journal::Row, tab: Tab, room: f32, title: f32, body: f32) -> Vec<DiaryLine> {
+    use super::dt_font::{with_original_face, Face};
+    use razdor::dt::markup::{Align, Ink};
+    let rows = |s: &str, ink: Color, align: Align, face: Face, size: f32| -> Vec<DiaryLine> {
+        with_original_face(face, || {
+            let width = |c: char| measure(c.encode_utf8(&mut [0; 4]), size).width;
+            razdor::dt::markup::wrap(s, room, width).into_iter().map(|r| DiaryLine { row: MarkupRow { text: r.text, ink: Ink::Plain, align, last: r.last }, face, color: ink, size }).collect()
+        })
+    };
+    let (white, orange, yellow) = (Color::from_rgba(255, 255, 255, 255), Color::from_rgba(235, 165, 75, 255), Color::from_rgba(230, 230, 130, 255));
+    let blank = || DiaryLine { row: MarkupRow { text: String::new(), ink: Ink::Plain, align: Align::Centre, last: true }, face: Face::Body, color: yellow, size: body };
+    let mut out = rows(&row.title, white, Align::Centre, Face::Subtitle, title);
+    out.push(blank());
+    let date = row.date.map_or_else(|| tr("Date unknown").to_string(), |d| d.label());
+    let when = if tab == Tab::Completed { format!("{}: {date}", tr(super::story::QUEST_COMPLETED)) } else { date };
+    out.extend(rows(&when, orange, Align::Centre, Face::Bold, body));
+    out.push(blank());
+    for line in row.text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        out.extend(rows(&format!("{}{line}", razdor::dt::markup::INDENT), yellow, Align::Justify, Face::Body, body));
+    }
+    out
 }
 
 /// The diary entry's lines (0x49c388): the quest's title (white, centred), an empty line,
@@ -1293,30 +1341,94 @@ pub fn hero_window(game: &mut Game, assets: &Assets, view: &mut HeroView, messag
         });
     }
 
-    // The diary: the list of the quests under way over the picked one's entry.
-    let rows = diary_rows(game);
-    if view.pick >= rows.len() {
-        view.pick = 0;
-    }
+    // The diary: the list of the tab's entries over the picked one's entry. In place of the
+    // list's title (`QuestList`) Razdor shows its tabs (asked for by the owner): the quests
+    // under way (the original's diary), then the history of completed quests, rumours and
+    // messages; Left / Right change them.
     let list = o(576.0, 252.0, 292.0, 128.0);
     let list_bar = o(868.0, 252.0, 18.0, 128.0);
     let list_box = Rect::new(list.x, list.y, list_bar.x + list_bar.w - list.x, list.h);
-    heading("QuestList", n_("Diary contents"), list_box);
+    let at = Tab::ALL.iter().position(|&t| t == view.tab).unwrap_or(0);
+    let mut switch = None;
+    let cell = list_box.w / Tab::ALL.len() as f32;
+    for (i, tab) in Tab::ALL.into_iter().enumerate() {
+        let r = Rect::new(list_box.x + i as f32 * cell, list_box.y - head * 1.45, cell, head * 1.4);
+        let over = mouse_in(r.x, r.y, r.w, r.h);
+        let ink = if tab == view.tab { ACCENT } else if over { INK } else { DIM };
+        // In the diary's bold face (the original's bitmap fonts come in one size each, and the
+        // four titles do not fit in the title face).
+        let label = tr(diary_tab_label(tab));
+        let size = sheet_size(Face::Bold, s);
+        with_original_face(Face::Bold, || chrome::shadow_centered(label, r.x + r.w / 2.0, list_box.y - 7.0 * s, size, ink));
+        if tab == view.tab {
+            let w = with_original_face(Face::Bold, || measure(label, size).width);
+            draw_line(r.x + (r.w - w) / 2.0, list_box.y - 4.0 * s, r.x + (r.w + w) / 2.0, list_box.y - 4.0 * s, 1.0 * s, ACCENT);
+        }
+        if over && clicked() {
+            switch = Some(tab);
+        }
+    }
+    if key(KeyCode::Right) {
+        switch = Some(Tab::ALL[(at + 1) % Tab::ALL.len()]);
+    }
+    if key(KeyCode::Left) {
+        switch = Some(Tab::ALL[(at + Tab::ALL.len() - 1) % Tab::ALL.len()]);
+    }
+    if let Some(tab) = switch.filter(|&t| t != view.tab) {
+        cue(Cue::Button);
+        *view = HeroView { scroll: view.scroll, tab, ..HeroView::default() };
+    }
+    let rows = diary_rows(game, view.tab);
+    if view.pick >= rows.len() {
+        view.pick = 0;
+    }
+    if key(KeyCode::Down) && view.pick + 1 < rows.len() {
+        view.pick += 1;
+        view.text_scroll = 0;
+    }
+    if key(KeyCode::Up) && view.pick > 0 {
+        view.pick -= 1;
+        view.text_scroll = 0;
+    }
+    // A campaign's history runs over several maps: each map's entries under its title.
+    let lines = super::story::journal_lines(&rows);
     chrome::text_box(list_box);
     let row_h = (head * 1.25).round();
     let fits = ((list.h - 8.0 * s) / row_h).floor().max(1.0) as usize;
     if mouse_in(list.x, list.y, list.w, list.h) {
         let w = wheel();
-        if w < 0.0 && view.list_scroll + fits < rows.len() {
+        if w < 0.0 && view.list_scroll + fits < lines.len() {
             view.list_scroll += 1;
         } else if w > 0.0 {
             view.list_scroll = view.list_scroll.saturating_sub(1);
         }
     }
-    scrollbar_always(list_bar, &mut view.list_scroll, fits, rows.len());
-    for (n, row) in rows.iter().enumerate().skip(view.list_scroll).take(fits) {
+    // The picked entry kept in sight when the keys move it.
+    let picked_line = lines.iter().position(|l| *l == super::story::Line::Row(view.pick)).unwrap_or(0);
+    if key(KeyCode::Down) || key(KeyCode::Up) {
+        if picked_line < view.list_scroll {
+            view.list_scroll = picked_line;
+        } else if picked_line >= view.list_scroll + fits {
+            view.list_scroll = picked_line + 1 - fits;
+        }
+    }
+    view.list_scroll = view.list_scroll.min(lines.len().saturating_sub(fits));
+    scrollbar_always(list_bar, &mut view.list_scroll, fits, lines.len());
+    if rows.is_empty() {
+        with_original_face(Face::Body, || chrome::shadow_centered(super::story::empty_note(view.tab), list.x + list.w / 2.0, list.y + list.h / 2.0, head * 0.9, DIM));
+    }
+    for (n, line) in lines.iter().enumerate().skip(view.list_scroll).take(fits) {
         let ry = list.y + 4.0 * s + (n - view.list_scroll) as f32 * row_h;
-        if n == view.pick {
+        let k = match *line {
+            super::story::Line::Heading(chapter) => {
+                let head_text = ellipsize(&game.journal.chapter_heading(chapter), list.w - 12.0 * s, head);
+                with_original_face(Face::Bold, || chrome::shadow_centered(&head_text, list.x + list.w / 2.0, ry + row_h * 0.78, head, Color::from_rgba(235, 165, 75, 255)));
+                continue;
+            }
+            super::story::Line::Row(k) => k,
+        };
+        let row = &rows[k];
+        if k == view.pick {
             // The picked row lit (the list's highlight, 0x262626 added).
             draw_rectangle(list.x + 2.0 * s, ry, list.w - 4.0 * s, row_h, Color::new(0.15, 0.15, 0.15, 0.6));
         }
@@ -1325,8 +1437,8 @@ pub fn hero_window(game: &mut Game, assets: &Assets, view: &mut HeroView, messag
             title.pop();
         }
         with_original_face(Face::Title, || chrome::shadow_centered(&title, list.x + list.w / 2.0, ry + row_h * 0.78, head, ink_color(Ink::Plain)));
-        if mouse_in(list.x, ry, list.w, row_h) && clicked() && view.pick != n {
-            view.pick = n;
+        if mouse_in(list.x, ry, list.w, row_h) && clicked() && view.pick != k {
+            view.pick = k;
             view.text_scroll = 0;
         }
     }
@@ -1337,7 +1449,10 @@ pub fn hero_window(game: &mut Game, assets: &Assets, view: &mut HeroView, messag
     chrome::text_box(entry_box);
     let body = sheet_size(Face::Body, s);
     let room = entry.w - 16.0 * s;
-    let lines = rows.get(view.pick).map_or_else(Vec::new, |row| diary_entry(row, room, head, body));
+    let lines = rows.get(view.pick).map_or_else(Vec::new, |row| match view.tab {
+        Tab::Active => diary_entry(row, room, head, body),
+        tab => history_entry(row, tab, room, head, body),
+    });
     let line_h = (body * 1.15).round();
     let shown = ((entry.h - 12.0 * s) / line_h).floor().max(1.0) as usize;
     if mouse_in(entry.x, entry.y, entry.w, entry.h) {
@@ -1394,7 +1509,7 @@ pub fn hero_window(game: &mut Game, assets: &Assets, view: &mut HeroView, messag
             }
         }
     }
-    if close || key(KeyCode::Escape) {
+    if close || key(KeyCode::Escape) || key(KeyCode::J) {
         HELD.with(|c| c.set(None));
         *message = None;
         return Some(Screen::WorldMap);

@@ -2179,7 +2179,8 @@ fn bottom_bar(game: &mut Game, message: &mut Option<String>, minimap_open: bool,
             Some(Screen::Spellbook { selected: 0 })
         }
         Some(BarButton::Map) => None,
-        None if journal => Some(Screen::Journal(Default::default())),
+        // J: the hero window, whose diary holds the quests and Razdor's history.
+        None if journal => Some(Screen::Hero(Default::default())),
         None => None,
     };
     // A press while the hero walks has cut his route (`frame`): as in the original, where

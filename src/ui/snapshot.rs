@@ -6,7 +6,7 @@
 //! Scenes (`<map>` is a map file name of the install without `.DTm`, e.g. `РК3-Столица`):
 //! `title`, `update` (a made-up release on offer), `authors[:<seconds>]`, `options[:advanced]`, `scenarios[:<map>]`, `tutorial`, `load[:manual|auto[:<row>]]`, `editor[:<map>[:<text to find>]]`, `classes:<map>`, `map:<map>[:x,y]`, `minimap:<map>`, `walk:<map>:dx,dy` (the
 //! hero sets off that many cells away), `building:<map>:<n>`
-//! (the hero in the n-th building; `:barracks`, `:garrison`, `:market`, `:sanctuary` open that tab; `:market-pack` the market's pack list), `army:<map>[:<n>[:<unit id>[:<level>]]]` (squad member n selected, made that unit at that level), `journal:<map>`, `spells:<map>`,
+//! (the hero in the n-th building; `:barracks`, `:garrison`, `:market`, `:sanctuary` open that tab; `:market-pack` the market's pack list), `army:<map>[:<n>[:<unit id>[:<level>]]]` (squad member n selected, made that unit at that level), `journal:<map>` / `hero:<map>[:<tab>]`, `spells:<map>`,
 //! `menu:<map>`, `defeat:<map>` (the lost battle's report), `settings:<map>[:advanced]`, `battle:<map>:<n>` (against the n-th army), `custom` (the custom battle
 //! setup), `custom-battle` (its first round; `custom-battle:watch` watches the AI play it). `RAZDOR_SCENE_DEBUG=1` turns the map's debug overlay (F3) on; `RAZDOR_SCENE_SHOW=x,y,r` shows
 //! a place as a lantern event does; `RAZDOR_SCENE_CONSOLE=help;gold 100` opens the cheat
@@ -30,7 +30,6 @@ use razdor::rules::town::first_tab;
 use super::battle_view::BattleView;
 use super::building_view::BuildingView;
 use super::saves::{Back, LoadView};
-use super::story::JournalView;
 use super::{App, Screen};
 
 /// Where to save the snapshot and after how many frames.
@@ -110,7 +109,7 @@ pub fn open_later(app: &mut App, frame: u64) -> bool {
         "load" => Some(Screen::Load(LoadView::new(if app.game.is_some() { Back::Map } else { Back::Title }))),
         "army" => Some(Screen::Squad { selected: Default::default(), scroll: 0, back: None }),
         "spells" => Some(Screen::Spellbook { selected: 0 }),
-        "journal" => Some(Screen::Journal(JournalView::default())),
+        "journal" => Some(Screen::Hero(Default::default())),
         "hero" => Some(Screen::Hero(Default::default())),
         "menu" => Some(Screen::Menu(false)),
         "map" => Some(Screen::WorldMap),
@@ -390,8 +389,11 @@ fn try_stage(app: &mut App, scene: &str) -> Result<(), String> {
             }
             Screen::Squad { selected, scroll: 0, back: None }
         }
-        "journal" => Screen::Journal(JournalView::default()),
-        "hero" => Screen::Hero(Default::default()),
+        // `hero:<map>[:<tab>]`: the diary on tab 0..3 (quests, completed, rumours, messages).
+        "journal" | "hero" => {
+            let tab = arg.and_then(|t| t.parse::<usize>().ok()).and_then(|i| razdor::rules::journal::Tab::ALL.get(i).copied());
+            Screen::Hero(super::items_view::HeroView { tab: tab.unwrap_or(razdor::rules::journal::Tab::Active), ..Default::default() })
+        }
         "spells" => {
             // A book full of the install's spells, to see their pictures.
             game.spells = game.content.spells.iter().filter_map(|s| u8::try_from(s.id).ok()).take(15).collect();
