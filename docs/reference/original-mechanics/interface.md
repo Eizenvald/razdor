@@ -196,6 +196,14 @@ for it (the 150-glyph sheet order) and the text still fits inside the field less
 Backspace removes the last character; Esc restores the text the field had when it got the
 focus; Enter keeps it. The caret blinks with a 500 ms half-period. **code**
 
+Held Backspace repeats: the window procedure (475748) stores every WM_KEYDOWN as the held key
+without looking at its repeat bit, and the field (47a816) deletes one character each time it
+sees Backspace held and clears it, so a held key deletes at the system's typematic rate
+(Windows' defaults: after 500 ms, then about 30 a second). The field keeps no caret position
+and no selection: the caret is always at the end, and there is no mouse selection and no
+paste (the exe imports no GetClipboardData). Choosing a class focuses the name field
+(4c1458 → 47ae5c), which keeps its text as it is (nothing selected). **code**
+
 **Start** (4c1000). Busy pointer, screen cleared, start time noted; item, spell and battle
 effect data are loaded on first use; the hero's name is taken from the field; the map is
 loaded and the restart snapshot taken; the map view becomes 1024×682; the world theme starts
@@ -1276,6 +1284,7 @@ parity rule they are candidates to hide or remove, not bugs to copy.
 | 66 | Map hover marks | Matches: the hovered cell's ring in the colour of the original's mark, worked out on entering another cell (`cursor::hover_ring`, `world_view::hover_look`), in place of the army's mark on that cell; the ring stays over the bar; Razdor drops it while the hero walks. Extra (Razdor's choice, a player's wish): the building under the pointer is outlined in gold around its picture (`chrome::silhouette`) | The ring only, under the building's picture | 7.2 |
 | 67 | Battle hover outline | Extra (Razdor's choice, a player's wish, as Razdor's first battle grid had): a cell under the mouse that is not framed otherwise (target, actor, a cell to step to) gets a thin silver outline round its portrait (`battle_view`) | Only a target under the mouse is lit | 12 |
 | 68 | Promotion animation | Matches (`items_view::Promo`): `Unit-Upgrade` on the click, the picked portrait empty with the fading green glow, effect 6 frames 0–15 on it for 500 ms then 16–49 eased down to the unit's portrait, the glow up on all portraits, the class changed 100 ms before the end and the glow down on the new tree, the card under the running `exp` strip, no input meanwhile; at the end nothing selected, the tree up, the panel on the promoted unit until a card is hovered. The time follows the original's portrait distance (1501 / 1746 ms), the path Razdor's own tree places | The same over the original's portraits (4b1a04) | 9.7 |
+| 69 | Name fields (the hero's name, the save's name) | Matches: held Backspace deletes again after 500 ms, then 30 a second (`widgets::repeats`) | One character per WM_KEYDOWN, the system's key repeat included (475748, 47a816) | 5 |
 
 ## Unknowns
 

@@ -524,7 +524,8 @@ pub fn save_screen(game: &Game, assets: &Assets, view: &mut SaveView, message: &
             view.name.push(c);
         }
     }
-    if is_key_pressed(KeyCode::Backspace) {
+    // Held Backspace repeats, as in the original's edit box (0x47a624, 0x475748).
+    for _ in 0..backspace_repeat() {
         view.name.pop();
     }
     fill_metas(&mut view.entries, &mut view.asked, &mut view.settled, view.scroll.saturating_sub(1), None);
