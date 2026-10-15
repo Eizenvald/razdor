@@ -14,6 +14,19 @@
 
 ## 0.4.24 — 2026-10-15
 
+Коммит `338d1ea` (тег `v0.4.24`).
+
+SHA-256 выпущенных программ (собраны конвейером выпуска):
+
+```
+b011873aaeca7338f65bdfaafb43280243f05e961cec7ec2c9d5394a392be004  razdor
+d57e1c27d4a8aa5fced43d6544f636bbc076b237339b62275c40ee1858792625  Razdor.exe
+28ce09e88cb7f1a648d9f15c93f12aacd549ee164efcdb922ffe8e15c8c73915  razdor-macos
+83e8848bf5bb2eedb94a650e9fba20dd838fbaeadec65b62cefd25c8cd2d1836  razdor-translate
+12e5ac037d2dad1d29210510d05bdc13dc99f3f649273ee8bee35908416a3f3b  Razdor-translate.exe
+7f759935719a0a074a5328599e5f91be1238f1977b43266dacf1d3503a54ea37  razdor-translate-macos
+```
+
 ### Добавлено
 
 - Переводчик карт `razdor-translate` (отдельная программа рядом с Раздором): делает английские
