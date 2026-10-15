@@ -17,6 +17,19 @@
   адрес сервера можно вписывать без `/v1`.
 ## 0.4.26 — 2026-10-15
 
+Коммит `8d5bf2e` (тег `v0.4.26`).
+
+SHA-256 выпущенных программ (собраны конвейером выпуска):
+
+```
+c5eb6d83932944732dc3563f9dd5c3f31ab3f576528c5dce219cdc0f49131169  razdor
+4d0b50bfbbf5443469469310194514c8c622c51bfbe711c691e2cc2c84353a58  Razdor.exe
+507ce103e457714abe8181cf189017eb79772d3ffcb491ba15568c9d2415cda1  razdor-macos
+23ebadc17f2ea17ab98d5815e972fa44978ce23f18272c97db9ee1390b253007  razdor-translate
+eea2aa4b0e6bf326cf20335a8dc40664ac880af820138f0d706a44f2f6add31f  Razdor-translate.exe
+29c052c3555661d275162d465f166df9e177c884bb1eec81ee94ef5faed6f84d  razdor-translate-macos
+```
+
 ### Добавлено
 
 - В английском Раздор сразу показывает воинов, предметы, заклинания и тексты игры по-английски:
