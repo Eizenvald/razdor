@@ -73,7 +73,7 @@ pub fn run(job: &mut Job, path: Option<&Path>, s: &Settings, stop: &AtomicBool, 
         let prompt = llm::user_prompt(&texts, &glossary);
         report(job, Event::Sending { items: batch.len(), first: texts[0].chars().take(60).collect() });
         let t0 = std::time::Instant::now();
-        match llm::chat(s, llm::SYSTEM_PROMPT, &prompt).and_then(|a| llm::parse_answer(&a)) {
+        match llm::chat(s, &llm::system_prompt(s), &prompt).and_then(|a| llm::parse_answer(&a)) {
             Ok(answers) => {
                 failures_in_a_row = 0;
                 let taken = job.accept(&batch, &answers);

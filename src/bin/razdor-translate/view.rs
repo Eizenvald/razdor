@@ -59,6 +59,8 @@ pub struct View {
     worker: Option<std::thread::JoinHandle<()>>,
     check: Arc<Mutex<Option<ModelList>>>,
     confirm_replace: bool,
+    /// "Translate again" was pressed once: the next press forgets the translations.
+    confirm_fresh: bool,
 }
 
 impl View {
@@ -85,6 +87,7 @@ impl View {
             worker: None,
             check: Arc::new(Mutex::new(None)),
             confirm_replace: false,
+            confirm_fresh: false,
         };
         if install.is_none() {
             v.log(tr("No Discord Times install found: start Razdor once to choose it."), RED);
@@ -133,6 +136,7 @@ impl View {
         }
         self.selected = Some(i);
         self.confirm_replace = false;
+        self.confirm_fresh = false;
         if self.items[i].data {
             let Some(install) = self.install.clone() else { return };
             let data = translate::data::install_texts(&install);
@@ -226,7 +230,7 @@ impl View {
 
     /// The model's settings; returns the panel's bottom.
     fn settings_panel(&mut self, r: Rect) -> f32 {
-        let h = 248.0;
+        let h = 312.0;
         draw_rectangle(r.x, r.y, r.w, h, PANEL);
         draw_rectangle_lines(r.x, r.y, r.w, h, 1.0, DIM);
         text(tr("Language model (OpenAI-compatible API)"), r.x + 12.0, r.y + 24.0, 18.0, ACCENT);
@@ -268,6 +272,13 @@ impl View {
         text_field("tr:effort", fx, y, 200.0, 26.0, &mut self.settings.reasoning_effort, false);
         text_fit(tr("none: thinking off (Ollama); empty: the server's default"), fx + 212.0, y + 18.0, r.x + r.w - fx - 224.0, 14.0, DIM);
         y += 34.0;
+        // The player's own wishes for the style, added to the fixed rules.
+        text(tr("Translation style"), lx, y + 18.0, 16.0, INK);
+        text_field("tr:style", fx, y, r.x + r.w - fx - 12.0, 56.0, &mut self.settings.style, true);
+        if self.settings.style.is_empty() && !widgets::has_focus("tr:style") {
+            text_fit(tr("e.g. \"archaic, like an old chronicle; keep names Slavic\""), fx + 5.0, y + 19.0, r.x + r.w - fx - 22.0, 15.0, DIM);
+        }
+        y += 64.0;
         let check = self.check.lock().unwrap().clone();
         match check {
             Some(Ok(models)) => {
@@ -317,7 +328,7 @@ impl View {
         }
         draw_rectangle_lines(bx, by, bw, 14.0, 1.0, DIM);
         let y = r.y + 90.0;
-        let w = ((r.w - 24.0 - 20.0) / 3.0).min(240.0);
+        let w = ((r.w - 24.0 - 30.0) / 4.0).min(200.0);
         if busy {
             if button(r.x + 12.0, y, w, 32.0, tr("Stop"), true) {
                 self.stop.store(true, Ordering::Relaxed);
@@ -337,6 +348,20 @@ impl View {
             }
         } else if button(write_x, y, w, 32.0, tr("Write English maps"), can_write) {
             self.write(false);
+        }
+        // Everything again (another model or style): a second press confirms.
+        let fresh_x = r.x + 42.0 + 3.0 * w;
+        if self.confirm_fresh {
+            if red_button(fresh_x, y, w, 32.0, tr("Forget and translate"), !busy) {
+                self.confirm_fresh = false;
+                if let Some((job, _)) = self.job.as_mut() {
+                    job.forget_all();
+                }
+                self.start(false);
+            }
+        } else if button(fresh_x, y, w, 32.0, tr("Translate again"), !busy && done > 0) {
+            self.confirm_fresh = true;
+            self.log(tr("Press again to translate everything anew (with the style and model set now)."), ACCENT);
         }
         if !complete && done > 0 && !busy {
             text_fit(tr("Untranslated texts stay in Russian in the written maps."), r.x + 12.0, y + 50.0, r.w - 24.0, 14.0, DIM);

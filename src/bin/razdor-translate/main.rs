@@ -26,6 +26,8 @@ Without arguments: the window.
   --key <key>                API key (or the RAZDOR_LLM_KEY variable)
   --context <tokens>         the model's context window: sizes the batches
   --reasoning <effort>       reasoning_effort to send ('' to send none)
+  --style <text>             your wishes for the translation's style (added to the rules)
+  --fresh                    translate everything again (forget the saved translations)
   --save-settings            keep these settings for next time
   --no-write                 translate only; write the maps later";
 
@@ -92,6 +94,9 @@ fn cli(args: &[String]) -> Option<i32> {
     if let Some(v) = value("--reasoning") {
         s.reasoning_effort = v;
     }
+    if let Some(v) = value("--style") {
+        s.style = v;
+    }
     if has("--save-settings") {
         if let Err(e) = s.save() {
             eprintln!("settings: {e}");
@@ -111,6 +116,9 @@ fn cli(args: &[String]) -> Option<i32> {
     println!("{what}; {} strings, {} done; model {} at {}, context {}", job.entries.len(), job.done(), s.model, s.endpoint, s.context);
     if let Some(p) = &path {
         println!("progress file: {}", p.display());
+    }
+    if has("--fresh") {
+        job.forget_all();
     }
     job.retry_failed();
     let stop = std::sync::atomic::AtomicBool::new(false);

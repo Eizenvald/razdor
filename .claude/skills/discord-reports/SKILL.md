@@ -66,6 +66,11 @@ For `bug`/`parity` and clear Razdor-extra bugs: follow the `player-report` skill
 `Fixes #N` in the commit message so the push closes the issue. Independent reports can go to
 parallel agents; each commits only its own files.
 
+When a Discord message is taken into work (fixed, or handed to an agent to fix), put a 👍 on
+it as the bot (the owner asked for this): `PUT /api/v10/channels/<channel>/messages/<id>/reactions/%F0%9F%91%8D/@me`
+with `Authorization: Bot $DISCORD_BOT_TOKEN` (from `.env`) and `Content-Length: 0`; 204 is done.
+Every message of a report that asks for something gets one.
+
 ## 5. Finish
 
 1. `reports_mark_read` with the newest message id handled (only after its issues exist).

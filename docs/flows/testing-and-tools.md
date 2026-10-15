@@ -139,8 +139,11 @@ install they run against (`razdor::dt::install::locate`), replacing older copies
   after `job::MAX_TRIES`.
 - `src/translate/llm.rs`: `chat` through the system `curl` (the key in a private curl config
   file), batches sized by the settings' context (`Settings::batch_chars`); settings in
-  `translate.json` next to the remembered install path. the API's reasoning_effort and
-  response_format options are dropped by themselves when a server refuses them.
+  `translate.json` next to the remembered install path. The API's reasoning_effort and
+  response_format options are dropped by themselves when a server refuses them; a bare server
+  address gets `/v1` (`llm::api_base`); the player's style is added to the fixed rules
+  (`llm::system_prompt`), and "Translate again" (`--fresh`) forgets a job's English
+  (`Job::forget_all`).
 
 ## Traps
 

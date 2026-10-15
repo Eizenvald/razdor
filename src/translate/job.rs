@@ -234,6 +234,14 @@ impl Job {
         self.entries.iter().filter(|e| e.en.is_none()).map(|e| e.src.chars().count()).sum()
     }
 
+    /// Forgets every translation, to translate all again (another model or style).
+    pub fn forget_all(&mut self) {
+        for e in &mut self.entries {
+            (e.en, e.tries) = (None, 0);
+            e.last_error.clear();
+        }
+    }
+
     /// Gives the given-up entries another round.
     pub fn retry_failed(&mut self) {
         for e in self.entries.iter_mut().filter(|e| e.en.is_none()) {

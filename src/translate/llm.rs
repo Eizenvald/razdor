@@ -31,6 +31,9 @@ pub struct Settings {
     pub temperature: f32,
     /// Seconds one answer may take.
     pub timeout: u32,
+    /// The player's own instructions on the translation's style (an author's voice, a
+    /// glossary, a tone), added to the fixed rules ([`system_prompt`]).
+    pub style: String,
 }
 
 impl Default for Settings {
@@ -44,6 +47,7 @@ impl Default for Settings {
             json_mode: true,
             temperature: 0.2,
             timeout: 600,
+            style: String::new(),
         }
     }
 }
@@ -83,7 +87,7 @@ impl Settings {
     }
 
     fn url(&self, path: &str) -> String {
-        format!("{}/{}", self.endpoint.trim().trim_end_matches('/'), path)
+        format!("{}/{}", api_base(&self.endpoint), path)
     }
 }
 
@@ -100,7 +104,24 @@ fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     o.open(path)?.write_all(bytes)
 }
 
-/// The instructions sent with every batch.
+/// The API's base from the address typed: a bare server address (`http://127.0.0.1:1234`, as
+/// LM Studio shows it) gets the OpenAI path `/v1`; an address with a path is kept as it is.
+pub fn api_base(endpoint: &str) -> String {
+    let e = endpoint.trim().trim_end_matches('/');
+    let after_host = e.split_once("://").map_or(e, |(_, rest)| rest);
+    if after_host.contains('/') || e.is_empty() { e.to_string() } else { format!("{e}/v1") }
+}
+
+/// The instructions sent with every batch: the fixed rules, then the player's style, if any.
+pub fn system_prompt(s: &Settings) -> String {
+    let style = s.style.trim();
+    if style.is_empty() {
+        return SYSTEM_PROMPT.to_string();
+    }
+    format!("{SYSTEM_PROMPT}\n\nThe player's wishes for the style (follow them, but never break the rules above):\n{style}")
+}
+
+/// The fixed rules sent with every batch.
 pub const SYSTEM_PROMPT: &str = "You translate texts of the Russian fantasy strategy game \"Discord Times\" \
 (\"Времена раздора\") into English for its English edition.
 
@@ -291,6 +312,23 @@ mod tests {
             assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
         }
         std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn a_bare_server_address_gets_the_openai_path() {
+        assert_eq!(api_base("http://127.0.0.1:1234"), "http://127.0.0.1:1234/v1");
+        assert_eq!(api_base(" http://127.0.0.1:1234/ "), "http://127.0.0.1:1234/v1");
+        assert_eq!(api_base("http://localhost:11434/v1"), "http://localhost:11434/v1");
+        assert_eq!(api_base("https://openrouter.ai/api/v1/"), "https://openrouter.ai/api/v1");
+    }
+
+    #[test]
+    fn the_style_follows_the_rules() {
+        let plain = Settings::default();
+        assert_eq!(system_prompt(&plain), SYSTEM_PROMPT);
+        let styled = Settings { style: " Archaic, like Tolkien ".into(), ..Settings::default() };
+        let p = system_prompt(&styled);
+        assert!(p.starts_with(SYSTEM_PROMPT) && p.ends_with("Archaic, like Tolkien"));
     }
 
     #[test]
