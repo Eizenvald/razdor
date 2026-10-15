@@ -36,11 +36,21 @@ use super::Screen;
 /// screen: its 32 px cells.
 const PX: f32 = 32.0;
 
-/// How much larger than the original's 1024×768 the screen is (the interface's scale,
-/// `chrome::k`, is against the 960×720 footage): at zoom 1 the map shows as much ground as
-/// the original's, about 32 cells across, whatever the window size.
+/// The map's scale at zoom 1, against the original's 32 px cells: the interface scale the
+/// player chose in the settings, so a bigger interface gives a closer map (Razdor's choice,
+/// the owner's request; the original shows a fixed 1024×682 view).
 fn map_scale() -> f32 {
-    super::chrome::k() * 0.9375
+    map_scale_for(super::display::chosen_scale(), super::chrome::fit_k())
+}
+
+/// [`map_scale`] for the settings' interface scale `chosen` (`0`: Auto) in a window whose own
+/// fit is `fit` (`chrome::fit_k`). The cells are drawn as large as the original's pictures
+/// in the windows (`chrome::k` is against the 960×720 footage, 0.9375 of the original's
+/// 1024 px). Unlike the interface, a chosen scale is not cut down to the window's fit: the
+/// map needs no room for windows and follows the setting, not the window's shape. Auto is
+/// the fit, the interface's own scale then.
+fn map_scale_for(chosen: f32, fit: f32) -> f32 {
+    (if chosen > 0.0 { chosen } else { fit }) * 0.9375
 }
 /// Sail colour of the hero's own ship.
 const HERO_SAIL: Color = Color::new(0.35, 0.8, 0.45, 1.0);
@@ -2773,6 +2783,18 @@ fn draw_debug(game: &Game, cam: &Camera) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_map_starts_at_the_interface_scale_chosen() {
+        // Auto: the interface's own scale, the window's fit (1920×1080: 1.5).
+        assert_eq!(map_scale_for(0.0, 1.5), 1.5 * 0.9375);
+        // A chosen scale is the map's, whatever the window's shape or size.
+        assert_eq!(map_scale_for(1.25, 1.5), 1.25 * 0.9375);
+        assert_eq!(map_scale_for(1.25, 1.1), map_scale_for(1.25, 3.0));
+        assert_eq!(map_scale_for(2.0, 1.1), 2.0 * 0.9375, "not cut down to the fit as the interface is");
+        // A bigger interface, a closer map.
+        assert!(map_scale_for(2.0, 2.0) > map_scale_for(1.0, 2.0));
+    }
 
     #[test]
     fn the_zoom_steps_from_the_settings_zoom_and_locks() {

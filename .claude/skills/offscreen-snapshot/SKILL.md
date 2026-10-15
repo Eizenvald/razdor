@@ -28,6 +28,8 @@ xvfb-run -a -s "-screen 0 1280x800x24" <target>/release/razdor
   game is open a snapshot run would otherwise quit silently.
 - Its own `RAZDOR_LOG` and `RAZDOR_SAVE_DIR`: the owner's log, saves and settings stay untouched.
 - `RAZDOR_SNAPSHOT_FRAMES` (default 20): frames before the shot.
+- `RAZDOR_UI_SCALE=<n>` (e.g. `1.25`): that interface scale instead of Auto (snapshots
+  ignore the saved settings' scale).
 - Check UI changes at 800x600, 1024x768 and 1280x800 at least.
 
 ## Scenes

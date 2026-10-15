@@ -85,7 +85,13 @@ Building a window (`src/ui/chrome.rs`):
 
 - `chrome::k()` is the interface scale: screen pixels per pixel of the 960×720 reference
   video. Every size and offset is written in reference pixels times `k`. `chrome::fit_k` is
-  the largest that fits; `chrome::bar_height` the bottom bar.
+  the largest that fits; `chrome::bar_height` the bottom bar. A chosen scale is cut down to
+  the fit (`display::scale`); `display::chosen_scale` is the setting as it is.
+- The world map's scale at zoom 1 (`world_view::map_scale`, Razdor's choice) follows the
+  interface scale setting, not the window: its 32 px cells are drawn at the chosen scale ×
+  0.9375 (as large as the original's pictures in the windows), not cut down to the fit;
+  Auto is the fit. The settings' «Масштаб карты» (`map_zoom`) multiplies it, the wheel and
+  +/- step from that (×1.1 a notch) and 0 comes back; locked, the zoom stays `map_zoom`.
 - `chrome::window(r, title, skin, closable)` draws background, frame and title bar and
   returns `(inner, closed)`. Skins: `chrome::Skin`.
 - Placement: windows over the map are centred over the view above the bar (as the

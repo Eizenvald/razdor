@@ -60,8 +60,13 @@ pub fn set_scale(scale: f32) {
 /// The interface scale for a window whose own fit is `fit`: the chosen one, as in Minecraft
 /// never larger than what fits.
 pub fn scale(fit: f32) -> f32 {
-    let chosen = f32::from_bits(SCALE.load(Ordering::Relaxed));
+    let chosen = chosen_scale();
     if chosen > 0.0 { chosen.min(fit) } else { fit }
+}
+
+/// The scale chosen in the settings as it is (`0.0`: auto), not yet kept to the window's fit.
+pub fn chosen_scale() -> f32 {
+    f32::from_bits(SCALE.load(Ordering::Relaxed))
 }
 
 /// The scale after `chosen` in the settings' cycle, skipping those the window cannot fit
@@ -171,7 +176,11 @@ pub fn draw_notice() {
 pub fn follow_settings(settings: &crate::ui::audio::Settings) {
     crate::ui::dt_font::set_mode(settings.font);
     if crate::ui::snapshot::size().is_some() {
-        return; // Offscreen snapshots keep their fixed size and the automatic scale.
+        // Offscreen snapshots keep their fixed size and the automatic scale, or the one in
+        // `RAZDOR_UI_SCALE` (checking a screen at several interface scales).
+        let scale = std::env::var("RAZDOR_UI_SCALE").ok().and_then(|s| s.trim().parse::<f32>().ok());
+        set_scale(scale.filter(|s| s.is_finite() && *s > 0.0).unwrap_or(0.0));
+        return;
     }
     set_scale(settings.ui_scale);
     crate::ui::world_view::set_zoom_prefs(settings.map_zoom, settings.zoom_locked);
