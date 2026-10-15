@@ -127,7 +127,7 @@ pub fn english_files(job: &Job, data: &DataTexts) -> Vec<(usize, Vec<u8>)> {
             }
         }
         if any {
-            out.push((i, crate::dt::text::encode(&text)));
+            out.push((i, crate::dt::text::encode_any(&text)));
         }
     }
     out

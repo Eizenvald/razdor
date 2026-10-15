@@ -28,6 +28,9 @@ Without arguments: the window.
   --reasoning <effort>       reasoning_effort to send ('' to send none)
   --language <name>          the language to translate into (default English; maps only:
                              the game data is always English)
+  --any-script               the language's own letters (umlauts, Devanagari...), Razdor
+                             only: the original shows them garbled
+  --notes <text>             what the model should know about the maps (context)
   --style <text>             your wishes for the translation's style (added to the rules)
   --fresh                    translate everything again (forget the saved translations)
   --save-settings            keep these settings for next time
@@ -99,6 +102,12 @@ fn cli(args: &[String]) -> Option<i32> {
     if let Some(v) = value("--language") {
         s.language = v;
     }
+    if has("--any-script") {
+        s.any_script = true;
+    }
+    if let Some(v) = value("--notes") {
+        s.notes = v;
+    }
     if let Some(v) = value("--style") {
         s.style = v;
     }
@@ -114,7 +123,7 @@ fn cli(args: &[String]) -> Option<i32> {
     } else {
         let at = found.flatten().expect("a map was found");
         let chain: Vec<(String, razdor::dt::dtm::Scenario)> = translate::job::campaign(&pairs, at).into_iter().map(|k| pairs[k].clone()).collect();
-        let (job, path) = translate::open_job(&chain, &s.language);
+        let (job, path) = translate::open_job(&chain, &s.language, s.any_script);
         let what = format!("{} map(s): {}", chain.len(), chain.iter().map(|(f, _)| f.as_str()).collect::<Vec<_>>().join(", "));
         (job, path, translate::Target::Maps(maps_dir.clone()), what)
     };
@@ -164,7 +173,7 @@ fn conf() -> Conf {
     if let Some(code) = cli(&args) {
         std::process::exit(code);
     }
-    let (window_width, window_height) = ui::snapshot::size().unwrap_or((1180, 760));
+    let (window_width, window_height) = ui::snapshot::size().unwrap_or((1180, 840));
     Conf {
         window_title: "Razdor: map translator".to_owned(),
         window_width,

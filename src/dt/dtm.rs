@@ -1735,7 +1735,7 @@ impl Scenario {
         }
         out.extend_from_slice(TEXT_MARKER);
         let mut put_str = |s: &str| {
-            out.extend(text::encode(s));
+            out.extend(text::encode_any(s));
             out.push(0);
         };
         for s in [&self.title, &self.description, &self.campaign_name, &self.next_map] {

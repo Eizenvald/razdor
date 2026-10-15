@@ -61,6 +61,8 @@ pub struct View {
     confirm_replace: bool,
     /// "Translate again" was pressed once: the next press forgets the translations.
     confirm_fresh: bool,
+    /// The warning over the window: any script is Razdor only.
+    script_popup: bool,
 }
 
 impl View {
@@ -88,6 +90,7 @@ impl View {
             check: Arc::new(Mutex::new(None)),
             confirm_replace: false,
             confirm_fresh: false,
+            script_popup: false,
         };
         if install.is_none() {
             v.log(tr("No Discord Times install found: start Razdor once to choose it."), RED);
@@ -145,7 +148,7 @@ impl View {
             return;
         }
         let chapters: Vec<(String, Scenario)> = self.items[i].chapters.iter().map(|&k| self.maps[k].clone()).collect();
-        self.job = Some(translate::open_job(&chapters, &self.settings.language));
+        self.job = Some(translate::open_job(&chapters, &self.settings.language, self.settings.any_script));
         self.target = self.maps_dir.clone().map(translate::Target::Maps);
     }
 
@@ -170,11 +173,12 @@ impl View {
         let y = self.settings_panel(right);
         let y = self.job_panel(Rect::new(right.x, y + 10.0, right.w, 150.0));
         self.log_panel(Rect::new(right.x, y + 10.0, right.w, right.y + right.h - y - 10.0));
+        self.script_dialog();
         widgets::fields_end_frame();
         // Another language: the chosen maps' job in it (its own progress and copies).
         if let (Some(i), Some((job, _))) = (self.selected, self.job.as_ref()) {
             let want = self.settings.language.trim();
-            if !self.items[i].data && !widgets::typing() && !self.running() && job.language != want && !want.is_empty() {
+            if !self.items[i].data && !widgets::typing() && !self.running() && (job.language != want || job.any_script != self.settings.any_script) && !want.is_empty() {
                 self.select(i);
             }
         }
@@ -217,9 +221,10 @@ impl View {
             let english = if item.data {
                 self.install.as_ref().is_some_and(|d| d.join(razdor::dt::english::english_file(razdor::dt::install::UNITS_FILE)).exists())
             } else {
-                self.maps_dir.as_ref().is_some_and(|d| item.chapters.iter().all(|&k| d.join(job::translated_file(&self.maps[k].0, &self.settings.language)).exists()))
+                let suffix = job::copy_suffix(&self.settings.language, self.settings.any_script);
+                self.maps_dir.as_ref().is_some_and(|d| item.chapters.iter().all(|&k| d.join(job::copy_file(&self.maps[k].0, &suffix)).exists()))
             };
-            let tag = if item.data { "en".to_string() } else { job::lang_suffix(&self.settings.language) };
+            let tag = if item.data { "en".to_string() } else { job::copy_suffix(&self.settings.language, self.settings.any_script) };
             let title = if english { format!("{}  [{}]", item.title, tag.to_uppercase()) } else { item.title.clone() };
             text_fit(&title, row.x + 8.0, row.y + 19.0, row.w - 16.0, 17.0, if english { GREEN } else { INK });
             let sub = if item.data {
@@ -238,7 +243,7 @@ impl View {
 
     /// The model's settings; returns the panel's bottom.
     fn settings_panel(&mut self, r: Rect) -> f32 {
-        let h = 346.0;
+        let h = 468.0;
         draw_rectangle(r.x, r.y, r.w, h, PANEL);
         draw_rectangle_lines(r.x, r.y, r.w, h, 1.0, DIM);
         text(tr("Language model (OpenAI-compatible API)"), r.x + 12.0, r.y + 24.0, 18.0, ACCENT);
@@ -278,7 +283,20 @@ impl View {
         y += 34.0;
         text(tr("Translate into"), lx, y + 18.0, 16.0, INK);
         text_field("tr:language", fx, y, 200.0, 26.0, &mut self.settings.language, false);
-        text_fit(tr("any language: English, German, Hindi... (Latin or Cyrillic letters only)"), fx + 212.0, y + 18.0, r.x + r.w - fx - 224.0, 14.0, DIM);
+        text_fit(tr("any language: English, German, Hindi..."), fx + 212.0, y + 18.0, r.x + r.w - fx - 224.0, 14.0, DIM);
+        y += 34.0;
+        // The letters: what the original holds, or the language's own (Razdor only).
+        text(tr("Letters"), lx, y + 18.0, 16.0, INK);
+        let half = ((r.x + r.w - fx - 22.0) / 2.0).max(120.0);
+        let (latin, native) = (tr("Latin or Cyrillic: the original too"), tr("Any script: Razdor only"));
+        if button(fx, y, half, 26.0, latin, true) {
+            self.settings.any_script = false;
+        }
+        if button(fx + half + 10.0, y, half, 26.0, native, true) && !self.settings.any_script {
+            self.script_popup = true;
+        }
+        let lit = if self.settings.any_script { Rect::new(fx + half + 10.0, y, half, 26.0) } else { Rect::new(fx, y, half, 26.0) };
+        draw_rectangle_lines(lit.x - 2.0, lit.y - 2.0, lit.w + 4.0, lit.h + 4.0, 2.0, ACCENT);
         y += 34.0;
         text(tr("Reasoning"), lx, y + 18.0, 16.0, INK);
         text_field("tr:effort", fx, y, 200.0, 26.0, &mut self.settings.reasoning_effort, false);
@@ -291,6 +309,13 @@ impl View {
             text_fit(tr("e.g. \"archaic, like an old chronicle; keep names Slavic\""), fx + 5.0, y + 19.0, r.x + r.w - fx - 22.0, 15.0, DIM);
         }
         y += 64.0;
+        // What the player tells the model about the maps: who is who, the lore, names to keep.
+        text(tr("Context"), lx, y + 18.0, 16.0, INK);
+        text_field("tr:notes", fx, y, r.x + r.w - fx - 12.0, 80.0, &mut self.settings.notes, true);
+        if self.settings.notes.is_empty() && !widgets::has_focus("tr:notes") {
+            text_fit(tr("what the model should know: who is who, the story, names to keep as they are"), fx + 5.0, y + 19.0, r.x + r.w - fx - 22.0, 15.0, DIM);
+        }
+        y += 88.0;
         let check = self.check.lock().unwrap().clone();
         match check {
             Some(Ok(models)) => {
@@ -306,6 +331,31 @@ impl View {
             None => text_fit(tr("Ollama: http://localhost:11434/v1, no key. OpenAI: https://api.openai.com/v1 with a key."), lx, y + 16.0, r.w - 24.0, 15.0, DIM),
         }
         r.y + h
+    }
+
+    /// The warning before the language's own letters are chosen: the original cannot show them.
+    fn script_dialog(&mut self) {
+        if !self.script_popup {
+            return;
+        }
+        let (sw, sh) = (screen_width(), screen_height());
+        draw_rectangle(0.0, 0.0, sw, sh, Color::new(0.0, 0.0, 0.0, 0.6));
+        let (w, h) = (560.0f32.min(sw - 40.0), 230.0);
+        let (x, y) = ((sw - w) / 2.0, (sh - h) / 2.0);
+        draw_rectangle(x, y, w, h, Color::from_rgba(24, 22, 20, 255));
+        draw_rectangle_lines(x, y, w, h, 2.0, ACCENT);
+        text(tr("The original game cannot show these letters"), x + 20.0, y + 34.0, 20.0, ACCENT);
+        let body = tr("Discord Times itself shows only Latin letters without accents and Cyrillic. Maps translated in the language's own letters (umlauts, Devanagari, Chinese characters...) are for Razdor only: the original shows their texts garbled. The Latin or Cyrillic choice works in both.");
+        for (i, line) in widgets::wrap(body, w - 40.0, 16.0).iter().enumerate() {
+            text(line, x + 20.0, y + 66.0 + i as f32 * 21.0, 16.0, INK);
+        }
+        if button(x + 20.0, y + h - 50.0, 230.0, 34.0, tr("Use them: Razdor only"), true) {
+            self.settings.any_script = true;
+            self.script_popup = false;
+        }
+        if button(x + w - 170.0, y + h - 50.0, 150.0, 34.0, tr("Cancel"), true) || is_key_pressed(KeyCode::Escape) {
+            self.script_popup = false;
+        }
     }
 
     fn check_connection(&mut self) {

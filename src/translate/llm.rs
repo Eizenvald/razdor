@@ -36,6 +36,13 @@ pub struct Settings {
     pub style: String,
     /// The language translated into, as the player writes it ("English", "German", "Hindi").
     pub language: String,
+    /// The language's own letters (Devanagari, Chinese characters, umlauts), stored as UTF-8:
+    /// Razdor only, the original cannot show them. Off: Latin without accents or Cyrillic,
+    /// which the original's maps and fonts hold.
+    pub any_script: bool,
+    /// What the player tells the model about the maps (who is who, the lore, names to keep),
+    /// sent with every batch.
+    pub notes: String,
 }
 
 impl Default for Settings {
@@ -51,6 +58,8 @@ impl Default for Settings {
             timeout: 600,
             style: String::new(),
             language: "English".into(),
+            any_script: false,
+            notes: String::new(),
         }
     }
 }
@@ -117,22 +126,28 @@ pub fn api_base(endpoint: &str) -> String {
 
 /// The instructions sent with every batch: the fixed rules, then the player's style, if any.
 pub fn system_prompt(s: &Settings) -> String {
-    let rules = rules(&s.language);
-    let style = s.style.trim();
-    if style.is_empty() {
-        return rules;
+    let mut out = rules(&s.language, s.any_script);
+    let notes = s.notes.trim();
+    if !notes.is_empty() {
+        out.push_str(&format!("\n\nWhat the player tells you about these maps (use it to understand who is who and to choose words):\n{notes}"));
     }
-    format!("{rules}\n\nThe player's wishes for the style (follow them, but never break the rules above):\n{style}")
+    let style = s.style.trim();
+    if !style.is_empty() {
+        out.push_str(&format!("\n\nThe player's wishes for the style (follow them, but never break the rules above):\n{style}"));
+    }
+    out
 }
 
 /// The fixed rules sent with every batch, for translating into `language`.
-pub fn rules(language: &str) -> String {
+pub fn rules(language: &str, any_script: bool) -> String {
     let lang = match language.trim() {
         "" => "English",
         l => l,
     };
     let english = super::job::lang_suffix(lang) == "en";
-    let letters = if english {
+    let letters = if any_script && !english {
+        format!("Write {lang} in its own script and letters (with its accents, or Devanagari, Chinese characters and so on), as a native reader expects.")
+    } else if english {
         "Use plain ASCII only: straight quotes, '-' for dashes, '...'; no Cyrillic in the answer.".to_string()
     } else {
         let cyrillic = if super::text::is_cyrillic_language(lang) { "" } else { " No Cyrillic in the answer." };
@@ -409,20 +424,22 @@ mod tests {
     #[test]
     fn the_style_follows_the_rules() {
         let plain = Settings::default();
-        assert_eq!(system_prompt(&plain), rules("English"));
-        let styled = Settings { style: " Archaic, like Tolkien ".into(), ..Settings::default() };
+        assert_eq!(system_prompt(&plain), rules("English", false));
+        let styled = Settings { style: " Archaic, like Tolkien ".into(), notes: "Ivan is a king.".into(), ..Settings::default() };
         let p = system_prompt(&styled);
-        assert!(p.starts_with(&rules("English")) && p.ends_with("Archaic, like Tolkien"));
+        assert!(p.starts_with(&rules("English", false)) && p.ends_with("Archaic, like Tolkien") && p.contains("Ivan is a king."));
     }
 
     #[test]
     fn the_rules_name_the_language_and_its_letters() {
-        let en = rules("English");
+        let en = rules("English", false);
         assert!(en.contains("into English for its English edition") && en.contains("plain ASCII") && en.contains("{0}, {1}"));
-        let de = rules("German");
+        let de = rules("German", false);
         assert!(de.contains("into German") && de.contains("Windows-1251") && de.contains("No Cyrillic"));
-        assert!(!rules("Ukrainian").contains("No Cyrillic"));
-        assert!(rules("  ").contains("into English"));
+        assert!(!rules("Ukrainian", false).contains("No Cyrillic"));
+        assert!(rules("  ", false).contains("into English"));
+        let hi = rules("Hindi", true);
+        assert!(hi.contains("own script") && !hi.contains("Windows-1251"));
     }
 
     #[test]

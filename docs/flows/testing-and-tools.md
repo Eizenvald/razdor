@@ -148,7 +148,12 @@ install they run against (`razdor::dt::install::locate`), replacing older copies
   (`Job::path_for`); answers must fit Windows-1251 (`text::in_cp1251`), and Cyrillic counts as
   untranslated unless the language is a Cyrillic one. A broken JSON answer keeps its
   well-formed pairs (`llm::parse_answer`); only the rest is asked again. The game data is always
-  English (`Job::language`).
+  English (`Job::language`). With "any script" (`Settings::any_script`, `--any-script`, Razdor
+  only, behind a warning) answers keep the language's own letters, the copies are
+  `Name_<lang>-native.DTm` (`job::copy_suffix`), and such strings are stored as UTF-8 in the
+  unchanged `.DTm` layout (`dt::text::encode_any`; `dt::text::decode` reads valid UTF-8 holding
+  a character cp1251 lacks as UTF-8, everything else as cp1251). The player's context for the
+  model is `Settings::notes` (`--notes`).
 
 ## Traps
 

@@ -113,6 +113,9 @@ pub struct Job {
     /// The language translated into (the player's setting; English before it existed).
     #[serde(default = "english")]
     pub language: String,
+    /// The language's own letters, stored as UTF-8 (Razdor only; [`super::llm::Settings::any_script`]).
+    #[serde(default)]
+    pub any_script: bool,
     pub maps: Vec<JobMap>,
     pub entries: Vec<Entry>,
     /// Names translated elsewhere (the game data's units, items and spells), offered in the
@@ -123,6 +126,13 @@ pub struct Job {
 
 /// An entry is given up on (left for "retry") after this many refused answers.
 pub const MAX_TRIES: u8 = 3;
+
+/// The suffix of a translation's files: the language's ([`lang_suffix`]), with `-native` for
+/// its own letters (Razdor only) unless it is English.
+pub fn copy_suffix(language: &str, any_script: bool) -> String {
+    let l = lang_suffix(language);
+    if any_script && l != "en" { format!("{l}-native") } else { l }
+}
 
 /// A language's suffix for file names: `en` for English, else the name's Latin letters in
 /// lower case (`Hindi` → `hindi`), `tr` when it has none.
@@ -137,10 +147,15 @@ pub fn lang_suffix(language: &str) -> String {
 
 /// The translated copy's file name: `Name.DTm` → `Name_en.DTm` (English), `Name_german.DTm`.
 pub fn translated_file(file: &str, language: &str) -> String {
+    copy_file(file, &lang_suffix(language))
+}
+
+/// `Name.DTm` → `Name_<suffix>.DTm`.
+pub fn copy_file(file: &str, suffix: &str) -> String {
     let p = Path::new(file);
     let stem = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     let ext = p.extension().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "DTm".into());
-    format!("{stem}_{}.{ext}", lang_suffix(language))
+    format!("{stem}_{suffix}.{ext}")
 }
 
 /// The English copy's file name: `Name.DTm` → `Name_en.DTm`.
@@ -153,7 +168,7 @@ pub fn english_file(file: &str) -> String {
 pub fn is_translated_file(file: &str) -> bool {
     let Some(stem) = Path::new(file).file_stem().map(|s| s.to_string_lossy().into_owned()) else { return false };
     let Some((name, suffix)) = stem.rsplit_once('_') else { return false };
-    (2..=20).contains(&suffix.len()) && suffix.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) && !name.is_ascii()
+    (2..=27).contains(&suffix.len()) && suffix.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') && !name.is_ascii()
 }
 
 /// An English copy made by this tool.
@@ -196,7 +211,7 @@ pub fn campaign(maps: &[(String, Scenario)], at: usize) -> Vec<usize> {
 
 impl Job {
     /// The job for `maps` (file name, scenario), in play order.
-    pub fn new(maps: &[(String, Scenario)], language: &str) -> Job {
+    pub fn new(maps: &[(String, Scenario)], language: &str, any_script: bool) -> Job {
         let mut texts = Vec::new();
         for (_, s) in maps {
             let mut s = s.clone();
@@ -207,8 +222,10 @@ impl Job {
             }
         }
         let mut job = Job::from_texts(texts.iter().map(|(t, n)| (t.as_str(), *n)));
-        job.maps = maps.iter().map(|(f, _)| JobMap { file: f.clone(), out: translated_file(f, language) }).collect();
+        let suffix = copy_suffix(language, any_script);
+        job.maps = maps.iter().map(|(f, _)| JobMap { file: f.clone(), out: copy_file(f, &suffix) }).collect();
         job.language = language.trim().to_string();
+        job.any_script = any_script;
         job
     }
 
@@ -350,7 +367,7 @@ impl Job {
         for (k, &i) in batch.iter().enumerate() {
             let e = &mut self.entries[i];
             let got = answers.get(&(k + 1).to_string()).ok_or_else(|| "missing from the answer".to_string());
-            match got.and_then(|a| text::restore(&e.src, &prepare(&e.src), a, &self.language)) {
+            match got.and_then(|a| text::restore(&e.src, &prepare(&e.src), a, &self.language, self.any_script)) {
                 Ok(en) => {
                     e.en = Some(en);
                     e.last_error.clear();
@@ -404,9 +421,9 @@ impl Job {
 
     /// The job file for the maps starting with `first`, translated into `language` (English
     /// keeps the name it had before languages existed).
-    pub fn path_for(first: &str, language: &str) -> Option<PathBuf> {
+    pub fn path_for(first: &str, language: &str, any_script: bool) -> Option<PathBuf> {
         let stem = Path::new(first).file_stem()?.to_string_lossy().into_owned();
-        let name = match lang_suffix(language).as_str() {
+        let name = match copy_suffix(language, any_script).as_str() {
             "en" => format!("{stem}.json"),
             l => format!("{stem}.{l}.json"),
         };
@@ -457,7 +474,7 @@ mod tests {
 
     #[test]
     fn gathers_distinct_strings_names_first() {
-        let job = Job::new(&[("A.DTm".into(), scenario("Озеро", "B.DTm")), ("B.DTm".into(), scenario("Озеро 2", ""))], "English");
+        let job = Job::new(&[("A.DTm".into(), scenario("Озеро", "B.DTm")), ("B.DTm".into(), scenario("Озеро 2", ""))], "English", false);
         let src: Vec<(&str, bool)> = job.entries.iter().map(|e| (e.src.as_str(), e.name)).collect();
         assert_eq!(
             src,
@@ -483,7 +500,7 @@ mod tests {
     #[test]
     fn writes_english_keeping_scripts_suffixes_and_links() {
         let maps = [("A.DTm".to_string(), scenario("Озеро", "b.dtm")), ("B.DTm".to_string(), scenario("Озеро 2", ""))];
-        let mut job = Job::new(&maps, "English");
+        let mut job = Job::new(&maps, "English", false);
         let answers = |job: &Job, batch: &[usize]| -> HashMap<String, String> {
             let en = |s: &str| match s {
                 "Озеро" => "Lake",
@@ -518,7 +535,7 @@ mod tests {
 
     #[test]
     fn the_glossary_finds_names_in_inflected_text() {
-        let mut job = Job::new(&[("A.DTm".into(), scenario("Озеро", ""))], "English");
+        let mut job = Job::new(&[("A.DTm".into(), scenario("Озеро", ""))], "English", false);
         let names = job.next_batch(10_000, 100);
         let a: HashMap<String, String> = names.iter().enumerate().map(|(k, _)| ((k + 1).to_string(), "X".to_string())).collect();
         job.accept(&names, &a);
@@ -530,7 +547,7 @@ mod tests {
 
     #[test]
     fn refused_answers_retry_alone_then_give_up() {
-        let mut job = Job::new(&[("A.DTm".into(), scenario("Озеро", ""))], "English");
+        let mut job = Job::new(&[("A.DTm".into(), scenario("Озеро", ""))], "English", false);
         let batch = job.next_batch(10_000, 100);
         job.accept(&batch, &HashMap::new());
         assert_eq!(job.next_batch(10_000, 100), vec![batch[0]]);
@@ -574,7 +591,7 @@ mod tests {
             s
         };
         for (file, path, s) in &maps {
-            let mut job = Job::new(&[(file.clone(), s.clone())], "English");
+            let mut job = Job::new(&[(file.clone(), s.clone())], "English", false);
             let batch: Vec<usize> = (0..job.entries.len()).collect();
             let answers: HashMap<String, String> = batch
                 .iter()
@@ -606,7 +623,11 @@ mod tests {
         assert_eq!(translated_file("Проклятое озеро.DTm", "Українська"), "Проклятое озеро_tr.DTm");
         assert!(is_translated_file("Проклятое озеро_hindi.DTm") && is_translated_file("РК1-Начало пути_en.DTm"));
         assert!(!is_translated_file("Проклятое озеро.DTm") && !is_translated_file("my_map.DTm") && !is_translated_file("РК1-Начало_пути.DTm"));
-        assert_eq!(Job::path_for("A.DTm", "English").unwrap().file_name().unwrap(), "A.json");
-        assert_eq!(Job::path_for("A.DTm", "German").unwrap().file_name().unwrap(), "A.german.json");
+        assert_eq!(Job::path_for("A.DTm", "English", false).unwrap().file_name().unwrap(), "A.json");
+        assert_eq!(Job::path_for("A.DTm", "German", false).unwrap().file_name().unwrap(), "A.german.json");
+        assert_eq!(Job::path_for("A.DTm", "Hindi", true).unwrap().file_name().unwrap(), "A.hindi-native.json");
+        assert_eq!(copy_file("Озеро.DTm", &copy_suffix("Hindi", true)), "Озеро_hindi-native.DTm");
+        assert_eq!(copy_suffix("English", true), "en");
+        assert!(is_translated_file("Озеро_hindi-native.DTm"));
     }
 }

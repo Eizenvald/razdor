@@ -35,9 +35,9 @@ pub fn install_maps(install: &Path) -> Vec<(String, PathBuf, Scenario)> {
 
 /// The job for `maps` (in play order) into `language`: the saved one's translations kept for
 /// strings it shares.
-pub fn open_job(maps: &[(String, Scenario)], language: &str) -> (Job, Option<PathBuf>) {
-    let mut job = Job::new(maps, language);
-    let path = maps.first().and_then(|(f, _)| Job::path_for(f, language));
+pub fn open_job(maps: &[(String, Scenario)], language: &str, any_script: bool) -> (Job, Option<PathBuf>) {
+    let mut job = Job::new(maps, language, any_script);
+    let path = maps.first().and_then(|(f, _)| Job::path_for(f, language, any_script));
     if let Some(old) = path.as_deref().and_then(Job::load) {
         job.take_over(&old);
     }
@@ -77,7 +77,7 @@ pub fn run(job: &mut Job, path: Option<&Path>, s: &Settings, stop: &AtomicBool, 
         report(job, Event::Sending { items: batch.len(), first: texts[0].chars().take(60).collect() });
         let t0 = std::time::Instant::now();
         // The job's own language (the game data is always English).
-        let rules = llm::system_prompt(&Settings { language: job.language.clone(), ..s.clone() });
+        let rules = llm::system_prompt(&Settings { language: job.language.clone(), any_script: job.any_script, ..s.clone() });
         match llm::chat(s, &rules, &prompt).and_then(|a| llm::parse_answer(&a)) {
             Ok(answers) => {
                 failures_in_a_row = 0;
