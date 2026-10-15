@@ -28,9 +28,9 @@ thread_local! {
     /// at k = 1, and the hero picked.
     static PICKED: Cell<usize> = const { Cell::new(0) };
     static SCROLL: Cell<f32> = const { Cell::new(0.0) };
-    /// Long scenario descriptions scroll without changing their font size.
-    static DESCRIPTION_SCROLL: Cell<(usize, usize)> = const { Cell::new((usize::MAX, 0)) };
     static HERO: Cell<usize> = const { Cell::new(0) };
+    /// A map to pick when the list opens (the `scenarios:<map>` snapshot scene).
+    static PICK: RefCell<Option<String>> = const { RefCell::new(None) };
     /// Whether the hero window is open (its class was set on opening).
     static HERO_OPEN: Cell<bool> = const { Cell::new(false) };
     /// The map preview of the scenario shown: (index into `scenarios`, texture).
@@ -204,6 +204,12 @@ pub fn open_list() {
     SCROLL.with(|s| s.set(0.0));
 }
 
+/// Picks the row of the map whose file name starts with `name` when the list next shows
+/// (the `scenarios:<map>` snapshot scene).
+pub fn pick_map(name: &str) {
+    PICK.with(|p| *p.borrow_mut() = Some(name.to_string()));
+}
+
 /// A map's title, or its file name when it has none.
 fn title(e: &ScenarioEntry) -> &str {
     if e.scenario.title.trim().is_empty() { e.file.as_str() } else { e.scenario.title.as_str() }
@@ -240,6 +246,11 @@ pub fn scenario_select(scenarios: &[ScenarioEntry], has_install: bool) -> Option
     let (win, closed) = Win::open(&own("NewGame", "Title", n_("Scenario for a new game")));
     let k = win.k;
     let list = scenario_groups(scenarios);
+    if let Some(name) = PICK.with(|p| p.borrow_mut().take()) {
+        if let Some(i) = list.iter().position(|g| std::iter::once(&g.first).chain(&g.chapters).any(|&m| scenarios[m].file.starts_with(&name))) {
+            PICKED.with(|p| p.set(i));
+        }
+    }
     let mut picked = PICKED.with(|p| p.get()).min(list.len().saturating_sub(1));
     // The list: per group a round icon and the name, and a campaign's chapters under it in
     // small type; the picked group's block is lit. The wheel and the scrollbar scroll it.
