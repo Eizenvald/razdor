@@ -26,6 +26,8 @@ Without arguments: the window.
   --key <key>                API key (or the RAZDOR_LLM_KEY variable)
   --context <tokens>         the model's context window: sizes the batches
   --reasoning <effort>       reasoning_effort to send ('' to send none)
+  --language <name>          the language to translate into (default English; maps only:
+                             the game data is always English)
   --style <text>             your wishes for the translation's style (added to the rules)
   --fresh                    translate everything again (forget the saved translations)
   --save-settings            keep these settings for next time
@@ -94,6 +96,9 @@ fn cli(args: &[String]) -> Option<i32> {
     if let Some(v) = value("--reasoning") {
         s.reasoning_effort = v;
     }
+    if let Some(v) = value("--language") {
+        s.language = v;
+    }
     if let Some(v) = value("--style") {
         s.style = v;
     }
@@ -109,7 +114,7 @@ fn cli(args: &[String]) -> Option<i32> {
     } else {
         let at = found.flatten().expect("a map was found");
         let chain: Vec<(String, razdor::dt::dtm::Scenario)> = translate::job::campaign(&pairs, at).into_iter().map(|k| pairs[k].clone()).collect();
-        let (job, path) = translate::open_job(&chain);
+        let (job, path) = translate::open_job(&chain, &s.language);
         let what = format!("{} map(s): {}", chain.len(), chain.iter().map(|(f, _)| f.as_str()).collect::<Vec<_>>().join(", "));
         (job, path, translate::Target::Maps(maps_dir.clone()), what)
     };

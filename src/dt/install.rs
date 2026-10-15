@@ -490,8 +490,8 @@ mod tests {
     fn install() -> Option<DtInstall> {
         let dir = std::env::var_os(ENV_VAR)?;
         let mut dt = DtInstall::load(Path::new(&dir)).expect("install loads");
-        // The shipped maps only: English copies made by razdor-translate are left out.
-        dt.maps.retain(|m| !crate::translate::job::is_english_file(&m.name));
+        // The shipped maps only: translated copies made by razdor-translate are left out.
+        dt.maps.retain(|m| !crate::translate::job::is_translated_file(&m.name));
         Some(dt)
     }
 

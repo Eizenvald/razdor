@@ -3,7 +3,7 @@
 
 # Header and the map list
 Map translator = Переводчик карт
-English copies of the install's maps, made by a language model = Английские копии карт игры, переведённые языковой моделью
+Translated copies of the install's maps, made by a language model = Переведённые копии карт игры, сделанные языковой моделью
 No Discord Times install found: start Razdor once to choose it. = Игра «Времена раздора» не найдена: запустите Razdor и укажите папку игры.
 No maps = Нет карт
 Campaign: {n} chapters = Кампания: глав — {n}
@@ -19,6 +19,8 @@ API key = Ключ API
 none (a local server) = нет (локальный сервер)
 Paste = Вставить
 Context (tokens) = Контекст (токенов)
+Translate into = Переводить на
+any language: English, German, Hindi... (Latin or Cyrillic letters only) = любой язык: English, German, Hindi… (только латиница или кириллица)
 Reasoning = Размышления
 Translation style = Стиль перевода
 e.g. "archaic, like an old chronicle; keep names Slavic" = например: «по-старинному, как летопись; имена оставлять славянскими»
@@ -36,11 +38,11 @@ Translate = Перевести
 Go on = Продолжить
 Stop = Остановить
 Retry given up = Повторить неудачные
-Write English maps = Записать английские карты
+Write translated maps = Записать переведённые карты
 Translate again = Перевести заново
 Forget and translate = Забыть и перевести
 Press again to translate everything anew (with the style and model set now). = Нажмите ещё раз, чтобы перевести всё заново (с нынешними стилем и моделью).
-Replace English maps = Заменить английские карты
+Replace translated maps = Заменить переведённые карты
 Untranslated texts stay in Russian in the written maps. = Непереведённые тексты останутся в картах на русском.
 
 # The log
@@ -54,6 +56,6 @@ Stopped: {why} = Остановлено: {why}
 All texts translated. = Все тексты переведены.
 All texts translated, but the game has no maps folder. = Все тексты переведены, но у игры нет папки с картами.
 Done; {n} texts given up (Retry given up). = Готово; не удалось перевести текстов: {n} (кнопка «Повторить неудачные»).
-English copies exist already: press again to replace them. = Английские копии уже есть: нажмите ещё раз, чтобы заменить их.
+Translated copies exist already: press again to replace them. = Переведённые копии уже есть: нажмите ещё раз, чтобы заменить их.
 Written: {f} = Записано: {f}
 Not written: {why} = Не записано: {why}

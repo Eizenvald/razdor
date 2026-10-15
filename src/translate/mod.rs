@@ -33,15 +33,18 @@ pub fn install_maps(install: &Path) -> Vec<(String, PathBuf, Scenario)> {
         .collect()
 }
 
-/// The job for `maps` (in play order): the saved one's English kept for strings it shares.
-pub fn open_job(maps: &[(String, Scenario)]) -> (Job, Option<PathBuf>) {
-    let mut job = Job::new(maps);
-    let path = maps.first().and_then(|(f, _)| Job::path_for(f));
+/// The job for `maps` (in play order) into `language`: the saved one's translations kept for
+/// strings it shares.
+pub fn open_job(maps: &[(String, Scenario)], language: &str) -> (Job, Option<PathBuf>) {
+    let mut job = Job::new(maps, language);
+    let path = maps.first().and_then(|(f, _)| Job::path_for(f, language));
     if let Some(old) = path.as_deref().and_then(Job::load) {
         job.take_over(&old);
     }
-    // The game data's names: a map's texts call a unit what its card calls it.
-    job.outside_glossary = data::glossary();
+    // The game data's names (English): a map's texts call a unit what its card calls it.
+    if job::lang_suffix(language) == "en" {
+        job.outside_glossary = data::glossary();
+    }
     (job, path)
 }
 
@@ -73,7 +76,9 @@ pub fn run(job: &mut Job, path: Option<&Path>, s: &Settings, stop: &AtomicBool, 
         let prompt = llm::user_prompt(&texts, &glossary);
         report(job, Event::Sending { items: batch.len(), first: texts[0].chars().take(60).collect() });
         let t0 = std::time::Instant::now();
-        match llm::chat(s, &llm::system_prompt(s), &prompt).and_then(|a| llm::parse_answer(&a)) {
+        // The job's own language (the game data is always English).
+        let rules = llm::system_prompt(&Settings { language: job.language.clone(), ..s.clone() });
+        match llm::chat(s, &rules, &prompt).and_then(|a| llm::parse_answer(&a)) {
             Ok(answers) => {
                 failures_in_a_row = 0;
                 let taken = job.accept(&batch, &answers);

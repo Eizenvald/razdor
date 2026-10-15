@@ -104,8 +104,15 @@ pub struct JobMap {
     pub out: String,
 }
 
+fn english() -> String {
+    "English".to_string()
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Job {
+    /// The language translated into (the player's setting; English before it existed).
+    #[serde(default = "english")]
+    pub language: String,
     pub maps: Vec<JobMap>,
     pub entries: Vec<Entry>,
     /// Names translated elsewhere (the game data's units, items and spells), offered in the
@@ -117,12 +124,36 @@ pub struct Job {
 /// An entry is given up on (left for "retry") after this many refused answers.
 pub const MAX_TRIES: u8 = 3;
 
-/// The English copy's file name: `Name.DTm` → `Name_en.DTm`.
-pub fn english_file(file: &str) -> String {
+/// A language's suffix for file names: `en` for English, else the name's Latin letters in
+/// lower case (`Hindi` → `hindi`), `tr` when it has none.
+pub fn lang_suffix(language: &str) -> String {
+    let l = language.trim().to_lowercase();
+    if l.is_empty() || l == "english" || l == "en" || l == "английский" {
+        return "en".into();
+    }
+    let s: String = l.chars().filter(|c| c.is_ascii_alphanumeric()).take(20).collect();
+    if s.is_empty() { "tr".into() } else { s }
+}
+
+/// The translated copy's file name: `Name.DTm` → `Name_en.DTm` (English), `Name_german.DTm`.
+pub fn translated_file(file: &str, language: &str) -> String {
     let p = Path::new(file);
     let stem = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     let ext = p.extension().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "DTm".into());
-    format!("{stem}_en.{ext}")
+    format!("{stem}_{}.{ext}", lang_suffix(language))
+}
+
+/// The English copy's file name: `Name.DTm` → `Name_en.DTm`.
+pub fn english_file(file: &str) -> String {
+    translated_file(file, "English")
+}
+
+/// A translated copy made by this tool: its name ends in `_` and a Latin suffix
+/// ([`lang_suffix`]) after a name that is not all Latin (the shipped maps' names are Russian).
+pub fn is_translated_file(file: &str) -> bool {
+    let Some(stem) = Path::new(file).file_stem().map(|s| s.to_string_lossy().into_owned()) else { return false };
+    let Some((name, suffix)) = stem.rsplit_once('_') else { return false };
+    (2..=20).contains(&suffix.len()) && suffix.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) && !name.is_ascii()
 }
 
 /// An English copy made by this tool.
@@ -165,7 +196,7 @@ pub fn campaign(maps: &[(String, Scenario)], at: usize) -> Vec<usize> {
 
 impl Job {
     /// The job for `maps` (file name, scenario), in play order.
-    pub fn new(maps: &[(String, Scenario)]) -> Job {
+    pub fn new(maps: &[(String, Scenario)], language: &str) -> Job {
         let mut texts = Vec::new();
         for (_, s) in maps {
             let mut s = s.clone();
@@ -176,7 +207,8 @@ impl Job {
             }
         }
         let mut job = Job::from_texts(texts.iter().map(|(t, n)| (t.as_str(), *n)));
-        job.maps = maps.iter().map(|(f, _)| JobMap { file: f.clone(), out: english_file(f) }).collect();
+        job.maps = maps.iter().map(|(f, _)| JobMap { file: f.clone(), out: translated_file(f, language) }).collect();
+        job.language = language.trim().to_string();
         job
     }
 
@@ -197,7 +229,7 @@ impl Job {
                 }
             }
         }
-        Job { entries, ..Job::default() }
+        Job { entries, language: english(), ..Job::default() }
     }
 
     /// The English of `src`, once translated.
@@ -318,7 +350,7 @@ impl Job {
         for (k, &i) in batch.iter().enumerate() {
             let e = &mut self.entries[i];
             let got = answers.get(&(k + 1).to_string()).ok_or_else(|| "missing from the answer".to_string());
-            match got.and_then(|a| text::restore(&e.src, &prepare(&e.src), a)) {
+            match got.and_then(|a| text::restore(&e.src, &prepare(&e.src), a, &self.language)) {
                 Ok(en) => {
                     e.en = Some(en);
                     e.last_error.clear();
@@ -370,10 +402,15 @@ impl Job {
         dirs::data_dir().map(|d| d.join("razdor").join("translate"))
     }
 
-    /// The job file for the maps starting with `first`.
-    pub fn path_for(first: &str) -> Option<PathBuf> {
+    /// The job file for the maps starting with `first`, translated into `language` (English
+    /// keeps the name it had before languages existed).
+    pub fn path_for(first: &str, language: &str) -> Option<PathBuf> {
         let stem = Path::new(first).file_stem()?.to_string_lossy().into_owned();
-        Some(Job::dir()?.join(format!("{stem}.json")))
+        let name = match lang_suffix(language).as_str() {
+            "en" => format!("{stem}.json"),
+            l => format!("{stem}.{l}.json"),
+        };
+        Some(Job::dir()?.join(name))
     }
 
     pub fn load(path: &Path) -> Option<Job> {
@@ -420,7 +457,7 @@ mod tests {
 
     #[test]
     fn gathers_distinct_strings_names_first() {
-        let job = Job::new(&[("A.DTm".into(), scenario("Озеро", "B.DTm")), ("B.DTm".into(), scenario("Озеро 2", ""))]);
+        let job = Job::new(&[("A.DTm".into(), scenario("Озеро", "B.DTm")), ("B.DTm".into(), scenario("Озеро 2", ""))], "English");
         let src: Vec<(&str, bool)> = job.entries.iter().map(|e| (e.src.as_str(), e.name)).collect();
         assert_eq!(
             src,
@@ -446,7 +483,7 @@ mod tests {
     #[test]
     fn writes_english_keeping_scripts_suffixes_and_links() {
         let maps = [("A.DTm".to_string(), scenario("Озеро", "b.dtm")), ("B.DTm".to_string(), scenario("Озеро 2", ""))];
-        let mut job = Job::new(&maps);
+        let mut job = Job::new(&maps, "English");
         let answers = |job: &Job, batch: &[usize]| -> HashMap<String, String> {
             let en = |s: &str| match s {
                 "Озеро" => "Lake",
@@ -481,7 +518,7 @@ mod tests {
 
     #[test]
     fn the_glossary_finds_names_in_inflected_text() {
-        let mut job = Job::new(&[("A.DTm".into(), scenario("Озеро", ""))]);
+        let mut job = Job::new(&[("A.DTm".into(), scenario("Озеро", ""))], "English");
         let names = job.next_batch(10_000, 100);
         let a: HashMap<String, String> = names.iter().enumerate().map(|(k, _)| ((k + 1).to_string(), "X".to_string())).collect();
         job.accept(&names, &a);
@@ -493,7 +530,7 @@ mod tests {
 
     #[test]
     fn refused_answers_retry_alone_then_give_up() {
-        let mut job = Job::new(&[("A.DTm".into(), scenario("Озеро", ""))]);
+        let mut job = Job::new(&[("A.DTm".into(), scenario("Озеро", ""))], "English");
         let batch = job.next_batch(10_000, 100);
         job.accept(&batch, &HashMap::new());
         assert_eq!(job.next_batch(10_000, 100), vec![batch[0]]);
@@ -537,7 +574,7 @@ mod tests {
             s
         };
         for (file, path, s) in &maps {
-            let mut job = Job::new(&[(file.clone(), s.clone())]);
+            let mut job = Job::new(&[(file.clone(), s.clone())], "English");
             let batch: Vec<usize> = (0..job.entries.len()).collect();
             let answers: HashMap<String, String> = batch
                 .iter()
@@ -564,5 +601,12 @@ mod tests {
         assert_eq!(english_file("Проклятое озеро.DTm"), "Проклятое озеро_en.DTm");
         assert!(is_english_file("Проклятое озеро_en.DTm"));
         assert!(!is_english_file("Проклятое озеро.DTm"));
+        assert_eq!(translated_file("Проклятое озеро.DTm", " Hindi "), "Проклятое озеро_hindi.DTm");
+        assert_eq!(translated_file("Проклятое озеро.DTm", "english"), "Проклятое озеро_en.DTm");
+        assert_eq!(translated_file("Проклятое озеро.DTm", "Українська"), "Проклятое озеро_tr.DTm");
+        assert!(is_translated_file("Проклятое озеро_hindi.DTm") && is_translated_file("РК1-Начало пути_en.DTm"));
+        assert!(!is_translated_file("Проклятое озеро.DTm") && !is_translated_file("my_map.DTm") && !is_translated_file("РК1-Начало_пути.DTm"));
+        assert_eq!(Job::path_for("A.DTm", "English").unwrap().file_name().unwrap(), "A.json");
+        assert_eq!(Job::path_for("A.DTm", "German").unwrap().file_name().unwrap(), "A.german.json");
     }
 }

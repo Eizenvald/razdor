@@ -145,7 +145,7 @@ impl View {
             return;
         }
         let chapters: Vec<(String, Scenario)> = self.items[i].chapters.iter().map(|&k| self.maps[k].clone()).collect();
-        self.job = Some(translate::open_job(&chapters));
+        self.job = Some(translate::open_job(&chapters, &self.settings.language));
         self.target = self.maps_dir.clone().map(translate::Target::Maps);
     }
 
@@ -163,7 +163,7 @@ impl View {
         }
         let (sw, sh) = (screen_width(), screen_height());
         text(tr("Map translator"), 16.0, 30.0, 24.0, ACCENT);
-        text_fit(tr("English copies of the install's maps, made by a language model"), 230.0, 29.0, sw - 360.0, 15.0, DIM);
+        text_fit(tr("Translated copies of the install's maps, made by a language model"), 230.0, 29.0, sw - 360.0, 15.0, DIM);
         crate::ui::language::switch_button(sw - 110.0, 8.0, 94.0, 28.0);
         self.list(Rect::new(12.0, 48.0, LIST_W, sh - 60.0));
         let right = Rect::new(LIST_W + 24.0, 48.0, sw - LIST_W - 36.0, sh - 60.0);
@@ -171,6 +171,13 @@ impl View {
         let y = self.job_panel(Rect::new(right.x, y + 10.0, right.w, 150.0));
         self.log_panel(Rect::new(right.x, y + 10.0, right.w, right.y + right.h - y - 10.0));
         widgets::fields_end_frame();
+        // Another language: the chosen maps' job in it (its own progress and copies).
+        if let (Some(i), Some((job, _))) = (self.selected, self.job.as_ref()) {
+            let want = self.settings.language.trim();
+            if !self.items[i].data && !widgets::typing() && !self.running() && job.language != want && !want.is_empty() {
+                self.select(i);
+            }
+        }
         // Settings are kept once typing ends.
         if !widgets::typing() && self.settings != self.saved {
             if let Err(e) = self.settings.save() {
@@ -210,9 +217,10 @@ impl View {
             let english = if item.data {
                 self.install.as_ref().is_some_and(|d| d.join(razdor::dt::english::english_file(razdor::dt::install::UNITS_FILE)).exists())
             } else {
-                self.maps_dir.as_ref().is_some_and(|d| item.chapters.iter().all(|&k| d.join(job::english_file(&self.maps[k].0)).exists()))
+                self.maps_dir.as_ref().is_some_and(|d| item.chapters.iter().all(|&k| d.join(job::translated_file(&self.maps[k].0, &self.settings.language)).exists()))
             };
-            let title = if english { format!("{}  [EN]", item.title) } else { item.title.clone() };
+            let tag = if item.data { "en".to_string() } else { job::lang_suffix(&self.settings.language) };
+            let title = if english { format!("{}  [{}]", item.title, tag.to_uppercase()) } else { item.title.clone() };
             text_fit(&title, row.x + 8.0, row.y + 19.0, row.w - 16.0, 17.0, if english { GREEN } else { INK });
             let sub = if item.data {
                 tr("Units, items, spells and the game's texts: for Razdor in English").to_string()
@@ -230,7 +238,7 @@ impl View {
 
     /// The model's settings; returns the panel's bottom.
     fn settings_panel(&mut self, r: Rect) -> f32 {
-        let h = 312.0;
+        let h = 346.0;
         draw_rectangle(r.x, r.y, r.w, h, PANEL);
         draw_rectangle_lines(r.x, r.y, r.w, h, 1.0, DIM);
         text(tr("Language model (OpenAI-compatible API)"), r.x + 12.0, r.y + 24.0, 18.0, ACCENT);
@@ -267,6 +275,10 @@ impl View {
         if let Some(v) = widgets::number_field("tr:context", fx, y, 200.0, self.settings.context as i64, 512, 1_048_576) {
             self.settings.context = v as u32;
         }
+        y += 34.0;
+        text(tr("Translate into"), lx, y + 18.0, 16.0, INK);
+        text_field("tr:language", fx, y, 200.0, 26.0, &mut self.settings.language, false);
+        text_fit(tr("any language: English, German, Hindi... (Latin or Cyrillic letters only)"), fx + 212.0, y + 18.0, r.x + r.w - fx - 224.0, 14.0, DIM);
         y += 34.0;
         text(tr("Reasoning"), lx, y + 18.0, 16.0, INK);
         text_field("tr:effort", fx, y, 200.0, 26.0, &mut self.settings.reasoning_effort, false);
@@ -343,10 +355,10 @@ impl View {
         let can_write = !busy && done > 0 && self.target.is_some();
         let write_x = r.x + 32.0 + 2.0 * w;
         if self.confirm_replace {
-            if red_button(write_x, y, w, 32.0, tr("Replace English maps"), can_write) {
+            if red_button(write_x, y, w, 32.0, tr("Replace translated maps"), can_write) {
                 self.write(true);
             }
-        } else if button(write_x, y, w, 32.0, tr("Write English maps"), can_write) {
+        } else if button(write_x, y, w, 32.0, tr("Write translated maps"), can_write) {
             self.write(false);
         }
         // Everything again (another model or style): a second press confirms.
@@ -433,7 +445,7 @@ impl View {
             }
             Err(_) if !overwrite => {
                 self.confirm_replace = true;
-                self.log(tr("English copies exist already: press again to replace them."), ACCENT);
+                self.log(tr("Translated copies exist already: press again to replace them."), ACCENT);
             }
             Err(why) => self.log(trf!("Not written: {why}", why), RED),
         }
@@ -459,7 +471,7 @@ impl View {
 fn items(maps: &[(String, Scenario)]) -> Vec<Item> {
     let mut out: Vec<Item> = Vec::new();
     for k in 0..maps.len() {
-        if job::is_english_file(&maps[k].0) {
+        if job::is_translated_file(&maps[k].0) {
             continue;
         }
         let chapters = job::campaign(maps, k);

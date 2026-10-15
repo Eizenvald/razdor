@@ -34,6 +34,8 @@ pub struct Settings {
     /// The player's own instructions on the translation's style (an author's voice, a
     /// glossary, a tone), added to the fixed rules ([`system_prompt`]).
     pub style: String,
+    /// The language translated into, as the player writes it ("English", "German", "Hindi").
+    pub language: String,
 }
 
 impl Default for Settings {
@@ -48,6 +50,7 @@ impl Default for Settings {
             temperature: 0.2,
             timeout: 600,
             style: String::new(),
+            language: "English".into(),
         }
     }
 }
@@ -114,30 +117,50 @@ pub fn api_base(endpoint: &str) -> String {
 
 /// The instructions sent with every batch: the fixed rules, then the player's style, if any.
 pub fn system_prompt(s: &Settings) -> String {
+    let rules = rules(&s.language);
     let style = s.style.trim();
     if style.is_empty() {
-        return SYSTEM_PROMPT.to_string();
+        return rules;
     }
-    format!("{SYSTEM_PROMPT}\n\nThe player's wishes for the style (follow them, but never break the rules above):\n{style}")
+    format!("{rules}\n\nThe player's wishes for the style (follow them, but never break the rules above):\n{style}")
 }
 
-/// The fixed rules sent with every batch.
-pub const SYSTEM_PROMPT: &str = "You translate texts of the Russian fantasy strategy game \"Discord Times\" \
-(\"Времена раздора\") into English for its English edition.
+/// The fixed rules sent with every batch, for translating into `language`.
+pub fn rules(language: &str) -> String {
+    let lang = match language.trim() {
+        "" => "English",
+        l => l,
+    };
+    let english = super::job::lang_suffix(lang) == "en";
+    let letters = if english {
+        "Use plain ASCII only: straight quotes, '-' for dashes, '...'; no Cyrillic in the answer.".to_string()
+    } else {
+        let cyrillic = if super::text::is_cyrillic_language(lang) { "" } else { " No Cyrillic in the answer." };
+        format!(
+            "The game stores text in the Windows-1251 code page: write only Latin letters without accents, \
+Cyrillic letters, digits and plain punctuation (straight quotes, '-', '...'); write accented letters without \
+their accents, and a language with another script in Latin letters (a common romanisation).{cyrillic}"
+        )
+    };
+    format!(
+        "You translate texts of the Russian fantasy strategy game \"Discord Times\" (\"Времена раздора\") into \
+{lang} for its {lang} edition.
 
 You get a JSON object of numbered Russian texts. Reply with ONLY a JSON object with the same keys, \
-each value the English translation of that text. Translate every entry; never merge, split, skip or \
+each value the {lang} translation of that text. Translate every entry; never merge, split, skip or \
 add entries; never explain.
 
 Keep exactly, in the same places:
-- placeholders like {0}, {1};
+- placeholders like {{0}}, {{1}};
 - <br> and line breaks (\\n): the same number of lines;
 - the markup characters * | @ ^ (they style a line; keep each where it stands, usually at the line's start).
 
 Style: medieval fantasy, plain and vivid, the tone of the original. Keep it about as long as the Russian. \
-Names: translate names that have a meaning (\"Проклятое озеро\" -> \"Cursed Lake\", \"Старый лес\" -> \"Old Forest\"); \
-transliterate personal names (\"Иван\" -> \"Ivan\"). Use the glossary's English for the names it lists. \
-Use plain ASCII only: straight quotes, '-' for dashes, '...'; no Cyrillic in the answer.";
+Names: translate names that have a meaning (\"Проклятое озеро\" -> \"Cursed Lake\" in English); \
+transliterate personal names (\"Иван\" -> \"Ivan\"). Use the glossary's {lang} for the names it lists. \
+{letters}"
+    )
+}
 
 /// The user message for `texts` (the batch's Russian, in order, numbered from 1).
 pub fn user_prompt(texts: &[&str], glossary: &[(String, String)]) -> String {
@@ -164,9 +187,64 @@ pub fn parse_answer(answer: &str) -> Result<HashMap<String, String>, String> {
     if end < start {
         return Err("no JSON object in the answer".into());
     }
-    let v: Value = serde_json::from_str(&answer[start..=end]).map_err(|e| format!("the answer is not valid JSON: {e}"))?;
-    let obj = v.as_object().ok_or("the answer is not a JSON object")?;
-    Ok(obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
+    let body = &answer[start..=end];
+    match serde_json::from_str::<Value>(body) {
+        Ok(v) => {
+            let obj = v.as_object().ok_or("the answer is not a JSON object")?;
+            Ok(obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
+        }
+        // A model sometimes breaks one entry (an unquoted value, a stray character): the
+        // well-formed `"N": "text"` pairs are kept, and only the rest is asked again.
+        Err(e) => {
+            let pairs = loose_pairs(body);
+            if pairs.is_empty() { Err(format!("the answer is not valid JSON: {e}")) } else { Ok(pairs) }
+        }
+    }
+}
+
+/// The `"<digits>": "<JSON string>"` pairs of a broken JSON object, in any order.
+fn loose_pairs(body: &str) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    let b = body.as_bytes();
+    let mut i = 0;
+    while let Some(q) = body[i..].find('"').map(|q| q + i) {
+        // A key: digits between quotes, then a colon.
+        let digits = body[q + 1..].bytes().take_while(u8::is_ascii_digit).count();
+        let after_key = q + 1 + digits;
+        if digits == 0 || b.get(after_key) != Some(&b'"') {
+            i = q + 1;
+            continue;
+        }
+        let mut j = after_key + 1;
+        while b.get(j).is_some_and(|c| c.is_ascii_whitespace()) {
+            j += 1;
+        }
+        if b.get(j) != Some(&b':') {
+            i = after_key + 1;
+            continue;
+        }
+        j += 1;
+        while b.get(j).is_some_and(|c| c.is_ascii_whitespace()) {
+            j += 1;
+        }
+        if b.get(j) != Some(&b'"') {
+            i = j.max(after_key + 1);
+            continue;
+        }
+        // The value: a JSON string up to its unescaped closing quote.
+        let mut k = j + 1;
+        while k < b.len() && b[k] != b'"' {
+            k += if b[k] == b'\\' { 2 } else { 1 };
+        }
+        if k >= b.len() {
+            break;
+        }
+        if let Ok(v) = serde_json::from_str::<String>(&body[j..=k]) {
+            out.insert(body[q + 1..after_key].to_string(), v);
+        }
+        i = k + 1;
+    }
+    out
 }
 
 /// `curl` with its window hidden on Windows.
@@ -297,6 +375,12 @@ mod tests {
         assert_eq!(got.len(), 2);
         assert_eq!(got["1"], "Hello");
         assert!(parse_answer("no json here").is_err());
+        // One broken entry: the others are kept.
+        let broken = "{\n \"1\": \"Hello, \\\"friend\\\"\",\n \"2\": 12-3,\n \"3\": \"Yes: {0}\"\n}";
+        let got = parse_answer(broken).unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!(got["1"], "Hello, \"friend\"");
+        assert_eq!(got["3"], "Yes: {0}");
         assert!(parse_answer("{\"1\": ").is_err());
     }
 
@@ -325,10 +409,20 @@ mod tests {
     #[test]
     fn the_style_follows_the_rules() {
         let plain = Settings::default();
-        assert_eq!(system_prompt(&plain), SYSTEM_PROMPT);
+        assert_eq!(system_prompt(&plain), rules("English"));
         let styled = Settings { style: " Archaic, like Tolkien ".into(), ..Settings::default() };
         let p = system_prompt(&styled);
-        assert!(p.starts_with(SYSTEM_PROMPT) && p.ends_with("Archaic, like Tolkien"));
+        assert!(p.starts_with(&rules("English")) && p.ends_with("Archaic, like Tolkien"));
+    }
+
+    #[test]
+    fn the_rules_name_the_language_and_its_letters() {
+        let en = rules("English");
+        assert!(en.contains("into English for its English edition") && en.contains("plain ASCII") && en.contains("{0}, {1}"));
+        let de = rules("German");
+        assert!(de.contains("into German") && de.contains("Windows-1251") && de.contains("No Cyrillic"));
+        assert!(!rules("Ukrainian").contains("No Cyrillic"));
+        assert!(rules("  ").contains("into English"));
     }
 
     #[test]

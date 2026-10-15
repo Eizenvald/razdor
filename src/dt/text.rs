@@ -7,7 +7,8 @@ pub fn decode(bytes: &[u8]) -> String {
     WINDOWS_1251.decode_without_bom_handling(bytes).0.into_owned()
 }
 
-/// Encode to cp1251. Characters with no cp1251 form become `?`.
+/// Encode to cp1251. A character with no cp1251 form is written as an HTML reference (`&#233;`,
+/// encoding_rs's way): check text with `encoding_rs::WINDOWS_1251.encode(..).2` first.
 pub fn encode(text: &str) -> Vec<u8> {
     WINDOWS_1251.encode(text).0.into_owned()
 }

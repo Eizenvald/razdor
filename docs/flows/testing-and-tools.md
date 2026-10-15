@@ -143,7 +143,12 @@ install they run against (`razdor::dt::install::locate`), replacing older copies
   response_format options are dropped by themselves when a server refuses them; a bare server
   address gets `/v1` (`llm::api_base`); the player's style is added to the fixed rules
   (`llm::system_prompt`), and "Translate again" (`--fresh`) forgets a job's English
-  (`Job::forget_all`).
+  (`Job::forget_all`). The target language is a setting (`--language`, `llm::rules`): each
+  language has its own copies (`job::translated_file`, `Name_<lang>.DTm`) and job file
+  (`Job::path_for`); answers must fit Windows-1251 (`text::in_cp1251`), and Cyrillic counts as
+  untranslated unless the language is a Cyrillic one. A broken JSON answer keeps its
+  well-formed pairs (`llm::parse_answer`); only the rest is asked again. The game data is always
+  English (`Job::language`).
 
 ## Traps
 

@@ -49,7 +49,7 @@ pub fn prepare(src: &str) -> Prepared {
 /// The model's `answer` for `src`, checked and turned back into a map string: placeholders
 /// replaced, `<br>` back to `#\`, line breaks in the source's style, punctuation the game's
 /// fonts may lack made plain ASCII. Errors say what the answer broke.
-pub fn restore(src: &str, prepared: &Prepared, answer: &str) -> Result<String, String> {
+pub fn restore(src: &str, prepared: &Prepared, answer: &str, language: &str) -> Result<String, String> {
     let answer = plain_punctuation(answer.trim_matches(|c: char| c == ' ' || c == '\t'));
     if answer.trim().is_empty() {
         return Err("empty".into());
@@ -62,7 +62,7 @@ pub fn restore(src: &str, prepared: &Prepared, answer: &str) -> Result<String, S
             n => return Err(format!("placeholder {ph} appears {n} times")),
         }
     }
-    if has_cyrillic(&strip_tokens(&out, &prepared.tokens)) {
+    if !is_cyrillic_language(language) && has_cyrillic(&strip_tokens(&out, &prepared.tokens)) {
         return Err("still has Cyrillic".into());
     }
     let count = |s: &str, p: &str| s.matches(p).count();
@@ -78,13 +78,27 @@ pub fn restore(src: &str, prepared: &Prepared, answer: &str) -> Result<String, S
             return Err(format!("markup mark {m} changed"));
         }
     }
-    if let Some(bad) = out.chars().find(|c| !c.is_ascii() && !prepared.tokens.iter().any(|t| t.contains(*c))) {
+    // Maps and data files keep their text in Windows-1251 (`crate::dt::text`), as the original's
+    // fonts do: a character outside it cannot be stored.
+    if let Some(bad) = out.chars().find(|&c| !in_cp1251(c) && !prepared.tokens.iter().any(|t| t.contains(c))) {
         return Err(format!("character {bad:?} the game cannot show"));
     }
     // Trailing line breaks of the source come back as they were.
     let out = out.trim_end_matches('\n').to_string() + &"\n".repeat(prepared.text.len() - prepared.text.trim_end_matches('\n').len());
     let out = out.replace("<br>", "#\\");
     Ok(if src.contains("\r\n") { out.replace('\n', "\r\n") } else { out })
+}
+
+/// A character the Windows-1251 code page holds.
+pub fn in_cp1251(c: char) -> bool {
+    // The encoder writes what it cannot map as `&#NNN;` and says so.
+    !encoding_rs::WINDOWS_1251.encode(c.encode_utf8(&mut [0; 4])).2
+}
+
+/// A language written in Cyrillic (an answer in it is not "untranslated").
+pub fn is_cyrillic_language(language: &str) -> bool {
+    let l = language.trim().to_lowercase();
+    ["rus", "рус", "ukr", "укр", "belar", "белор", "bulg", "болг", "serb", "серб", "maced", "макед"].iter().any(|k| l.contains(k))
 }
 
 fn strip_tokens(s: &str, tokens: &[String]) -> String {
@@ -127,31 +141,34 @@ mod tests {
     fn restores_a_good_answer_in_the_source_style() {
         let src = "Привет, #HERONAME!\r\n*Конец#\\^Да";
         let p = prepare(src);
-        let got = restore(src, &p, "Hello, {0}!\n*The end<br>^Yes").unwrap();
+        let got = restore(src, &p, "Hello, {0}!\n*The end<br>^Yes", "English").unwrap();
         assert_eq!(got, "Hello, #HERONAME!\r\n*The end#\\^Yes");
         // A source without CR keeps bare line breaks; a trailing break survives.
         let src = "Строка\nдругая\n";
-        assert_eq!(restore(src, &prepare(src), "Line\nanother").unwrap(), "Line\nanother\n");
+        assert_eq!(restore(src, &prepare(src), "Line\nanother", "English").unwrap(), "Line\nanother\n");
     }
 
     #[test]
     fn rejects_broken_answers() {
         let src = "Привет, #HERONAME!\r\n*Конец";
         let p = prepare(src);
-        assert!(restore(src, &p, "Hello!\n*The end").is_err(), "lost placeholder");
-        assert!(restore(src, &p, "Hello, {0}! *The end").is_err(), "lost line");
-        assert!(restore(src, &p, "Hello, {0}!\nThe end").is_err(), "lost mark");
-        assert!(restore(src, &p, "Привет, {0}!\n*The end").is_err(), "Cyrillic left");
-        assert!(restore(src, &p, "  ").is_err(), "empty");
+        assert!(restore(src, &p, "Hello!\n*The end", "English").is_err(), "lost placeholder");
+        assert!(restore(src, &p, "Hello, {0}! *The end", "English").is_err(), "lost line");
+        assert!(restore(src, &p, "Hello, {0}!\nThe end", "English").is_err(), "lost mark");
+        assert!(restore(src, &p, "Привет, {0}!\n*The end", "English").is_err(), "Cyrillic left");
+        assert!(restore(src, &p, "  ", "English").is_err(), "empty");
         // A Cyrillic `#` word is kept, not counted as untranslated.
         let src = "Страж#рыцарь";
-        assert_eq!(restore(src, &prepare(src), "Guard{0}").unwrap(), "Guard#рыцарь");
+        assert_eq!(restore(src, &prepare(src), "Guard{0}", "English").unwrap(), "Guard#рыцарь");
     }
 
     #[test]
     fn typographic_punctuation_becomes_ascii() {
         let src = "Он сказал";
-        assert_eq!(restore(src, &prepare(src), "He said: \u{201C}Go\u{201D} \u{2014} now\u{2026}").unwrap(), "He said: \"Go\" - now...");
-        assert!(restore(src, &prepare(src), "He said \u{00E9}").is_err());
+        assert_eq!(restore(src, &prepare(src), "He said: \u{201C}Go\u{201D} \u{2014} now\u{2026}", "English").unwrap(), "He said: \"Go\" - now...");
+        assert!(restore(src, &prepare(src), "He said \u{00E9}", "French").is_err(), "no accents in Windows-1251");
+        assert!(restore(src, &prepare(src), "Он сказал: да", "Ukrainian").is_ok(), "Cyrillic for a Cyrillic language");
+        assert!(restore(src, &prepare(src), "Он сказал", "German").is_err(), "Cyrillic left for another");
+        assert!(restore(src, &prepare(src), "\u{0935}\u{0939}", "Hindi").is_err(), "Devanagari cannot be stored");
     }
 }
