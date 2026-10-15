@@ -58,7 +58,8 @@ struct Chrome {
     visual_images: HashMap<String, Option<Image>>,
     animations: HashMap<String, Option<Vec<Texture2D>>>,
     texts: Option<Option<Ini>>,
-    /// `Eng_DiscordTimes.ini` made by razdor-translate, read in English (`razdor::dt::english`).
+    /// `Eng_DiscordTimes.ini` made by razdor-translate (the install's, else Razdor's copy), read in
+    /// English (`razdor::dt::english`).
     english_texts: Option<Option<Ini>>,
 }
 
@@ -581,8 +582,7 @@ fn english_of(c: &mut Chrome, section: &str, key: &str) -> Option<String> {
         return None;
     }
     if c.english_texts.is_none() {
-        let name = razdor::dt::english::english_file(SETTINGS_FILE);
-        c.english_texts = Some(find_path(&c.dir, &name).ok().and_then(|p| std::fs::read(p).ok()).map(|b| Ini::from_cp1251(&b)));
+        c.english_texts = Some(razdor::dt::english::english_ini(&c.dir, SETTINGS_FILE));
     }
     c.english_texts.as_ref()?.as_ref()?.section(section)?.get_nonempty(key).map(str::to_string)
 }

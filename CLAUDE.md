@@ -42,6 +42,8 @@ are in `README.md` (Russian).
 - Every parity change cites the original's addresses (`0x4…`) in code and commit, and has a test.
 - Never commit anything from the game (maps, ini data, texts, art, sounds, decoded assets,
   screenshots of the original) or anything personal (saves, logs, settings, tokens, home paths).
+  The one exception (the owner's decision, 2026-10-15): Razdor's English translations of the
+  data texts, `data/lang/en/game/Eng_*.ini` (made by `razdor-translate --data`).
 - The repo is public: every push is published at once.
 - Player-facing text (README, changelog, release notes, site, PLAYTEST_NOTES) is in Russian.
   Developer text stays English: code, comments, commit messages, CLAUDE.md, skills,

@@ -4,6 +4,10 @@
 //! original game, which reads only the Russian files; Razdor uses them when its interface is
 //! English (asked for by the owner).
 //!
+//! When the install has none of these files, Razdor's own copies made from the Community
+//! Update's files are used (`data/lang/en/game/`, [`bundled`]); a file whose sections do not
+//! line up with the install's Russian one (another version, a mod) is left out.
+//!
 //! The Russian data is loaded as it is (unit upgrades name their targets by the Russian name,
 //! 0x4e0448); only the names and descriptions shown are swapped afterwards, by the Russian
 //! text they translate ([`Dictionary::english`]).
@@ -23,9 +27,27 @@ pub fn english_file(rus: &str) -> String {
     }
 }
 
+/// Razdor's own English file `name` (`data/lang/en/game/`), made by razdor-translate from the
+/// Community Update's Russian files.
+pub fn bundled(name: &str) -> Option<&'static [u8]> {
+    const FILES: [(&str, &[u8]); 4] = [
+        ("Eng_Units.ini", include_bytes!("../../data/lang/en/game/Eng_Units.ini")),
+        ("Eng_Artefacts.ini", include_bytes!("../../data/lang/en/game/Eng_Artefacts.ini")),
+        ("Eng_Spells.ini", include_bytes!("../../data/lang/en/game/Eng_Spells.ini")),
+        ("Eng_DiscordTimes.ini", include_bytes!("../../data/lang/en/game/Eng_DiscordTimes.ini")),
+    ];
+    FILES.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).map(|(_, b)| *b)
+}
+
 fn read(dir: &Path, name: &str) -> Option<Ini> {
     let bytes = std::fs::read(find_path(dir, name).ok()?).ok()?;
     Some(Ini::from_cp1251(&bytes))
+}
+
+/// The English file of the Russian data file `rus`: the install's own, else Razdor's copy.
+pub fn english_ini(dir: &Path, rus: &str) -> Option<Ini> {
+    let name = english_file(rus);
+    read(dir, &name).or_else(|| bundled(&name).map(Ini::from_cp1251))
 }
 
 /// The English of the install's data: by Russian text for names and descriptions, by
@@ -39,9 +61,9 @@ pub struct Dictionary {
 impl Dictionary {
     /// The English files of the install at `dir`; `None` when it has none.
     pub fn load(dir: &Path) -> Option<Dictionary> {
-        let mut d = Dictionary { interface: read(dir, &english_file(SETTINGS_FILE)), ..Dictionary::default() };
+        let mut d = Dictionary { interface: english_ini(dir, SETTINGS_FILE), ..Dictionary::default() };
         for rus in [UNITS_FILE, ARTEFACTS_FILE, SPELLS_FILE] {
-            let (Some(ru), Some(en)) = (read(dir, rus), read(dir, &english_file(rus))) else { continue };
+            let (Some(ru), Some(en)) = (read(dir, rus), english_ini(dir, rus)) else { continue };
             d.add_pairs(&ru, &en);
         }
         (!d.texts.is_empty() || d.interface.is_some()).then_some(d)
@@ -100,15 +122,12 @@ impl Dictionary {
 mod tests {
     use super::*;
 
-    /// The install's English files, when it has them (razdor-translate made them): they line
-    /// up with the Russian ones and name every unit, item and spell.
+    /// The install's English files (its own, else Razdor's copies): they line up with the
+    /// Russian ones and name every unit, item and spell.
     #[test]
     fn real_english_files_cover_the_data() {
         let Some(dir) = std::env::var_os(super::super::install::ENV_VAR) else { return };
         let dir = std::path::PathBuf::from(dir);
-        if find_path(&dir, &english_file(UNITS_FILE)).is_err() {
-            return;
-        }
         let dt = super::super::install::DtInstall::load(&dir).unwrap();
         let d = dt.english.as_ref().expect("the English files load");
         let missing: Vec<&str> = dt
@@ -120,6 +139,14 @@ mod tests {
             .filter(|n| d.english(n).is_none())
             .collect();
         assert!(missing.is_empty(), "untranslated: {missing:?}");
+    }
+
+    #[test]
+    fn razdor_ships_the_four_english_files() {
+        for rus in [UNITS_FILE, ARTEFACTS_FILE, SPELLS_FILE, SETTINGS_FILE] {
+            let ini = Ini::from_cp1251(bundled(&english_file(rus)).expect("bundled"));
+            assert!(!ini.sections.is_empty(), "{rus}");
+        }
     }
 
     #[test]
