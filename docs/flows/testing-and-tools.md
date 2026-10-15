@@ -117,6 +117,9 @@ Not part of the original game (asked for by the owner): a second program that wr
 copies of the install's maps (`Name.DTm` → `Name_en.DTm` in `Maps_Rus`) with any
 OpenAI-compatible model. The window (`src/bin/razdor-translate/view.rs`) reuses the game's
 `ui` module through `#[path]`; with `--map <name>` it runs without a window (`--help`).
+When every string is translated, both write the English copies into the maps folder of the
+install they run against (`razdor::dt::install::locate`), replacing older copies
+(`translate::write_maps`).
 
 - `src/translate/job.rs`: a job is one map, or a whole campaign (`job::campaign` follows the
   next-map links), and its distinct Russian strings. Names (buildings, owners, armies,

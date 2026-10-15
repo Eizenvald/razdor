@@ -324,6 +324,7 @@ impl View {
         }
         let (mut job, path) = (job.clone(), path.clone());
         let s = self.settings.clone();
+        let maps_dir = self.maps_dir.clone();
         let shared = self.shared.clone();
         self.stop.store(false, Ordering::Relaxed);
         let stop = self.stop.clone();
@@ -347,7 +348,18 @@ impl View {
                 sh.job = Some(job.clone());
             });
             match result {
-                Ok(()) if job.complete() => push(tr("All texts translated. Write the English maps.").to_string(), GREEN),
+                // Done: the English copies go straight into the game's maps folder, replacing
+                // older copies made by this tool.
+                Ok(()) if job.complete() => match maps_dir.as_deref().map(|d| translate::write_maps(&job, d, true)) {
+                    Some(Ok(files)) => {
+                        push(tr("All texts translated.").to_string(), GREEN);
+                        for f in files {
+                            push(trf!("Written: {f}", f = f.display()), GREEN);
+                        }
+                    }
+                    Some(Err(why)) => push(trf!("Not written: {why}", why), RED),
+                    None => push(tr("All texts translated, but the game has no maps folder.").to_string(), RED),
+                },
                 Ok(()) if stop.load(Ordering::Relaxed) => push(tr("Stopped.").to_string(), DIM),
                 Ok(()) => push(trf!("Done; {n} texts given up (Retry given up).", n = job.failed()), RED),
                 Err(why) => push(trf!("Stopped: {why}", why), RED),

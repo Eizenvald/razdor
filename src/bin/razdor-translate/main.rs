@@ -16,7 +16,8 @@ const HELP: &str = "razdor-translate: English copies of Discord Times maps, by a
 
 Without arguments: the window.
   --list                     the install's maps and campaigns
-  --map <name>               translate this map (with its whole campaign), then write it
+  --map <name>               translate this map (with its whole campaign), then write the
+                             English copies into the game's maps folder, replacing older ones
                              (the name: a file name, its stem, or the start of it)
   --endpoint <url>           OpenAI-compatible API base (default http://localhost:11434/v1)
   --model <name>             model name
@@ -24,8 +25,7 @@ Without arguments: the window.
   --context <tokens>         the model's context window: sizes the batches
   --reasoning <effort>       reasoning_effort to send ('' to send none)
   --save-settings            keep these settings for next time
-  --no-write                 translate only; write the maps later
-  --force                    replace English copies that exist";
+  --no-write                 translate only; write the maps later";
 
 /// The headless mode; `None` when the window should open.
 fn cli(args: &[String]) -> Option<i32> {
@@ -125,7 +125,7 @@ fn cli(args: &[String]) -> Option<i32> {
     if has("--no-write") {
         return Some(0);
     }
-    match translate::write_maps(&job, &maps_dir, has("--force")) {
+    match translate::write_maps(&job, &maps_dir, true) {
         Ok(files) => {
             for f in files {
                 println!("wrote {}", f.display());
@@ -133,7 +133,7 @@ fn cli(args: &[String]) -> Option<i32> {
             Some(0)
         }
         Err(why) => {
-            eprintln!("Not written: {why} (use --force to replace)");
+            eprintln!("Not written: {why}");
             Some(1)
         }
     }
