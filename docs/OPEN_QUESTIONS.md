@@ -8,6 +8,11 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
 
 ## Open
 
+- **dt-original: real-data tests with translator output in the install** (2026-10-15). An
+  install holding `*_en.DTm` maps from razdor-translate fails dt-original's shipped-map tests
+  (they count 15 maps); main leaves `_en` copies out, dt-original has no translator. Run
+  dt-original's tests on an install without them (or port the filter if this keeps biting).
+
 - **dt-original: unit pictures by section order** (2026-10-14, issue #6). The engraving and
   bust frame by the unit section's file position (0x4e0448) and the engraving at full alpha
   (0x476a3c) are on main only so far; cherry-pick to dt-original.
