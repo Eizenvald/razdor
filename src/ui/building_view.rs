@@ -231,16 +231,23 @@ fn tab_art(tab: Option<Tab>) -> Option<usize> {
     })
 }
 
-/// A parchment tab in the left column (`tab` `None` is the exit). Returns true when clicked.
-fn tab_button(label: &str, tab: Option<Tab>, r: Rect, active: bool) -> bool {
-    let (hover, down, pressed) = button_state(r, true);
-    let state = if active {
+/// A tab's picture, as the original's building window sets them (0x4d9060): `TB-` normal,
+/// `TBo` under the mouse (its enter and leave handlers 0x4bb6c8 / 0x4bb734 swap it in and
+/// out), `TBd` while held down and for the open tab (its pressed picture).
+fn tab_state(active: bool, hover: bool, down: bool) -> &'static str {
+    if active || down {
         "TBd"
-    } else if down {
+    } else if hover {
         "TBo"
     } else {
         "TB-"
-    };
+    }
+}
+
+/// A parchment tab in the left column (`tab` `None` is the exit). Returns true when clicked.
+fn tab_button(label: &str, tab: Option<Tab>, r: Rect, active: bool) -> bool {
+    let (hover, down, pressed) = button_state(r, true);
+    let state = tab_state(active, hover, down);
     let art = tab_art(tab).and_then(|n| chrome::win(&format!("{state}{n}_RUS")));
     if let Some(t) = art {
         chrome::tex(&t, r, WHITE);
@@ -1852,6 +1859,17 @@ fn with_back(bar: Option<Screen>, view: &BuildingView) -> Option<Screen> {
 
 #[cfg(test)]
 mod tests {
+    use super::tab_state;
+
+    #[test]
+    fn a_tab_lights_under_the_mouse_as_the_original() {
+        // 0x4d9060: TBo under the mouse, TBd held or open, TB- else.
+        assert_eq!(tab_state(false, false, false), "TB-");
+        assert_eq!(tab_state(false, true, false), "TBo");
+        assert_eq!(tab_state(false, true, true), "TBd");
+        assert_eq!(tab_state(true, false, false), "TBd");
+    }
+
 
     #[test]
     fn market_rows_go_cheapest_first_ties_in_stock_order() {

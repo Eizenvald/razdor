@@ -855,6 +855,11 @@ wage total. **code**
 
 ### 9.8 Building window details (4bedec, 4bb6c8, 4bb734, 4bb798, 4cd94c)
 
+- **Tabs** (built by 4d9060, pictures loaded at 4dc118): each tab button has three pictures,
+  `tb-<n>` normal, `tbo<n>` over and `tbd<n>` down. Its mouse-enter handler (4bb6c8, at +0x43)
+  swaps in `tbo` while the pointer is over it, its leave handler (4bb734, at +0x47) puts `tb-`
+  back; held down it shows `tbd`, which is also the open tab's picture. **code**
+
 - **Info tab with quests** (4bedec): without quests the description takes the full 272 px
   height. With quests a framed list is drawn (dark 2 px and 4 px borders, decorative side
   strips tiled down, a header picture with the `QuestList` title and a drop shadow), its scroll
@@ -975,7 +980,9 @@ nothing (there is no status-line fallback). **code** (callers 4b933e, 4b9586)
   answers No; **any other key** (except Tab, Alt and the Up and Down arrows) answers Yes: the
   key-down presses the button and the key-up releases (clicks) it. **code**
 - **Event dialogs** (events subsystem): 634 px wide, height from the content, centred on the
-  map view. Their text uses line breaks, colour markers, a centring marker and justified
+  map view. The quest line under the text is one label (0x67483f): an event that gives a quest
+  writes `[Event] AddQuest` there (0x4a8de4), one that closes a quest then writes
+  `DelQuest` over it (0x4a8e12), so an event doing both shows only the closed line. Their text uses line breaks, colour markers, a centring marker and justified
   paragraphs with an indent. **code** (48e438, 4a9b75)
 - **Text markup** (48e438 with its inner line reader 48e1cc): read in four places only: the
   event window's own text (an event's message, or its question when it asks; the tutorial
