@@ -512,7 +512,9 @@ impl<'a> Runner<'a> {
             (Source::Install(dt), _) => {
                 let exact = dt.maps.iter().find(|m| m.name == stem);
                 let found = exact.or_else(|| {
-                    let mut it = dt.maps.iter().filter(|m| m.name.starts_with(stem));
+                    // By the start of its name, among the shipped maps (translated copies made by
+                    // razdor-translate share their source's name).
+                    let mut it = dt.maps.iter().filter(|m| m.name.starts_with(stem) && !crate::translate::job::is_translated_file(&m.name));
                     let first = it.next();
                     first.filter(|_| it.next().is_none())
                 });
