@@ -529,3 +529,49 @@ fn max_pause_per_action_with_pondering() {
         );
     }
 }
+
+/// The key's hash is MurmurHash3 x64 128 (its reference values, seed 0).
+#[test]
+fn the_key_hash_is_murmur3() {
+    assert_eq!(tables::murmur3_128(b""), 0);
+    let h = tables::murmur3_128(b"hello");
+    assert_eq!((h as u64, (h >> 64) as u64), (0xcbd8a7b341bd9b02, 0x5b1e906a48ae1d19));
+}
+
+/// Everything of a battle the search could change: its key for both sides, every fighter
+/// field, the log.
+fn snapshot(b: &Battle) -> (StateKey, StateKey, String, Vec<String>) {
+    (b.max_key(Team::Player), b.max_key(Team::Enemy), format!("{:?}", b.fighters), b.log.clone())
+}
+
+/// A battle copied into the buffer of another (`clone_from`, the search's copies) is the
+/// battle itself, and plays on the same; a search leaves the battle it searched exactly as
+/// it was.
+#[test]
+fn copies_into_old_buffers_are_exact_and_the_search_changes_nothing() {
+    let battles: Vec<Battle> = synthetic_battles(4)
+        .into_iter()
+        .map(|(_, mut b)| {
+            b.begin();
+            for _ in 0..3 {
+                b.auto_step();
+            }
+            b
+        })
+        .collect();
+    for a in &battles {
+        for old in &battles {
+            let mut c = old.clone();
+            c.clone_from(a);
+            assert_eq!(snapshot(&c), snapshot(a));
+            let mut d = a.clone();
+            for _ in 0..6 {
+                assert_eq!(c.auto_step(), d.auto_step());
+            }
+            assert_eq!(snapshot(&c), snapshot(&d));
+        }
+        let before = (snapshot(a), patch_globals());
+        let _ = a.max_choice_with(TEST_BUDGET, Some(&MaxTables::default()), None);
+        assert_eq!((snapshot(a), patch_globals()), before);
+    }
+}

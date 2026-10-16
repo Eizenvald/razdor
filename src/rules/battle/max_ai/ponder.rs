@@ -74,7 +74,7 @@ impl MaxThinker {
     /// the original AI's where the table has none). `None` if the battle ends first. `b` and
     /// the globals are left as they are.
     fn expected(&self, b: &Battle) -> Option<(Battle, PatchGlobals)> {
-        let saved = patch_globals();
+        let (saved, silent) = (patch_globals(), crate::i18n::set_silent(true));
         let mut r = b.clone();
         r.log.clear();
         let mut found = None;
@@ -90,6 +90,7 @@ impl MaxThinker {
             r.play_max_move(m);
         }
         set_patch_globals(saved);
+        crate::i18n::set_silent(silent);
         found.map(|g| (r, g))
     }
 

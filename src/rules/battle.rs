@@ -220,7 +220,7 @@ enum AiRole {
     Mage,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Fighter {
     pub unit: UnitId,
     pub name: String,
@@ -560,7 +560,6 @@ impl Struck {
     }
 }
 
-#[derive(Clone)]
 pub struct Battle {
     content: Arc<Content>,
     pub formation: Formation,
@@ -3376,6 +3375,7 @@ fn berserk(f: &Fighter) -> i32 {
     (lost * BERSERK_PERCENT as i64 * f.base[Stat::AttackBlow] as i64 / max / 100).clamp(i32::MIN as i64, i32::MAX as i64) as i32
 }
 
+mod clone;
 mod max_ai;
 pub use max_ai::{MaxBudget, MaxControl, MaxMove, MaxPoll, MaxReport, MaxTables, MaxThinker, MAX_AI_BUDGET};
 

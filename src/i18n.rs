@@ -158,9 +158,23 @@ pub const fn n_(en: &'static str) -> &'static str {
     en
 }
 
+thread_local! {
+    static SILENT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// While set on this thread, [`fill`] (and so `trf!`) gives empty texts: Razdor's battle
+/// search, whose positions' logs nobody reads, skips their formatting. Returns the setting
+/// it replaces.
+pub fn set_silent(on: bool) -> bool {
+    SILENT.with(|s| s.replace(on))
+}
+
 /// Fills the `{name}` placeholders of `template` with `args`; `{{` and `}}` are braces.
 /// An unknown placeholder stays as it is.
 pub fn fill(template: &str, args: &[(&str, &dyn std::fmt::Display)]) -> String {
+    if SILENT.with(std::cell::Cell::get) {
+        return String::new();
+    }
     let mut out = String::with_capacity(template.len() + 16);
     let mut rest = template;
     while let Some(i) = rest.find(['{', '}']) {

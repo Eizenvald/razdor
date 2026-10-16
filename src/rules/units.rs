@@ -13,7 +13,7 @@ use super::formation::{Row, Slot};
 use super::items::{self, SLOTS};
 
 /// Effective stats of a unit: numbers by [`Stat`] plus magic, nature and bonuses.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Stats {
     values: [i32; Stat::ALL.len()],
     pub magic: Option<MagicSchool>,
@@ -26,6 +26,27 @@ pub struct Stats {
     /// Community per-unit overrides of the magic power floor and drain.
     pub min_magic_power: Option<i32>,
     pub mana_drain: Option<i32>,
+}
+
+/// By hand for `clone_from`, which keeps the bonus list's buffer (Razdor's battle search
+/// copies positions so).
+impl Clone for Stats {
+    fn clone(&self) -> Self {
+        let Stats { values, magic, direction, nature, ref bonuses, evasion, min_magic_power, mana_drain } = *self;
+        Stats { values, magic, direction, nature, bonuses: bonuses.clone(), evasion, min_magic_power, mana_drain }
+    }
+
+    fn clone_from(&mut self, src: &Self) {
+        let Stats { values, magic, direction, nature, bonuses, evasion, min_magic_power, mana_drain } = src;
+        self.values = *values;
+        self.magic = *magic;
+        self.direction = *direction;
+        self.nature = *nature;
+        self.bonuses.clone_from(bonuses);
+        self.evasion = *evasion;
+        self.min_magic_power = *min_magic_power;
+        self.mana_drain = *mana_drain;
+    }
 }
 
 fn stat_index(s: Stat) -> usize {

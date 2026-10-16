@@ -25,6 +25,50 @@ impl Hasher for Sink<'_> {
     }
 }
 
+/// MurmurHash3 x64 128 (Austin Appleby's, public domain), seed 0: a well-mixed 128-bit hash
+/// several times faster than SipHash; the keys are no secret, only collisions matter.
+pub(super) fn murmur3_128(data: &[u8]) -> u128 {
+    const C1: u64 = 0x87c3_7b91_1142_53d5;
+    const C2: u64 = 0x4cf5_ad43_2745_937f;
+    fn fmix(mut k: u64) -> u64 {
+        k ^= k >> 33;
+        k = k.wrapping_mul(0xff51_afd7_ed55_8ccd);
+        k ^= k >> 33;
+        k = k.wrapping_mul(0xc4ce_b9fe_1a85_ec53);
+        k ^ (k >> 33)
+    }
+    let (mut h1, mut h2) = (0u64, 0u64);
+    let mut blocks = data.chunks_exact(16);
+    for b in &mut blocks {
+        let k1 = u64::from_le_bytes(b[..8].try_into().unwrap_or_default());
+        let k2 = u64::from_le_bytes(b[8..].try_into().unwrap_or_default());
+        h1 ^= k1.wrapping_mul(C1).rotate_left(31).wrapping_mul(C2);
+        h1 = h1.rotate_left(27).wrapping_add(h2).wrapping_mul(5).wrapping_add(0x52dc_e729);
+        h2 ^= k2.wrapping_mul(C2).rotate_left(33).wrapping_mul(C1);
+        h2 = h2.rotate_left(31).wrapping_add(h1).wrapping_mul(5).wrapping_add(0x3849_5ab5);
+    }
+    let tail = blocks.remainder();
+    let mut t = [0u8; 16];
+    t[..tail.len()].copy_from_slice(tail);
+    let (k1, k2) = (u64::from_le_bytes(t[..8].try_into().unwrap_or_default()), u64::from_le_bytes(t[8..].try_into().unwrap_or_default()));
+    if tail.len() > 8 {
+        h2 ^= k2.wrapping_mul(C2).rotate_left(33).wrapping_mul(C1);
+    }
+    if !tail.is_empty() {
+        h1 ^= k1.wrapping_mul(C1).rotate_left(31).wrapping_mul(C2);
+    }
+    let len = data.len() as u64;
+    h1 ^= len;
+    h2 ^= len;
+    h1 = h1.wrapping_add(h2);
+    h2 = h2.wrapping_add(h1);
+    h1 = fmix(h1);
+    h2 = fmix(h2);
+    h1 = h1.wrapping_add(h2);
+    h2 = h2.wrapping_add(h1);
+    ((h2 as u128) << 64) | h1 as u128
+}
+
 thread_local! {
     static KEY_BYTES: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
 }
@@ -34,18 +78,15 @@ impl Battle {
     /// globals). Every field is named (no `..`), so a field added to `Battle` or `Fighter`
     /// has to be placed here before the code builds; only what never changes how the battle
     /// goes on is left out: the content (one per battle), the log, the AI's record of old
-    /// reads (`stale_reads`), the fighters' names and the «Максимум» switch.
+    /// reads (`stale_reads`), the «Максимум» switch, and the fighters' names and what the
+    /// cards alone show (the stats at the start, the items, the world spells, the potion
+    /// sign), which the rules never read.
     pub(crate) fn max_key(&self, side: Team) -> StateKey {
         KEY_BYTES.with(|buf| {
             let mut buf = buf.borrow_mut();
             buf.clear();
             self.write_key(&mut Sink(&mut buf), side);
-            let mut a = std::hash::DefaultHasher::new();
-            a.write(&buf);
-            let mut b = std::hash::DefaultHasher::new();
-            b.write_u8(0x5a);
-            b.write(&buf);
-            ((a.finish() as u128) << 64) | b.finish() as u128
+            murmur3_128(&buf)
         })
     }
 
@@ -138,13 +179,13 @@ impl Battle {
                 xp,
                 base,
                 stats,
-                at_start,
+                at_start: _,
                 power,
                 mods,
-                items,
-                spells,
+                items: _,
+                spells: _,
                 drain,
-                potion,
+                potion: _,
                 blessed,
                 cursed,
                 actions,
@@ -164,7 +205,7 @@ impl Battle {
                 ai_role,
             } = f;
             (unit, team, hp, slot, is_hero, squad_index, named, level, xp).hash(h);
-            (base, stats, at_start, power, mods, items, spells, drain, potion, blessed, cursed).hash(h);
+            (base, stats, power, mods, drain, blessed, cursed).hash(h);
             (actions, cur_initiative, regen, bleed, reserve_move, suicided, surrender, surrendered).hash(h);
             (tactical, role, useful, taken, lost, ai_power, ai_role).hash(h);
         }

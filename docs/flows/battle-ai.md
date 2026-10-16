@@ -174,6 +174,17 @@ BattleView::ai_move (computer's turn) → max_move → MaxThinker::poll(battle)
   The search ends `MAX_AI_BUDGET` after it began, or at once if it began that long ago (the
   deepest completed depth decides); unasked, it stops at `PONDER_LIMIT`.
 
+- **Copies** (profiled with perf on the E-cores: rollouts ~88% of the time, the keys ~25%,
+  allocations ~15%): the key hash is MurmurHash3 x64 128 (`murmur3_128`) and leaves out what
+  the rules never read; the search copies positions into the buffers of old ones
+  (`Search::scratch`, one per distance from the root, and one for rollouts) with `clone_from`,
+  which `Battle`, `Fighter` and `Stats` implement by hand (`src/rules/battle/clone.rs`) to
+  keep their buffers; the search's thread is `i18n::set_silent`, so the log lines of the
+  positions it tries are not formatted. A real make/unmake (undoing an action) is not done:
+  an action touches most fields of the battle through the Community effects, and the copies
+  into old buffers cost less than the undo records would. Results are identical
+  (`copies_into_old_buffers_are_exact_and_the_search_changes_nothing`).
+
 UI: `BattleView` keeps the `MaxThinker` for the computer's side (`max_side`); a battle that is
 over or watched (W) stops its search. The clock pointer already shows while the computer's
 side acts; the frame never waits. Settings: «Сила ИИ в бою» in «Ещё…» (`main_menu::AiStrength`):
@@ -192,6 +203,14 @@ with `--ignored`; `RAZDOR_MAX_NO_TABLES` turns the tables off in the harness):
 | Max's wins / original's, 256 games | 154 / 128 | 156 / 128 | — |
 | timeline (anim 0.55 s / 0.1 s, player 0.5 s), 12 battles: pause per enemy action mean / median / 95% | median 150 ms (old harness) | 110 / 150 / 150 ms | 10.7 ms / 0.6 ms / 50 ms |
 | timeline: depth reached (mean) | — | 4.62 | 5.93 |
+
+Then, one optimisation at a time (same harness; node-limited = `max_beats_the_original_on_real_armies`,
+the same choices in every run, so only the speed changes there):
+
+| step | node-limited: nodes/s | game time: nodes/s | game time: depth | game time: Max's wins (of 256), worth left |
+|---|---|---|---|---|
+| tables (above) | 38 700 | 81 700 | 3.82 | 156, 0.38 |
+| cheaper copies and keys | 69 400 | 212 000 | 4.50 | 156, 0.38 |
 
 Evidence: `src/rules/battle/max_ai/tests.rs` plays each position with the original on both
 sides and with Max on each side (`max_beats_the_original_on_synthetic_battles` always;

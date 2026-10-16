@@ -205,6 +205,7 @@ impl Battle {
         let id = self.active()?;
         let t0 = Instant::now();
         let saved = patch_globals();
+        let silent = crate::i18n::set_silent(true);
         let mut root = self.clone();
         root.log.clear();
         root.stale_reads.borrow_mut().clear();
@@ -222,6 +223,8 @@ impl Battle {
             rollout_hits: 0,
             aborted: false,
             cut: false,
+            scratch: Vec::new(),
+            roll: None,
         };
         let mut done = None;
         // A single action (a pass): nothing to weigh.
@@ -250,6 +253,7 @@ impl Battle {
             settled = !s.cut || moves.len() == 1;
         }
         set_patch_globals(saved);
+        crate::i18n::set_silent(silent);
         let (choice, value, original_value, depth) = done.unwrap_or((original, 0, 0, 0));
         Some(MaxReport {
             choice,
@@ -313,6 +317,21 @@ struct Search<'a> {
     aborted: bool,
     /// A line was cut by the depth while the battle went on.
     cut: bool,
+    /// The positions under way by distance from the root, and the rollout's: their buffers
+    /// are reused (`Battle::clone_from`), the battle searched is never changed.
+    scratch: Vec<Option<Battle>>,
+    roll: Option<Battle>,
+}
+
+/// `b` copied into the buffer of an old position, if any.
+fn copy_into(buf: Option<Battle>, b: &Battle) -> Battle {
+    match buf {
+        Some(mut c) => {
+            c.clone_from(b);
+            c
+        }
+        None => b.clone(),
+    }
 }
 
 /// The leaves' class of a subtree, for the transposition table: a position's score depends
@@ -361,9 +380,13 @@ impl Search<'_> {
     /// The score of `m` played in `b`; the patch's globals are put back after it.
     fn child(&mut self, b: &Battle, m: MaxMove, depth: u32, ply: u32, alpha: i64, beta: i64) -> i64 {
         let globals = patch_globals();
-        let mut c = b.clone();
+        let mut c = copy_into(self.scratch.get_mut(ply as usize).and_then(Option::take), b);
         c.play_max_move(m);
         let v = self.value(&c, depth, ply, alpha, beta);
+        if self.scratch.len() <= ply as usize {
+            self.scratch.resize_with(ply as usize + 1, || None);
+        }
+        self.scratch[ply as usize] = Some(c);
         set_patch_globals(globals);
         v
     }
@@ -469,7 +492,21 @@ impl Search<'_> {
             keyed = 1;
         }
         self.rollouts += 1;
-        let mut r = b.clone();
+        let mut r = copy_into(self.roll.take(), b);
+        let v = self.roll_out(&mut r, &mut chain, &mut keyed);
+        self.roll = Some(r);
+        let Some(v) = v else { return 0 };
+        if let Some(t) = self.tables {
+            for &k in &chain[..keyed] {
+                t.rollout_add(k, v);
+            }
+        }
+        v
+    }
+
+    /// Plays the rollout `r` to its end (`None` if the time ran out), looking up the cache
+    /// for its first positions and noting their keys in `chain`.
+    fn roll_out(&mut self, r: &mut Battle, chain: &mut [StateKey; ROLLOUT_KEYS], keyed: &mut usize) -> Option<i64> {
         let mut known = None;
         for i in 0..AUTO_PLAY_STEPS {
             if r.outcome() != Outcome::Ongoing {
@@ -477,26 +514,20 @@ impl Search<'_> {
             }
             if i % CLOCK_EVERY == 0 && self.time_up() {
                 self.aborted = true;
-                return 0;
+                return None;
             }
             r.auto_step();
-            if let Some(t) = self.tables.filter(|_| keyed == i + 1 && keyed < ROLLOUT_KEYS) {
+            if let Some(t) = self.tables.filter(|_| *keyed == i + 1 && *keyed < ROLLOUT_KEYS) {
                 let k = r.max_key(self.side);
                 if let Some(v) = t.rollout_get(k) {
                     known = Some(v);
                     break;
                 }
-                chain[keyed] = k;
-                keyed += 1;
+                chain[*keyed] = k;
+                *keyed += 1;
             }
         }
-        let v = known.unwrap_or_else(|| r.max_eval(self.side));
-        if let Some(t) = self.tables {
-            for &k in &chain[..keyed] {
-                t.rollout_add(k, v);
-            }
-        }
-        v
+        Some(known.unwrap_or_else(|| r.max_eval(self.side)))
     }
 }
 
