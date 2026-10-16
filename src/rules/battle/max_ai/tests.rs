@@ -22,9 +22,11 @@ fn with_tables() -> bool {
     std::env::var_os("RAZDOR_MAX_NO_TABLES").is_none()
 }
 
-/// The harness cuts rollouts short (`MaxBudget::short_rollouts`) with `RAZDOR_MAX_SHORT_ROLLOUTS` set.
+/// The harness cuts rollouts short (`MaxBudget::short_rollouts`) with `RAZDOR_MAX_SHORT_ROLLOUTS` set, and
+/// searches on one thread with `RAZDOR_MAX_SERIAL`.
 fn harness(budget: MaxBudget) -> MaxBudget {
-    MaxBudget { short_rollouts: budget.short_rollouts || std::env::var_os("RAZDOR_MAX_SHORT_ROLLOUTS").is_some(), ..budget }
+    let on = |v: &str| std::env::var_os(v).is_some();
+    MaxBudget { short_rollouts: budget.short_rollouts || on("RAZDOR_MAX_SHORT_ROLLOUTS"), parallel: budget.parallel && !on("RAZDOR_MAX_SERIAL"), ..budget }
 }
 
 fn play(mut b: Battle, max: Option<Team>, budget: MaxBudget) -> Played {
@@ -473,6 +475,7 @@ fn the_thinker_answers_for_the_position_on_screen() {
 fn timeline(mut b: Battle, ponder: bool, anim: [Duration; 3], player: Duration) -> (Battle, Vec<Duration>, Vec<u32>) {
     b.begin();
     let mut t = MaxThinker::new(Team::Enemy);
+    t.set_parallel(harness(MaxBudget::GAME).parallel);
     let mut depths = Vec::new();
     for _ in 0..AUTO_PLAY_STEPS {
         if ponder {
@@ -720,5 +723,26 @@ fn cut_rollouts_score_only_sure_positions_and_keep_the_safety_rule() {
         b.begin();
         let r = b.max_choice_with(budget, Some(&MaxTables::default()), None).unwrap();
         assert!(r.value >= r.original_value, "{name}");
+    }
+}
+
+/// The root's moves on several threads give the sequential search's choice and scores at
+/// the same depth, with fresh tables, shared ones and none, whatever the threads' timing.
+#[test]
+fn threads_never_change_the_choice_at_a_fixed_depth() {
+    let depth = if cfg!(debug_assertions) { 2 } else { 3 };
+    let serial = MaxBudget::fixed(depth, u64::MAX);
+    let parallel = MaxBudget { parallel: true, ..serial };
+    let shared = MaxTables::default();
+    for (name, b) in positions(6, 5, 18) {
+        let one = b.max_choice_with(serial, None, None).unwrap();
+        for (what, r) in [
+            ("no tables", b.max_choice_with(parallel, None, None).unwrap()),
+            ("fresh tables", b.max_choice_with(parallel, Some(&MaxTables::default()), None).unwrap()),
+            ("shared tables", b.max_choice_with(parallel, Some(&shared), None).unwrap()),
+            ("shared tables again", b.max_choice_with(parallel, Some(&shared), None).unwrap()),
+        ] {
+            assert_eq!((r.choice, r.value, r.original_value), (one.choice, one.value, one.original_value), "{name}: {what}");
+        }
     }
 }

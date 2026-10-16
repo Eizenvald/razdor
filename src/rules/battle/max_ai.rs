@@ -78,17 +78,27 @@ pub struct MaxBudget {
     /// (the rollouts are short already, ~27 actions, and only ~7% of their actions are saved
     /// where the fit is always right).
     pub short_rollouts: bool,
+    /// The root's actions are searched on [`max_threads`] threads (the game's; a node limit
+    /// needs one thread to be met exactly).
+    pub parallel: bool,
 }
 
 impl MaxBudget {
     /// The battle on screen: [`MAX_AI_BUDGET`] per decision.
-    pub const GAME: MaxBudget = MaxBudget { time: Some(MAX_AI_BUDGET), max_depth: MAX_DEPTH, max_nodes: u64::MAX, short_rollouts: false };
+    pub const GAME: MaxBudget = MaxBudget { time: Some(MAX_AI_BUDGET), max_depth: MAX_DEPTH, max_nodes: u64::MAX, short_rollouts: false, parallel: true };
 
     /// No clock: at most `max_depth` actions ahead and `max_nodes` positions, the same
     /// choice on any machine.
     pub const fn fixed(max_depth: u32, max_nodes: u64) -> MaxBudget {
-        MaxBudget { time: None, max_depth, max_nodes, short_rollouts: false }
+        MaxBudget { time: None, max_depth, max_nodes, short_rollouts: false, parallel: false }
     }
+}
+
+/// The threads a decision searches on: the owner's limit of 4, and one core left free;
+/// at least 1.
+pub fn max_threads() -> usize {
+    static THREADS: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *THREADS.get_or_init(|| std::thread::available_parallelism().map_or(1, |n| n.get().saturating_sub(1)).clamp(1, 4))
 }
 
 /// One decision for the active unit: an action, or (`None`) the original AI's skip of the
@@ -267,7 +277,9 @@ impl Battle {
                 break;
             }
             s.cut = false;
-            let Some((best, value, original_value, values)) = s.root(&root, &moves, depth) else { break };
+            let threads = if budget.parallel && budget.max_nodes == u64::MAX { max_threads().min(moves.len()) } else { 1 };
+            let found = if threads > 1 { s.root_parallel(&root, &moves, depth, threads, saved) } else { s.root(&root, &moves, depth) };
+            let Some((best, value, original_value, values)) = found else { break };
             done = Some((best, value, original_value, depth));
             if depth == 1 {
                 // Only the actions whose rollout does at least as well as the original's
@@ -376,7 +388,7 @@ fn class(ply: u32, depth: u32) -> u8 {
     if ply + depth <= ROLLOUT_PLIES { u8::MAX } else { ply.min(ROLLOUT_PLIES + 1) as u8 }
 }
 
-impl Search<'_> {
+impl<'a> Search<'a> {
     fn time_up(&self) -> bool {
         self.deadline.is_some_and(|d| Instant::now() >= d) || self.control.is_some_and(MaxControl::expired)
     }
@@ -409,6 +421,96 @@ impl Search<'_> {
             }
         }
         Some((best, alpha, original_value, values))
+    }
+
+    /// A search like this one for another thread, its counters at 0.
+    fn fork(&self) -> Search<'a> {
+        Search {
+            side: self.side,
+            deadline: self.deadline,
+            control: self.control,
+            tables: self.tables,
+            max_nodes: self.max_nodes,
+            nodes: 0,
+            rollouts: 0,
+            tt_hits: 0,
+            rollout_hits: 0,
+            aborted: false,
+            cut: false,
+            short: self.short,
+            scratch: Vec::new(),
+            roll: None,
+        }
+    }
+
+    /// [`Search::root`] on `threads` threads, which take the root's moves in turn and share
+    /// the tables; the same answer whatever the threads' timing. The best so far is the
+    /// highest exact score with the lowest index; move `i` is searched with alpha at the
+    /// best's score when the best is before it (a tie keeps the earlier move) and one below
+    /// when after it (a tie takes `i`), so a score above alpha is exact and one at or below it
+    /// cannot win. The result is the first move with the highest score, as the sequential
+    /// search finds it; move 0 (the original's choice) is searched with no bound, exactly.
+    /// `None` if a thread ran out of time (the iteration is dropped).
+    fn root_parallel(&mut self, b: &Battle, moves: &[MaxMove], depth: u32, threads: usize, globals: PatchGlobals) -> Option<(MaxMove, i64, i64, Vec<i64>)> {
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::Mutex;
+        let next = AtomicUsize::new(0);
+        let best = Mutex::new((-INF, usize::MAX));
+        let values = Mutex::new(vec![None; moves.len()]);
+        let forks: Vec<Search> = std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..threads)
+                .map(|_| {
+                    let (mut s, b) = (self.fork(), b.clone());
+                    let (next, best, values) = (&next, &best, &values);
+                    scope.spawn(move || {
+                        set_patch_globals(globals);
+                        crate::i18n::set_silent(true);
+                        loop {
+                            let i = next.fetch_add(1, Ordering::Relaxed);
+                            if i >= moves.len() {
+                                break;
+                            }
+                            let alpha = match *best.lock().unwrap_or_else(|e| e.into_inner()) {
+                                _ if i == 0 => -INF,
+                                (v, at) if at < i => v,
+                                (v, _) => v - 1,
+                            };
+                            let v = s.child(&b, moves[i], depth - 1, 1, alpha, INF);
+                            if s.aborted {
+                                break;
+                            }
+                            values.lock().unwrap_or_else(|e| e.into_inner())[i] = Some(v);
+                            if i == 0 || v > alpha {
+                                let mut g = best.lock().unwrap_or_else(|e| e.into_inner());
+                                if v > g.0 || (v == g.0 && i < g.1) {
+                                    *g = (v, i);
+                                }
+                            }
+                        }
+                        s
+                    })
+                })
+                .collect();
+            workers.into_iter().filter_map(|w| w.join().ok()).collect()
+        });
+        let all = forks.len() == threads;
+        for f in forks {
+            self.nodes += f.nodes;
+            self.rollouts += f.rollouts;
+            self.tt_hits += f.tt_hits;
+            self.rollout_hits += f.rollout_hits;
+            self.aborted |= f.aborted;
+            self.cut |= f.cut;
+        }
+        let values: Option<Vec<i64>> = values.into_inner().unwrap_or_else(|e| e.into_inner()).into_iter().collect();
+        let (v, at) = best.into_inner().unwrap_or_else(|e| e.into_inner());
+        match values {
+            Some(values) if all && !self.aborted && at < moves.len() => Some((moves[at], v, values[0], values)),
+            _ => {
+                self.aborted = true;
+                None
+            }
+        }
     }
 
     /// The score of `m` played in `b`; the patch's globals are put back after it.

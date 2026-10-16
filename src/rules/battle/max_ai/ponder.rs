@@ -53,11 +53,18 @@ pub struct MaxThinker {
     job: Option<Job>,
     /// How long the battle waited for each move (from its first ask to the answer).
     pub pauses: Vec<Duration>,
+    /// The root's moves on several threads ([`MaxBudget::parallel`]).
+    parallel: bool,
 }
 
 impl MaxThinker {
     pub fn new(side: Team) -> MaxThinker {
-        MaxThinker { side, tables: Arc::new(MaxTables::default()), job: None, pauses: Vec::new() }
+        MaxThinker { side, tables: Arc::new(MaxTables::default()), job: None, pauses: Vec::new(), parallel: true }
+    }
+
+    /// Searches on one thread only (to measure the threads).
+    pub fn set_parallel(&mut self, on: bool) {
+        self.parallel = on;
     }
 
     pub fn side(&self) -> Team {
@@ -98,10 +105,10 @@ impl MaxThinker {
         self.job = None;
         let control = Arc::new(MaxControl::new(PONDER_LIMIT));
         let (tx, answer) = std::sync::mpsc::channel();
-        let (tables, c) = (self.tables.clone(), control.clone());
+        let (tables, c, parallel) = (self.tables.clone(), control.clone(), self.parallel);
         let spawned = std::thread::Builder::new().name("max-ai".into()).spawn(move || {
             set_patch_globals(globals);
-            let r = root.max_choice_with(MaxBudget { time: None, ..MaxBudget::GAME }, Some(&tables), Some(&c));
+            let r = root.max_choice_with(MaxBudget { time: None, parallel, ..MaxBudget::GAME }, Some(&tables), Some(&c));
             let _ = tx.send(r);
         });
         if spawned.is_ok() {

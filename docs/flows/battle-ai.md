@@ -196,6 +196,16 @@ BattleView::ai_move (computer's turn) → max_move → MaxThinker::poll(battle)
   greater depth and a little less worth left; the harness turns it on with
   `RAZDOR_MAX_SHORT_ROLLOUTS`.
 
+- **Threads** (`MaxBudget::parallel`, the game's; `Search::root_parallel`): each iteration's
+  root moves are taken in turn by `max_threads` threads (the owner's limit of 4, one core left
+  free, at least 1), which share the tables (16 shards behind mutexes). The best so far is the
+  highest exact score with the lowest index; a move after the best is searched with alpha at
+  the best's score, one before it with alpha one lower, so a score above alpha is exact and
+  one below cannot win: the result is the first move with the highest score, the sequential
+  search's, whatever the timing (`threads_never_change_the_choice_at_a_fixed_depth`). An
+  iteration counts only when every root move completed. A node limit needs one thread (the
+  tests' budgets are serial).
+
 UI: `BattleView` keeps the `MaxThinker` for the computer's side (`max_side`); a battle that is
 over or watched (W) stops its search. The clock pointer already shows while the computer's
 side acts; the frame never waits. Settings: «Сила ИИ в бою» in «Ещё…» (`main_menu::AiStrength`):
@@ -223,7 +233,12 @@ the same choices in every run, so only the speed changes there):
 | tables (above) | 38 700 | 81 700 | 3.82 | 156, 0.38 |
 | cheaper copies and keys | 69 400 | 212 000 | 4.50 | 156, 0.38 |
 | cut rollouts (tried, left off) | 64 400 (other choices) | 255 000 | 4.44 | 156, 0.38 (hero battles 0.47 → 0.46) |
+| threads (3 on the 4 E-cores) | serial | 608 000 | 4.82 | 156, 0.38 |
 
+With the threads, the timeline with thinking ahead reaches depth 7.47 (5.93 on one thread;
+5.64 without thinking ahead), the pause per enemy action stays mean 11.4 ms, median 0.6 ms,
+95% 50 ms (a search begun during a 0.1 s animation still gets its 150 ms), Max wins 10 of 12
+battles either way. The 95% is the searches asked for a position that was not foreseen.
 Evidence: `src/rules/battle/max_ai/tests.rs` plays each position with the original on both
 sides and with Max on each side (`max_beats_the_original_on_synthetic_battles` always;
 `max_beats_the_original_on_real_armies` on the install: hero vs map armies, map armies of near
