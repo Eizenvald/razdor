@@ -307,13 +307,25 @@ fn scroll_step(speed: i32, dt_ms: f64) -> (f64, f64) {
 /// Pixels (of the original's 1024 × 768 screen) from a screen edge where the mouse scrolls.
 const EDGE: f32 = 5.0;
 
+/// Where the mouse at `at` on a screen of `size` scrolls the map (4cd0af): within `edge` of a
+/// side that way, a corner both ways; off the screen not at all.
+fn edge_dir(at: (f32, f32), size: (f32, f32), edge: f32) -> Vec2 {
+    let ((mx, my), (w, h)) = (at, size);
+    if !(0.0..=w).contains(&mx) || !(0.0..=h).contains(&my) {
+        return Vec2::ZERO;
+    }
+    let x = if mx < edge { -1.0 } else if mx > w - edge { 1.0 } else { 0.0 };
+    let y = if my < edge { -1.0 } else if my > h - edge { 1.0 } else { 0.0 };
+    vec2(x, y)
+}
+
 /// The original's scrolling of the idle map (interface.md §7.6): the held arrow key (only one
 /// at a time: the original keeps only the last key down) and the mouse within 5 px of an
 /// edge of the screen (the bar's lower edge included; a corner both ways) each move the
 /// view by the frame's step. The camera then stays there until something moves it. A
 /// gamepad's right stick (`pad`, Razdor's) scrolls it too, as far as it is pushed.
 fn scroll(game: &Game, view: &mut MapView, dt_ms: i64, pad: (f32, f32)) {
-    if input_blocked() || !view.shows.is_empty() || view.minimap {
+    if input_blocked() || !view.shows.is_empty() {
         return;
     }
     let mut dir = Vec2::ZERO;
@@ -328,9 +340,13 @@ fn scroll(game: &Game, view: &mut MapView, dt_ms: i64, pad: (f32, f32)) {
     let (mx, my) = crate::ui::widgets::pointer();
     let (w, h) = (screen_width(), screen_height());
     let edge = EDGE * map_scale();
-    if (0.0..=w).contains(&mx) && (0.0..=h).contains(&my) {
-        dir.x += if mx < edge { -1.0 } else if mx > w - edge { 1.0 } else { 0.0 };
-        dir.y += if my < edge { -1.0 } else if my > h - edge { 1.0 } else { 0.0 };
+    // The open minimap does not stop the edges (the original's minimap is always on screen
+    // and its map still scrolls, 4cd0af); only the pointer on the minimap itself does, so it
+    // can be clicked at the screen's edge.
+    let cam = Camera::looking_at(game, view.zoom, view.look.unwrap_or(game.display_pos()));
+    let on_minimap = view.minimap && minimap::under_pointer(&game.world.map, cam.view);
+    if !on_minimap {
+        dir += edge_dir((mx, my), (w, h), edge);
     }
     if dir == Vec2::ZERO {
         return;
@@ -2782,6 +2798,16 @@ fn draw_debug(game: &Game, cam: &Camera) {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_edges_scroll_the_map() {
+        let e = |x, y| super::edge_dir((x, y), (1024.0, 768.0), 5.0);
+        assert_eq!(e(2.0, 300.0), vec2(-1.0, 0.0));
+        assert_eq!(e(1022.0, 766.0), vec2(1.0, 1.0), "a corner both ways");
+        assert_eq!(e(500.0, 300.0), Vec2::ZERO);
+        assert_eq!(e(-3.0, 300.0), Vec2::ZERO, "off the window");
+    }
+
     use super::*;
 
     #[test]
