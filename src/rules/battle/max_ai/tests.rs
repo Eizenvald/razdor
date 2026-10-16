@@ -22,7 +22,13 @@ fn with_tables() -> bool {
     std::env::var_os("RAZDOR_MAX_NO_TABLES").is_none()
 }
 
+/// The harness cuts rollouts short (`MaxBudget::short_rollouts`) with `RAZDOR_MAX_SHORT_ROLLOUTS` set.
+fn harness(budget: MaxBudget) -> MaxBudget {
+    MaxBudget { short_rollouts: budget.short_rollouts || std::env::var_os("RAZDOR_MAX_SHORT_ROLLOUTS").is_some(), ..budget }
+}
+
 fn play(mut b: Battle, max: Option<Team>, budget: MaxBudget) -> Played {
+    let budget = harness(budget);
     b.begin();
     let mut decisions = Vec::new();
     let mut reports = Vec::new();
@@ -275,11 +281,17 @@ fn max_beats_the_original_on_real_armies_in_game_time() {
     real_armies(MaxBudget::GAME);
 }
 
-fn real_armies(budget: MaxBudget) {
+/// Named positions to play.
+type Battles = Vec<(String, Battle)>;
+
+/// The install's battle sets (`RAZDOR_DT_DIR`; `None` without it): each map's first armies
+/// against the hero's army as the game sets up the battle, map armies of near strength
+/// against each other (each on each side), custom battles of the install's unit types.
+fn real_sets() -> Option<Vec<(&'static str, Battles)>> {
     use crate::dt::install::DtInstall;
     use crate::rules::content::HeroClass;
     use crate::rules::game::{Foe, Game};
-    let Some(dir) = std::env::var_os(crate::dt::install::ENV_VAR) else { return };
+    let dir = std::env::var_os(crate::dt::install::ENV_VAR)?;
     let dt = DtInstall::load(std::path::Path::new(&dir)).unwrap();
     let c = Arc::new(Content::from_dt(&dt));
     let mut hero = Vec::new();
@@ -317,8 +329,13 @@ fn real_armies(budget: MaxBudget) {
         }
     }
     let customs = custom_battles(&c, "custom", 20, 8, 11);
+    Some(vec![("real: hero vs map armies", hero), ("real: map armies of near strength", pairs), ("real: custom battles", customs)])
+}
+
+fn real_armies(budget: MaxBudget) {
+    let Some(sets) = real_sets() else { return };
     let mut all = Tally::default();
-    for (title, set) in [("real: hero vs map armies", hero), ("real: map armies of near strength", pairs), ("real: custom battles", customs)] {
+    for (title, set) in sets {
         let mut t = Tally::default();
         for (name, b) in &set {
             t.add(name, b, budget);
@@ -573,5 +590,135 @@ fn copies_into_old_buffers_are_exact_and_the_search_changes_nothing() {
         let before = (snapshot(a), patch_globals());
         let _ = a.max_choice_with(TEST_BUDGET, Some(&MaxTables::default()), None);
         assert_eq!((snapshot(a), patch_globals()), before);
+    }
+}
+
+/// One rollout sample for the static evaluation's fit: at a position `rounds` rounds into a
+/// rollout, the searching side's and the other's worth, the rounds left to the limit, and the
+/// full rollout's end (its score, the steps it took after that position and before it).
+struct Sample {
+    own: i64,
+    other: i64,
+    rounds_left: i64,
+    end: i64,
+    steps_after: u32,
+    steps_before: u32,
+}
+
+/// Rollouts from positions along the harness battles (the install's sets with
+/// `RAZDOR_DT_DIR`, and the demo's), each sampled `rounds` rounds in.
+fn rollout_samples(rounds: u32) -> Vec<Sample> {
+    let mut sets: Vec<(String, Battle)> = synthetic_battles(24);
+    for (_, set) in real_sets().unwrap_or_default() {
+        sets.extend(set);
+    }
+    let silent = crate::i18n::set_silent(true);
+    let saved = patch_globals();
+    let mut out = Vec::new();
+    for (_, mut b) in sets {
+        b.begin();
+        for i in 0..AUTO_PLAY_STEPS {
+            let Some(id) = b.active() else { break };
+            if i % 3 == 0 {
+                let side = b.fighters[id].team;
+                let g = patch_globals();
+                let mut r = b.clone();
+                let r0 = r.round;
+                let mut steps_before = 0;
+                while r.outcome() == Outcome::Ongoing && r.round < r0 + rounds && steps_before < AUTO_PLAY_STEPS as u32 {
+                    r.auto_step();
+                    steps_before += 1;
+                }
+                if r.outcome() == Outcome::Ongoing {
+                    let (own, other, rounds_left) = (r.max_worth(side), r.max_worth(side.other()), r.turn_limit() as i64 - r.round as i64);
+                    let mut steps_after = 0;
+                    while r.outcome() == Outcome::Ongoing && steps_after < AUTO_PLAY_STEPS as u32 {
+                        r.auto_step();
+                        steps_after += 1;
+                    }
+                    out.push(Sample { own, other, rounds_left, end: r.max_eval(side), steps_after, steps_before });
+                }
+                set_patch_globals(g);
+            }
+            b.auto_step();
+        }
+    }
+    set_patch_globals(saved);
+    crate::i18n::set_silent(silent);
+    out
+}
+
+/// The fit of the static evaluation of the cut rollouts (`SHORT_*`): how often the side with
+/// the larger share of the worth `SHORT_ROUNDS` rounds into a rollout wins, by share, and how
+/// well the winner's worth left at the end is foretold. Deterministic; prints its table (run
+/// by hand with `--ignored`; the constants come from it).
+#[test]
+#[ignore]
+fn fit_the_static_evaluation_of_cut_rollouts() {
+    for rounds in [1, 2, 3] {
+        let samples = rollout_samples(rounds);
+        let n = samples.len().max(1) as f64;
+        let after: f64 = samples.iter().map(|s| s.steps_after as f64).sum::<f64>() / n;
+        let before: f64 = samples.iter().map(|s| s.steps_before as f64).sum::<f64>() / n;
+        println!("{rounds} round(s) in: {} samples, {before:.1} steps before and {after:.1} after", samples.len());
+        for margin in [2, 4] {
+            for share in [300, 400, 500, 600, 700, 800] {
+                let decisive: Vec<&Sample> = samples
+                    .iter()
+                    .filter(|s| s.rounds_left > margin && (s.own - s.other).abs() * 1000 >= share * (s.own + s.other).max(1))
+                    .collect();
+                let right = decisive.iter().filter(|s| (s.own > s.other) == (s.end > WIN / 2)).count();
+                let (mut e_diff, mut e_lan) = (0.0, [0.0; 4]);
+                for s in &decisive {
+                    let end = (s.end.abs() - WIN) as f64;
+                    let (w, l) = if s.own > s.other { (s.own, s.other) } else { (s.other, s.own) };
+                    e_diff += ((w - l) as f64 - end).abs();
+                    for (k, c) in [0.25, 0.5, 0.75, 1.0].into_iter().enumerate() {
+                        e_lan[k] += (((w * w) as f64 - c * (l * l) as f64).max(0.0).sqrt() - end).abs();
+                    }
+                }
+                let d = decisive.len().max(1) as f64;
+                let saved: f64 = decisive.iter().map(|s| s.steps_after as f64).sum::<f64>() / n;
+                println!(
+                    "  margin {margin}, share ≥ {share}‰: decisive {:.1}%, right {:.2}%, steps saved {saved:.1} per rollout; winner's worth error: diff {:.0}, lanchester c=¼ {:.0}, ½ {:.0}, ¾ {:.0}, 1 {:.0}",
+                    100.0 * decisive.len() as f64 / n,
+                    100.0 * right as f64 / d,
+                    e_diff / d,
+                    e_lan[0] / d,
+                    e_lan[1] / d,
+                    e_lan[2] / d,
+                    e_lan[3] / d
+                );
+            }
+        }
+    }
+}
+
+/// The cut rollouts' static score: none while the sides are close, the win for the side far
+/// ahead; with them on, the first iteration still weighs every action by full rollouts, so
+/// Max still never picks below the original's choice.
+#[test]
+fn cut_rollouts_score_only_sure_positions_and_keep_the_safety_rule() {
+    let (_, mut b) = synthetic_battles(1).remove(0);
+    b.begin();
+    let (own, other) = (b.max_worth(Team::Enemy), b.max_worth(Team::Player));
+    if (own - other).abs() * 1000 < SHORT_SHARE * (own + other) {
+        assert_eq!(b.max_static(Team::Enemy), None);
+    }
+    let mut ahead = b.clone();
+    for f in ahead.fighters.iter_mut().filter(|f| f.team == Team::Player).skip(1) {
+        f.hp = 0;
+    }
+    if let Some(f) = ahead.fighters.iter_mut().find(|f| f.team == Team::Player) {
+        f.hp = 1;
+    }
+    let v = ahead.max_static(Team::Enemy).expect("far ahead");
+    assert!(v > WIN);
+    assert_eq!(ahead.max_static(Team::Player).map(|v| v < -WIN), Some(true));
+    let budget = MaxBudget { short_rollouts: true, ..TEST_BUDGET };
+    for (name, mut b) in synthetic_battles(4) {
+        b.begin();
+        let r = b.max_choice_with(budget, Some(&MaxTables::default()), None).unwrap();
+        assert!(r.value >= r.original_value, "{name}");
     }
 }

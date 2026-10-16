@@ -54,6 +54,16 @@ const WORTH_SCALE: i64 = 1000;
 const CLOCK_EVERY: usize = 8;
 /// A rollout's start and its first positions, this many in all, go in the cache.
 const ROLLOUT_KEYS: usize = 4;
+/// A cut rollout (`MaxBudget::short_rollouts`): from this many rounds in, it stops as soon
+/// as one side holds at least `SHORT_SHARE`‰ more of the worth left than the other (of the
+/// sum), with more than `SHORT_MARGIN` rounds to the turn limit, and is scored statically
+/// (`Battle::max_static`). Fitted by `fit_the_static_evaluation_of_cut_rollouts` on the
+/// harness's positions: one round in and 500‰, the side ahead won every such rollout.
+const SHORT_ROUNDS: u32 = 1;
+const SHORT_SHARE: i64 = 500;
+const SHORT_MARGIN: i64 = 4;
+/// The cut rollouts' scores are cached apart from the full ones'.
+const SHORT_SALT: StateKey = 0x5348_4f52_5420_524f_4c4c_4f55_5420_2020;
 
 /// How long a decision may search: a time limit (the game's), or none and a node limit
 /// (deterministic, for tests); both stop at `max_depth` actions ahead.
@@ -62,16 +72,22 @@ pub struct MaxBudget {
     pub time: Option<Duration>,
     pub max_depth: u32,
     pub max_nodes: u64,
+    /// Rollouts of the leaves past the root's children are cut short where the static
+    /// evaluation is sure ([`SHORT_ROUNDS`]). Off in the game: measured, it gave about a
+    /// fifth more positions a second but no greater depth and a little less worth left
+    /// (the rollouts are short already, ~27 actions, and only ~7% of their actions are saved
+    /// where the fit is always right).
+    pub short_rollouts: bool,
 }
 
 impl MaxBudget {
     /// The battle on screen: [`MAX_AI_BUDGET`] per decision.
-    pub const GAME: MaxBudget = MaxBudget { time: Some(MAX_AI_BUDGET), max_depth: MAX_DEPTH, max_nodes: u64::MAX };
+    pub const GAME: MaxBudget = MaxBudget { time: Some(MAX_AI_BUDGET), max_depth: MAX_DEPTH, max_nodes: u64::MAX, short_rollouts: false };
 
     /// No clock: at most `max_depth` actions ahead and `max_nodes` positions, the same
     /// choice on any machine.
     pub const fn fixed(max_depth: u32, max_nodes: u64) -> MaxBudget {
-        MaxBudget { time: None, max_depth, max_nodes }
+        MaxBudget { time: None, max_depth, max_nodes, short_rollouts: false }
     }
 }
 
@@ -174,20 +190,36 @@ impl Battle {
     /// `side`'s score of the battle as it stands: a win or loss, then the worth left of each
     /// side, `side`'s minus the other's.
     fn max_eval(&self, side: Team) -> i64 {
-        let worth = |team: Team| -> i64 {
-            self.fighters
-                .iter()
-                .filter(|f| f.team == team && f.alive() && !f.surrendered)
-                .map(|f| f.tactical.max(1) as i64 * WORTH_SCALE * f.hp as i64 / f.max_hp().max(1) as i64 + f.hp as i64)
-                .sum()
-        };
         let won = match self.outcome() {
             Outcome::Ongoing => 0,
             Outcome::Victory if side == Team::Player => WIN,
             Outcome::Defeat if side == Team::Enemy => WIN,
             _ => -WIN,
         };
-        won + worth(side) - worth(side.other())
+        won + self.max_worth(side) - self.max_worth(side.other())
+    }
+
+    /// `side`'s static score of a rollout cut short, when it is sure who wins: the win or
+    /// loss and the winner's worth left by Lanchester's square law, √(W² − L²/4) (its fit
+    /// beat W − L and the other weights of L²).
+    fn max_static(&self, side: Team) -> Option<i64> {
+        let (own, other) = (self.max_worth(side), self.max_worth(side.other()));
+        if self.turn_limit() as i64 - (self.round as i64) <= SHORT_MARGIN || (own - other).abs() * 1000 < SHORT_SHARE * (own + other).max(1) {
+            return None;
+        }
+        let (w, l) = (own.max(other) as f64, own.min(other) as f64);
+        let left = (w * w - l * l / 4.0).max(0.0).sqrt() as i64;
+        Some(if own > other { WIN + left } else { -WIN - left })
+    }
+
+    /// `team`'s worth left: each standing unit's tactical value × its share of HP left, plus
+    /// its HP.
+    fn max_worth(&self, team: Team) -> i64 {
+        self.fighters
+            .iter()
+            .filter(|f| f.team == team && f.alive() && !f.surrendered)
+            .map(|f| f.tactical.max(1) as i64 * WORTH_SCALE * f.hp as i64 / f.max_hp().max(1) as i64 + f.hp as i64)
+            .sum()
     }
 
     /// The search for the active unit's best action (the module's comment), with no tables
@@ -223,6 +255,7 @@ impl Battle {
             rollout_hits: 0,
             aborted: false,
             cut: false,
+            short: budget.short_rollouts,
             scratch: Vec::new(),
             roll: None,
         };
@@ -317,6 +350,7 @@ struct Search<'a> {
     aborted: bool,
     /// A line was cut by the depth while the battle went on.
     cut: bool,
+    short: bool,
     /// The positions under way by distance from the root, and the rollout's: their buffers
     /// are reused (`Battle::clone_from`), the battle searched is never changed.
     scratch: Vec<Option<Battle>>,
@@ -480,10 +514,14 @@ impl Search<'_> {
         if b.outcome() != Outcome::Ongoing || ply > ROLLOUT_PLIES {
             return b.max_eval(self.side);
         }
+        // The root's children keep full rollouts: the first iteration's safety rule weighs
+        // each action by the original's own play to the end.
+        let short = self.short && ply >= 2;
+        let salt = if short { SHORT_SALT } else { 0 };
         let mut chain: [StateKey; ROLLOUT_KEYS] = [0; ROLLOUT_KEYS];
         let mut keyed = 0;
         if let Some(t) = self.tables {
-            let k = b.max_key(self.side);
+            let k = b.max_key(self.side) ^ salt;
             if let Some(v) = t.rollout_get(k) {
                 self.rollout_hits += 1;
                 return v;
@@ -493,7 +531,7 @@ impl Search<'_> {
         }
         self.rollouts += 1;
         let mut r = copy_into(self.roll.take(), b);
-        let v = self.roll_out(&mut r, &mut chain, &mut keyed);
+        let v = self.roll_out(&mut r, &mut chain, &mut keyed, short);
         self.roll = Some(r);
         let Some(v) = v else { return 0 };
         if let Some(t) = self.tables {
@@ -506,8 +544,10 @@ impl Search<'_> {
 
     /// Plays the rollout `r` to its end (`None` if the time ran out), looking up the cache
     /// for its first positions and noting their keys in `chain`.
-    fn roll_out(&mut self, r: &mut Battle, chain: &mut [StateKey; ROLLOUT_KEYS], keyed: &mut usize) -> Option<i64> {
+    fn roll_out(&mut self, r: &mut Battle, chain: &mut [StateKey; ROLLOUT_KEYS], keyed: &mut usize, short: bool) -> Option<i64> {
         let mut known = None;
+        let r0 = r.round;
+        let salt = if short { SHORT_SALT } else { 0 };
         for i in 0..AUTO_PLAY_STEPS {
             if r.outcome() != Outcome::Ongoing {
                 break;
@@ -517,8 +557,14 @@ impl Search<'_> {
                 return None;
             }
             r.auto_step();
+            if short && r.round >= r0 + SHORT_ROUNDS && r.outcome() == Outcome::Ongoing {
+                if let Some(v) = r.max_static(self.side) {
+                    known = Some(v);
+                    break;
+                }
+            }
             if let Some(t) = self.tables.filter(|_| *keyed == i + 1 && *keyed < ROLLOUT_KEYS) {
-                let k = r.max_key(self.side);
+                let k = r.max_key(self.side) ^ salt;
                 if let Some(v) = t.rollout_get(k) {
                     known = Some(v);
                     break;

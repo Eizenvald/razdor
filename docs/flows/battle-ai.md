@@ -185,6 +185,17 @@ BattleView::ai_move (computer's turn) → max_move → MaxThinker::poll(battle)
   into old buffers cost less than the undo records would. Results are identical
   (`copies_into_old_buffers_are_exact_and_the_search_changes_nothing`).
 
+- **Cut rollouts** (`MaxBudget::short_rollouts`, off): a rollout of a leaf past the root's
+  children stops from `SHORT_ROUNDS` rounds in once one side holds `SHORT_SHARE`‰ more of the
+  worth left, and is scored by `Battle::max_static` (the win, and the winner's worth left by
+  Lanchester's square law √(W² − L²/4)). The constants are fitted by the ignored
+  `fit_the_static_evaluation_of_cut_rollouts` on rollouts from the harness's positions (real
+  armies, custom battles, the demo's): 1 round in at 500‰, the side ahead won every one; at
+  300‰ it is right only 97% of the time. Measured off: the rollouts are short (~27 actions)
+  and only ~7% of their actions are saved, so it gave ~20% more positions a second but no
+  greater depth and a little less worth left; the harness turns it on with
+  `RAZDOR_MAX_SHORT_ROLLOUTS`.
+
 UI: `BattleView` keeps the `MaxThinker` for the computer's side (`max_side`); a battle that is
 over or watched (W) stops its search. The clock pointer already shows while the computer's
 side acts; the frame never waits. Settings: «Сила ИИ в бою» in «Ещё…» (`main_menu::AiStrength`):
@@ -211,6 +222,7 @@ the same choices in every run, so only the speed changes there):
 |---|---|---|---|---|
 | tables (above) | 38 700 | 81 700 | 3.82 | 156, 0.38 |
 | cheaper copies and keys | 69 400 | 212 000 | 4.50 | 156, 0.38 |
+| cut rollouts (tried, left off) | 64 400 (other choices) | 255 000 | 4.44 | 156, 0.38 (hero battles 0.47 → 0.46) |
 
 Evidence: `src/rules/battle/max_ai/tests.rs` plays each position with the original on both
 sides and with Max on each side (`max_beats_the_original_on_synthetic_battles` always;
