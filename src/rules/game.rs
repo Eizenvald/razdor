@@ -459,6 +459,10 @@ pub struct Game {
     /// settings): the player's choice, set by the interface, not part of the save.
     #[serde(skip)]
     pub improved_ai: bool,
+    /// Razdor's «Максимум» for the enemy of the battles on screen ([`Battle::set_max_ai`], the
+    /// owner's request): set by the interface, not part of the save.
+    #[serde(skip)]
+    pub max_ai: bool,
     /// Razdor's option: stepping onto a friendly army (attitude above 0) with no event for
     /// the meeting lets the hero pass. Off (the default) is the original: every army he
     /// steps onto is engaged, and with no event firing the battle opens (world.md §4.2).
@@ -625,6 +629,7 @@ impl Game {
             snap_due: false,
             snapped: false,
             improved_ai: false,
+            max_ai: false,
             friends_let_pass: false,
             pursue: true,
             walk_pace: 1.0,
@@ -2021,6 +2026,7 @@ impl Game {
         b.set_bench((0..self.squad.len()).filter(|i| !fighting.contains(i)).map(|i| self.squad[i].slot).collect());
         b.set_xp_correction(correction);
         b.set_improved_ai(self.improved_ai);
+        b.set_max_ai(self.max_ai);
         b.god = self.cheats.god;
         // Lasting world spells are in the units' stats already (their slots).
         // An enemy army attacked in a building of its own side (one hostile to the hero)
@@ -2060,7 +2066,7 @@ impl Game {
             self.tile(),
             b.building_defence(Team::Player),
             b.building_defence(Team::Enemy),
-            if self.improved_ai { "expert" } else { "easy" }
+            if self.max_ai { "max" } else if self.improved_ai { "expert" } else { "easy" }
         );
         for f in &b.fighters {
             let s = &f.stats;

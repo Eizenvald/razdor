@@ -4,9 +4,9 @@
 (`src/rules/battle.rs`, section "AI"), copied from the original's code (486bb9 and on,
 `docs/reference/original-mechanics/battle.md` §4, §3 for mage targets, §2 for the reserve). It
 picks one action for the active unit; it never looks ahead except through `killable`. The
-same AI plays the enemy in the player's battles, both sides of off-screen battles between AI
-armies (`src/rules/ai.rs`), the pre-simulation in `Battle::begin`, and, with two changes, the
-player's side in Razdor's auto-battle. The world-map AI that decides *whether* to fight is a
+same AI plays the enemy in the player's battles (unless he chose Razdor's «Максимум», §8),
+both sides of off-screen battles between AI armies (`src/rules/ai.rs`), the pre-simulation in
+`Battle::begin`, and, with two changes, the player's side in Razdor's auto-battle. The world-map AI that decides *whether* to fight is a
 different thing: `docs/reference/original-mechanics/ai.md` §4 (simulated battles), §10 (AI
 against AI).
 
@@ -102,6 +102,57 @@ run the real-maps AI test (`src/rules/ai/real_maps.rs`, needs `RAZDOR_DT_DIR`).
 `auto_battles_terminate_deterministically_and_never_use_the_reserve`,
 `hero_auto_battle_keeps_a_front_row_blesser_in_its_cell`,
 `hero_auto_battle_leaves_the_enemy_to_the_original_s_ai`, `real_armies_auto_battle_terminates`.
+
+## 8. «Максимум» (Razdor extra, main only)
+
+The owner's request: a third battle AI strength, as strong as possible, for the computer's
+side of the battles the player plays. A deviation: never on `dt-original`, off by default;
+the original's AI above is untouched and still plays everything else (off-screen battles,
+the pre-simulation, the world AI's simulated battles, Q and W, the rollouts below).
+
+```
+BattleView::advance (computer's turn, Battle::max_ai set, nobody watching)   src/ui/battle_view.rs
+  └ BattleView::ai_move → Thinking: worker thread (patch globals copied in)
+       └ Battle::max_choice(MaxBudget::GAME) → MaxReport { choice, … }
+  frames later, the answer arrives → Battle::play_max_move(choice) → Step (as hero_auto_step's)
+```
+
+`src/rules/battle/max_ai.rs`:
+- **Moves** (`max_moves`): every cell action of the active unit (`all_options`, the same as
+  the clicks), every step (`moves`, the reserve included), a pass. `max_order` puts the
+  original's pick (`plan(false)`, or a skip when the rules refuse it, as `auto_step`) first,
+  then hostile actions by damage in tactical worth (a kill counts its worth again), heals,
+  blessings and curses, steps, the pass.
+- **Search**: alpha-beta minimax over clones of the battle (`Battle` is `Clone`, no
+  randomness); a node maximises when a unit of the searching side acts, minimises otherwise,
+  in the battle's own turn order (several actions of a unit in a row are several plies).
+  Iterative deepening; the deepest completed iteration decides; `MaxBudget` is a time
+  (`MAX_AI_BUDGET`, 150 ms) or, in tests, a node limit (deterministic).
+- **Leaves** (`Search::leaf`): a rollout, the rest of the battle by `auto_step` on both sides,
+  scored by `max_eval`: ±2⁴⁰ for a win or loss, plus each side's worth left (tactical value ×
+  HP share), the searching side's minus the other's. Past `ROLLOUT_PLIES` the leaf is scored
+  as it stands.
+- **Safety**: at the root the original's pick is searched first and replaced only by a strictly
+  higher score. After depth 1 (exact: one rollout per move) only the moves whose rollout scores
+  at least the original's stay in the search. Against the original's AI every decision then
+  keeps at least the score the previous one expected, so Max never ends a battle below what the
+  original would have (the harness asserts it).
+- The Community patch's globals (thread-local) are saved and put back around every simulated
+  action; the worker thread starts from a copy of the screen's. The battle's own state is
+  never touched (`max_choice` takes `&self`).
+
+UI: `BattleView` keeps the job (`Thinking`) with the battle's moment it was asked for; an answer
+for another moment (a cheat, Q) is dropped. The clock pointer already shows while the computer's
+side acts; the frame never waits. Settings: «Сила ИИ в бою» in «Ещё…» (`main_menu::AiStrength`):
+«как в оригинале», «улучшенный» (the original's `OptValue9`, kept in sync with its checkbox) or
+«максимум (Раздор)» (`Settings::max_ai`, which implies the improved level for the base AI);
+`Game::max_ai` → `Battle::set_max_ai` in `Game::start_battle`; the custom battle's AI button
+cycles the three.
+
+Evidence: `src/rules/battle/max_ai/tests.rs` plays each position with the original on both
+sides and with Max on each side (`max_beats_the_original_on_synthetic_battles` always;
+`max_beats_the_original_on_real_armies` on the install: hero vs map armies, map armies of near
+strength, custom battles of the install's units; `…_in_game_time` by hand with `--ignored`).
 
 ---
 Verify every `path`, symbol and test named in the battle flow docs (run from the repo root):

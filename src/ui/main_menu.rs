@@ -541,6 +541,48 @@ pub fn expert_ai(audio: &super::audio::Settings) -> bool {
     audio.expert_ai.unwrap_or_else(|| chrome::ui_text("Options", "OptValue9").is_some_and(|v| razdor::dt::ini::loose_int(&v) == 1))
 }
 
+/// Razdor's «Сила ИИ в бою» (the owner's request): the original's AI, its improved level
+/// (`OptValue9`, [`expert_ai`]) or Razdor's «Максимум» for the enemy of the player's battles
+/// (`razdor::rules::battle::Battle::max_choice`), which plays on the improved level's base.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AiStrength {
+    Original,
+    Improved,
+    Max,
+}
+
+impl AiStrength {
+    pub fn next(self) -> AiStrength {
+        match self {
+            AiStrength::Original => AiStrength::Improved,
+            AiStrength::Improved => AiStrength::Max,
+            AiStrength::Max => AiStrength::Original,
+        }
+    }
+}
+
+/// The battle AI's strength now: «Максимум» if chosen, else by the improved AI's checkbox.
+pub fn ai_strength(audio: &super::audio::Settings) -> AiStrength {
+    match (audio.max_ai, expert_ai(audio)) {
+        (true, _) => AiStrength::Max,
+        (false, true) => AiStrength::Improved,
+        (false, false) => AiStrength::Original,
+    }
+}
+
+/// Chooses the battle AI's strength; the improved AI's checkbox (`OptValue9`) follows it.
+pub fn set_ai_strength(audio: &mut super::audio::Settings, s: AiStrength) {
+    audio.expert_ai = Some(s != AiStrength::Original);
+    audio.max_ai = s == AiStrength::Max;
+}
+
+/// The improved AI's checkbox clicked: on gives the improved level, off the original's (and
+/// so ends «Максимум»).
+fn toggle_expert_ai(audio: &mut super::audio::Settings) {
+    let on = expert_ai(audio);
+    set_ai_strength(audio, if on { AiStrength::Original } else { AiStrength::Improved });
+}
+
 /// The battle animation speed (percent): the player's choice, else the install's
 /// `[Options] AnimationSpeed` (the Community's); `None` without either (the vanilla game).
 pub fn anim_speed(audio: &super::audio::Settings) -> Option<f32> {
@@ -754,6 +796,22 @@ fn advanced_window(audio: &mut super::audio::Settings, over_map: bool) -> bool {
     if row(tr("Font"), font_label, &mut y) {
         audio.font = audio.font.next();
     }
+    // The battle AI's strength (Razdor's): the original's, its improved level, or «Максимум».
+    let strength = ai_strength(audio);
+    let strength_label = match strength {
+        AiStrength::Original => tr("As in the original"),
+        AiStrength::Improved => tr("Improved"),
+        AiStrength::Max => tr("Maximum (Razdor)"),
+    };
+    if row(tr("Battle AI strength"), strength_label, &mut y) {
+        set_ai_strength(audio, strength.next());
+    }
+    let hint = tr("Maximum: before each move the enemy of your battles weighs every move and answer ahead and plays each out to the end of the battle.");
+    let lines = wrap(hint, rw, 12.0 * k);
+    for (i, line) in lines.iter().enumerate() {
+        chrome::shadow_text(line, rx, y - 8.0 * k + i as f32 * 17.0 * k, 12.0 * k, WHITE);
+    }
+    y += lines.len() as f32 * 17.0 * k;
     // The language list (Razdor's): Russian, English and the translations of the data found
     // in the install; the button opens it.
     chrome::shadow_text(tr("Language"), rx, y + 18.0 * k, 14.0 * k, chrome::CREAM);
@@ -912,7 +970,7 @@ pub fn options_window(audio: &mut super::audio::Settings, install_wide: bool, ov
                 2 => audio.hints_off = Some(!on),
                 3 => audio.pursue = Some(!on),
                 4 => audio.autosave = Some(!on),
-                5 => audio.expert_ai = Some(!on),
+                5 => toggle_expert_ai(audio),
                 6 => audio.impossible = Some(!on),
                 _ => audio.wide_row = Some(!on),
             }

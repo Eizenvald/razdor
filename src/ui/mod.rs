@@ -272,7 +272,8 @@ impl App {
         let expert = main_menu::expert_ai(&self.audio.settings);
         let view = self.custom.get_or_insert_with(|| custom_battle::SetupView::new(&content));
         view.session.end_round();
-        let battle = view.session.start_round(&content, expert)?;
+        let mut battle = view.session.start_round(&content, expert)?;
+        battle.set_max_ai(main_menu::ai_strength(&self.audio.settings) == main_menu::AiStrength::Max);
         Some(Screen::CustomBattle(Box::new(BattleView::custom(battle, view.session.setup.control))))
     }
 
@@ -767,6 +768,7 @@ impl App {
         // The battle AI's level from the settings: the next battle uses it.
         if let Some(g) = self.game.as_mut() {
             g.improved_ai = main_menu::expert_ai(&self.audio.settings);
+            g.max_ai = main_menu::ai_strength(&self.audio.settings) == main_menu::AiStrength::Max;
             g.pursue = main_menu::pursue(&self.audio.settings);
             g.walk_pace = main_menu::walk_pace(&self.audio.settings);
             g.friends_let_pass = self.audio.settings.friends_let_pass;

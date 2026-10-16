@@ -149,10 +149,15 @@ pub fn frame(view: &mut SetupView, content: &Content, assets: &Assets, audio: &m
         setup.fit(content);
         view.picked = None;
     }
-    let expert = super::main_menu::expert_ai(audio);
-    let ai = if expert { tr("Battle AI: improved") } else { tr("Battle AI: normal") };
+    use super::main_menu::AiStrength;
+    let strength = super::main_menu::ai_strength(audio);
+    let ai = match strength {
+        AiStrength::Original => tr("Battle AI: normal"),
+        AiStrength::Improved => tr("Battle AI: improved"),
+        AiStrength::Max => tr("Battle AI: maximum"),
+    };
     if button(lx + 230.0 * k, by, 200.0 * k, bh, ai, true) {
-        audio.expert_ai = Some(!expert);
+        super::main_menu::set_ai_strength(audio, strength.next());
     }
     let ready = view.session.setup.ready();
     let back = button(inner.x + inner.w - 310.0 * k, by, 140.0 * k, bh, tr("Back"), true);

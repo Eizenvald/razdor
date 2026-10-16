@@ -8,6 +8,15 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
 
 ## Open
 
+- **«Максимум» against people** (2026-10-16, Razdor's strongest battle AI, the owner's
+  request; main only). Against the original's AI (`src/rules/battle/max_ai/tests.rs`, 256
+  games on the install's armies) Max wins 60% where the original wins 50%, and never ends
+  below the original's score; the deeper minimax adds no wins there over the one-ply rollouts
+  (the same tally at 4 plies / 600 nodes and at 150 ms). How much the minimax helps against a
+  human, and whether 150 ms per action feels slow in long battles, needs players' reports.
+  Q and W keep the original's AI for the enemy (the hero's auto-battle), so a battle finished
+  with Q is easier than one played to the end: the owner may want Max there too.
+
 - **Battle end on a counterblow** (2026-10-16, the battle-end timing). The original queues a
   counterblow's first effect without the 0x100 flag (4c43e8, 4c57bc), so Battle_Step runs
   after the effect on the target, before the slide back and the effect on the actor. If the

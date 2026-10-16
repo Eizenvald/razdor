@@ -167,7 +167,7 @@ fields `#[serde(default)]`) holds every setting: volumes, display, scale, battle
 row width, and Razdor's own options (`friends_let_pass`, `pass_on_bridges`, `updates`,
 map zoom). The windows are `main_menu::options` / `main_menu::options_window` (the
 original's: five slider rows, eight checkboxes, «Принять» keeps, «Отмена» restores what the
-window opened with) and `advanced_window` («Ещё…»: Razdor's own options, the screen, scale,
+window opened with) and `advanced_window` («Ещё…»: Razdor's own options, the screen, scale, the battle AI strength (`main_menu::AiStrength`, kept in sync with the `OptValue9` checkbox),
 font and language). Two options are read at start only, as the original's: «no music and
 sounds» (`Audio::new`) and «impossible difficulty» (the content's difficulty factor in
 `App::new`).

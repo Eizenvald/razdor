@@ -647,6 +647,9 @@ pub struct Battle {
     /// The cheat console's `god` (`rules::cheats`): the player's units take no damage. Off
     /// in the pre-simulation.
     pub god: bool,
+    /// Razdor's «Максимум» for the computer's side of the battle on screen
+    /// ([`Battle::set_max_ai`], the owner's request); the rules never read it.
+    max_ai: bool,
 }
 
 /// A fighter in its side's strength sum.
@@ -764,6 +767,7 @@ impl Battle {
             max_turn_lost: [0; 2],
             bench: Vec::new(),
             god: false,
+            max_ai: false,
         };
         b.fit_to_formation();
         b
@@ -3177,8 +3181,14 @@ impl Battle {
     }
 
     fn step_by(&mut self, hero: bool) -> Option<Step> {
+        let plan = self.plan(hero)?;
+        self.step_plan(plan)
+    }
+
+    /// Carries out `plan` for the active unit; `None` if the rules refuse it.
+    fn step_plan(&mut self, plan: Plan) -> Option<Step> {
         let actor = self.active()?;
-        match self.plan(hero)? {
+        match plan {
             Plan::Act(t, kind) => {
                 let hit = self.act_with(t, kind).ok()?;
                 Some(Step::Act { actor, hit })
@@ -3365,6 +3375,9 @@ fn berserk(f: &Fighter) -> i32 {
     let lost = max - (f.hp as i64).clamp(0, max);
     (lost * BERSERK_PERCENT as i64 * f.base[Stat::AttackBlow] as i64 / max / 100).clamp(i32::MIN as i64, i32::MAX as i64) as i32
 }
+
+mod max_ai;
+pub use max_ai::{MaxBudget, MaxMove, MaxReport, MAX_AI_BUDGET};
 
 #[cfg(test)]
 mod tests;

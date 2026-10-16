@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 use macroquad::prelude::*;
 
 use razdor::i18n::tr;
-use razdor::rules::battle::{ActionKind, Battle, EndReason, Fighter, Hit, Outcome, Preview, Step, Team, XpAward};
+use razdor::rules::battle::{ActionKind, Battle, EndReason, Fighter, Hit, MaxBudget, MaxMove, Outcome, Preview, Step, Team, XpAward};
 use razdor::av::Echo;
 use razdor::rules::content::{HeroClass, ItemId, Stat};
 use razdor::rules::custom::{Control, Session};
@@ -291,6 +291,31 @@ pub struct BattleView {
     /// The cards' curse and blessing signs by fighter: set as a magic or a blessing effect
     /// ends on the card, kept to the end of the battle (unit +0xc5 / +0xc9, 4b00c1).
     signs: Vec<Signs>,
+    /// «Максимум» thinking about the computer's unit on a worker thread (Razdor's).
+    thinking: Option<Thinking>,
+}
+
+/// Razdor's «Максимум» (the owner's request) searching for the computer's unit on a worker
+/// thread, so the frame never waits: the battle's moment it was asked for, and the answer
+/// to come (`Battle::max_choice`, within `razdor::rules::battle::MAX_AI_BUDGET`).
+struct Thinking {
+    moment: (usize, Option<usize>, i32, u32),
+    answer: std::sync::mpsc::Receiver<Option<MaxMove>>,
+}
+
+impl Thinking {
+    fn start(battle: &Battle, moment: (usize, Option<usize>, i32, u32)) -> Thinking {
+        let mut b = battle.clone();
+        b.log.clear();
+        // The Community patch's globals are the thread's own: the worker starts from these.
+        let globals = razdor::rules::battle::patch_globals();
+        let (tx, answer) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            razdor::rules::battle::set_patch_globals(globals);
+            let _ = tx.send(b.max_choice(MaxBudget::GAME).map(|r| r.choice));
+        });
+        Thinking { moment, answer }
+    }
 }
 
 /// A card's curse and blessing signs.
@@ -447,6 +472,7 @@ impl BattleView {
             watch: false,
             speed: SPEED.with(|s| s.get()),
             custom: false,
+            thinking: None,
         }
     }
 
@@ -549,9 +575,38 @@ impl BattleView {
     /// One move of the AI for the active unit, whichever side it is on: the quick battle's
     /// step ([`Battle::hero_auto_step`]), so a watched battle plays exactly as the instant one.
     fn ai_move(&mut self) -> Option<Step> {
-        let step = self.battle.hero_auto_step();
+        let step = if self.max_plays() { self.max_move()? } else { self.battle.hero_auto_step() };
         self.note_log();
         step
+    }
+
+    /// Razdor's «Максимум» plays the computer's unit to act: chosen, and a human plays the
+    /// other side (Q and W, the hero's auto-battle, keep the original's AI).
+    fn max_plays(&self) -> bool {
+        let b = &self.battle;
+        b.max_ai() && !self.watching() && b.active().is_some_and(|a| !self.human(b.fighters[a].team))
+    }
+
+    /// «Максимум»'s move: the search starts on a worker thread and `None` comes back until
+    /// its answer has (the clock pointer shows meanwhile, the animations run on); then the
+    /// move is played. An answer for another moment of the battle is dropped; a worker that
+    /// failed leaves the move to the original's AI.
+    fn max_move(&mut self) -> Option<Option<Step>> {
+        let now = Self::moment(&self.battle);
+        if self.thinking.as_ref().is_some_and(|t| t.moment != now) {
+            self.thinking = None;
+        }
+        let t = self.thinking.get_or_insert_with(|| Thinking::start(&self.battle, now));
+        let answer = match t.answer.try_recv() {
+            Err(std::sync::mpsc::TryRecvError::Empty) => return None,
+            Ok(m) => m,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+        };
+        self.thinking = None;
+        Some(match answer {
+            Some(m) => self.battle.play_max_move(m),
+            None => self.battle.hero_auto_step(),
+        })
     }
 
     /// Remembers the newest log line for the strip.
@@ -1489,6 +1544,40 @@ mod tests {
         skipped.quick_battle();
         assert_eq!(skipped.battle.log, instant.battle.log);
         assert_eq!(skipped.battle.player_results(), instant.battle.player_results());
+    }
+
+    /// «Максимум» thinks on a worker thread: asking never holds the frame, the answer is
+    /// played once it comes, and the battle reaches its end. Watching (W) leaves it to the
+    /// original's AI.
+    #[test]
+    fn max_thinks_on_a_worker_and_the_frame_goes_on() {
+        use std::time::{Duration, Instant};
+        let mut view = bandit_camp();
+        view.battle.set_max_ai(true);
+        let t0 = Instant::now();
+        let mut answered = 0;
+        while view.battle.outcome() == Outcome::Ongoing && t0.elapsed() < Duration::from_secs(60) {
+            let a = view.battle.active().unwrap();
+            if view.human(view.battle.fighters[a].team) {
+                assert!(!view.max_plays(), "never for the player's units");
+                view.battle.auto_step();
+                continue;
+            }
+            assert!(view.max_plays());
+            let t = Instant::now();
+            let step = view.ai_move();
+            assert!(t.elapsed() < Duration::from_millis(100), "the frame never waits for the search");
+            match step {
+                Some(_) => answered += 1,
+                None => std::thread::sleep(Duration::from_millis(2)),
+            }
+        }
+        assert_ne!(view.battle.outcome(), Outcome::Ongoing);
+        assert!(answered > 0);
+        let mut watched = bandit_camp();
+        watched.battle.set_max_ai(true);
+        watched.toggle_watch();
+        assert!(!watched.max_plays());
     }
 
     #[test]

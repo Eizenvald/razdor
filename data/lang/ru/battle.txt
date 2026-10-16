@@ -316,6 +316,7 @@ Formation: wide row (6) = Строй: широкий ряд (6)
 Formation: vanilla (4) = Строй: обычный (4)
 Battle AI: normal = ИИ в бою: обычный
 Battle AI: improved = ИИ в бою: улучшенный
+Battle AI: maximum = ИИ в бою: максимум
 Fight! (Enter) = В бой! (Enter)
 Both armies need a unit. = В каждой армии нужен хотя бы один воин.
 

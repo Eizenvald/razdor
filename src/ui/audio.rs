@@ -160,6 +160,9 @@ pub struct Settings {
     /// The enemy's battle AI: `Some(true)` expert (the original's "improved enemy AI in
     /// battle"), `Some(false)` easy; `None` until chosen: the install's `OptValue9`.
     pub expert_ai: Option<bool>,
+    /// Razdor's «Максимум» for the enemy's battle AI (the owner's request, `main_menu::AiStrength`);
+    /// on, `expert_ai` is on too.
+    pub max_ai: bool,
     /// The front row's width for new games: `Some(true)` 6 cells (the Community's wide row),
     /// `Some(false)` 4 (its two edge places are the reserve's, as the back row's are);
     /// `None` until chosen: the install's `OptValue11`. A save keeps the width it was
@@ -211,7 +214,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Settings {
-        Settings { music_volume: 0.6, sfx_volume: 0.8, music_muted: false, sfx_muted: false, show_fps: false, expert_ai: None, wide_row: None, display: Default::default(), ui_scale: 0.0, minimap_size: None, minimap_corner: Default::default(), friends_let_pass: false, pass_on_bridges: false, updates: Default::default(), map_zoom: 1.0, zoom_locked: false, anim_speed: None, font: Default::default(), scroll_speed: None, walk_speed: None, no_sound: None, hints_off: None, pursue: None, autosave: None, impossible: None }
+        Settings { music_volume: 0.6, sfx_volume: 0.8, music_muted: false, sfx_muted: false, show_fps: false, expert_ai: None, max_ai: false, wide_row: None, display: Default::default(), ui_scale: 0.0, minimap_size: None, minimap_corner: Default::default(), friends_let_pass: false, pass_on_bridges: false, updates: Default::default(), map_zoom: 1.0, zoom_locked: false, anim_speed: None, font: Default::default(), scroll_speed: None, walk_speed: None, no_sound: None, hints_off: None, pursue: None, autosave: None, impossible: None }
     }
 }
 
@@ -665,6 +668,28 @@ mod tests {
         // Missing fields take the defaults; out-of-range volumes are clamped.
         let partial: Settings = serde_json::from_str(r#"{"music_volume": 3.0}"#).unwrap();
         assert_eq!(partial.clamped(), Settings { music_volume: 1.0, ..Settings::default() });
+    }
+
+    /// «Сила ИИ в бою» and the improved AI's checkbox (`OptValue9`) stay in step: «Максимум»
+    /// keeps the checkbox on, unticking it ends «Максимум».
+    #[test]
+    fn the_ai_strength_follows_the_improved_ai_checkbox() {
+        use crate::ui::main_menu::{ai_strength, expert_ai, set_ai_strength, AiStrength};
+        let mut s = Settings { expert_ai: Some(false), ..Settings::default() };
+        assert_eq!(ai_strength(&s), AiStrength::Original);
+        for want in [AiStrength::Improved, AiStrength::Max, AiStrength::Original] {
+            let next = ai_strength(&s).next();
+            set_ai_strength(&mut s, next);
+            assert_eq!(ai_strength(&s), want);
+            assert_eq!(expert_ai(&s), want != AiStrength::Original);
+        }
+        set_ai_strength(&mut s, AiStrength::Max);
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(ai_strength(&back), AiStrength::Max);
+        set_ai_strength(&mut s, AiStrength::Original);
+        assert!(!s.max_ai && s.expert_ai == Some(false));
+        let old: Settings = serde_json::from_str(r#"{"expert_ai": true}"#).unwrap();
+        assert_eq!(ai_strength(&old), AiStrength::Improved, "an older file: no «Максимум»");
     }
 
     /// The front row's width: the install's `OptValue11` until chosen, then the choice; an
