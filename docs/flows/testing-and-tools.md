@@ -163,7 +163,10 @@ install they run against (`razdor::dt::install::locate`), replacing older copies
   Debugging: `translate::request_log` (`<job>.log` beside the job file) gets every request and
   raw answer and the refusals; `Event::Refused` puts each refused text and its reason in the
   window's log; "Show the request" / `--show-prompt` show the instructions; `Job::made_with`
-  keeps the model, style and context the texts were made with (`Job::made_otherwise`).
+  keeps the model, style and context the texts were made with (`Job::made_otherwise`). Russian as the target (`llm::is_source_language`) is a rewrite in the
+  player's style, with its own rules (`llm::rewrite_rules`). A server that refused
+  reasoning_effort/response_format once (LM Studio: no `json_object`) is not sent them again
+  in the run (`PLAIN_SERVERS`), so a batch costs one request.
 
 ## Traps
 

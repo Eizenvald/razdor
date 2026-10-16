@@ -152,6 +152,9 @@ fn rules_styled(language: &str, any_script: bool, styled: bool) -> String {
         "" => "English",
         l => l,
     };
+    if is_source_language(lang) {
+        return rewrite_rules(styled);
+    }
     let english = super::job::lang_suffix(lang) == "en";
     let letters = if any_script && !english {
         format!("Write {lang} in its own script and letters (with its accents, or Devanagari, Chinese characters and so on), as a native reader expects.")
@@ -190,6 +193,36 @@ transliterate personal names (\"Иван\" -> \"Ivan\"). Use the glossary's {lan
     )
 }
 
+/// The target is the maps' own language: the task is to rewrite, not to translate (translating
+/// Russian into Russian gives back the text as it is, whatever the style says).
+pub fn is_source_language(language: &str) -> bool {
+    let l = language.trim().to_lowercase();
+    l == "ru" || l.starts_with("russian") || l.starts_with("русск") || l == "рус"
+}
+
+/// The rules for rewriting the Russian texts in Russian in the player's style.
+fn rewrite_rules(styled: bool) -> String {
+    let task = if styled {
+        "Rewrite each text in Russian in the player's style given below: change the wording, the tone and the voice as that style asks, keeping what happens and who is who. Never return a text unchanged unless it is a short name that the style would not change."
+    } else {
+        "Rewrite each text in good modern Russian, keeping its meaning, its names and the medieval fantasy tone."
+    };
+    format!(
+        "You rewrite the texts of the Russian fantasy strategy game \"Discord Times\" (\"Времена раздора\") in Russian for a new edition.
+
+You get a JSON object of numbered Russian texts. Reply with ONLY a JSON object with the same keys, \
+each value the rewritten Russian text. Rewrite every entry; never merge, split, skip or add entries; never explain.
+
+Keep exactly, in the same places:
+- placeholders like {{0}}, {{1}};
+- <br> and line breaks (\\n): the same number of lines;
+- the markup characters * | @ ^ (they style a line; keep each where it stands, usually at the line's start).
+
+{task} Personal names stay recognisable. Write Russian letters, digits and plain punctuation (straight \
+quotes, '-', '...')."
+    )
+}
+
 /// The user message for `texts` (the batch's Russian, in order, numbered from 1), with the
 /// glossary in `language` and the player's style repeated at its end (models follow what
 /// stands in the message itself more closely than the instructions).
@@ -208,7 +241,11 @@ pub fn user_prompt(texts: &[&str], glossary: &[(String, String)], language: &str
     }
     let obj: serde_json::Map<String, Value> =
         texts.iter().enumerate().map(|(k, t)| ((k + 1).to_string(), Value::String(prepare(t).text))).collect();
-    out.push_str(&format!("Translate into {lang}:\n"));
+    if is_source_language(lang) {
+        out.push_str("Rewrite in Russian:\n");
+    } else {
+        out.push_str(&format!("Translate into {lang}:\n"));
+    }
     out.push_str(&serde_json::to_string_pretty(&Value::Object(obj)).unwrap_or_default());
     if !style.trim().is_empty() {
         out.push_str(&format!("\n\nWrite every text in this style: {}", style.trim()));
@@ -347,6 +384,9 @@ fn api_error(code: u32, body: &str) -> String {
     format!("HTTP {code}: {}", msg.unwrap_or_else(|| body.chars().take(300).collect()))
 }
 
+/// Servers that answered only without `reasoning_effort` and `response_format`.
+static PLAIN_SERVERS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
 /// One chat completion: the model's answer text.
 pub fn chat(s: &Settings, system: &str, user: &str) -> Result<String, String> {
     let mut body = json!({
@@ -363,6 +403,13 @@ pub fn chat(s: &Settings, system: &str, user: &str) -> Result<String, String> {
         body["reasoning_effort"] = json!(effort);
     }
     let url = s.url("chat/completions");
+    // A server that refused the optional ones once (LM Studio knows no `json_object`) is not
+    // asked with them again in this run: every batch would cost two requests.
+    if PLAIN_SERVERS.lock().unwrap().contains(&url) {
+        let obj = body.as_object_mut().expect("a JSON object");
+        obj.remove("reasoning_effort");
+        obj.remove("response_format");
+    }
     let (mut code, mut text) = request(s, &url, Some(&body))?;
     // A server that does not know an option: once more without the optional ones.
     if code == 400 && (body.get("reasoning_effort").is_some() || body.get("response_format").is_some()) {
@@ -370,6 +417,9 @@ pub fn chat(s: &Settings, system: &str, user: &str) -> Result<String, String> {
         obj.remove("reasoning_effort");
         obj.remove("response_format");
         (code, text) = request(s, &url, Some(&body))?;
+        if code == 200 {
+            PLAIN_SERVERS.lock().unwrap().push(url.clone());
+        }
     }
     if code != 200 {
         return Err(api_error(code, &text));
@@ -454,6 +504,16 @@ mod tests {
         assert!(!p.contains("the tone of the original") && p.contains("THE STYLE OF THIS TRANSLATION"));
         let u = user_prompt(&["Да"], &[], "German", " Archaic ");
         assert!(u.contains("Translate into German:") && u.ends_with("Write every text in this style: Archaic"));
+    }
+
+    #[test]
+    fn russian_into_russian_is_a_rewrite_in_the_style() {
+        assert!(is_source_language("Russian") && is_source_language(" русский ") && !is_source_language("Belarusian"));
+        let s = Settings { language: "Russian".into(), style: "смешной, ссср".into(), ..Settings::default() };
+        let p = system_prompt(&s);
+        assert!(p.contains("Rewrite each text in Russian in the player's style") && p.contains("Never return a text unchanged"));
+        assert!(!p.contains("You translate"));
+        assert!(user_prompt(&["Да"], &[], "Russian", "смешной").contains("Rewrite in Russian:"));
     }
 
     #[test]
