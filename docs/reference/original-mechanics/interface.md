@@ -920,7 +920,9 @@ wage total. **code**
   of " + " for 0, drawn with the Benguiat_Shadow 1 px down-right, then in ae24a0 (yellow,
   gold) or ae24a8 (blue, mana). `Ok` (`Btn1`, ae6b54) centred 10 px above the bottom, and the
   close box, both 4c6000 (take everything, close); its open handler ends with the event
-  chord (4d127d: `Random(3)` → `Global-Event-N`). **code**
+  chord (4d127d: `Random(3)` → `Global-Event-N`). Its key handler (4cd81c) works as the
+  one-button event window's: any key but Tab, Alt and the Up and Down arrows presses `Ok`
+  (479eb8 on 671a24) and its release clicks it (47a0dc), Space and Enter included. **code**
 - **The village offers** (4aca80): the offer is event record N+2 shown in the event window
   (4a8ae8 → 4a9d88): titled with the village's name, a Yes/No question, the text
   `[Event] VillageBonus1` / `2` (the question is in it), or `VillageBonusN` +

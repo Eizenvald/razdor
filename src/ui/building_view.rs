@@ -1529,6 +1529,26 @@ fn village_texts(game: &Game, view: &BuildingView, l: usize, (x, y, o): (f32, f3
     }
 }
 
+thread_local! {
+    /// A key went down while the village window was up (its «Ок» is pressed).
+    static VILLAGE_KEY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// The village window's «Ок» by key this frame: pressed by a key going down, clicked by its
+/// release (0x4cd81c).
+fn village_ok_key(down: bool, up: bool) -> bool {
+    VILLAGE_KEY.with(|k| {
+        if down {
+            k.set(true);
+        }
+        let click = up && k.get();
+        if click {
+            k.set(false);
+        }
+        click
+    })
+}
+
 fn village_window(game: &mut Game, view: &BuildingView, message: &mut Option<String>) -> Option<Screen> {
     let l = game.location?;
     let o = chrome::k() * 0.9375;
@@ -1554,15 +1574,22 @@ fn village_window(game: &mut Game, view: &BuildingView, message: &mut Option<Str
     let btn_x = x + (w - btn_w) / 2.0;
     let btn_y = y + h - 10.0 * o - btn_h;
     let label = own_text("Buttons", "Ok", n_("OK"));
-    let ok = button(btn_x, btn_y, btn_w, btn_h, &label, true);
+    // Any key but Tab, Alt and the Up and Down arrows presses «Ок» and its release clicks it,
+    // Space and Enter included (the window's key handler 0x4cd81c: 0x479eb8 / 0x47a0dc on
+    // 0x671a24), as in the one-button event window.
+    // A release counts only after the key went down with the window up (the button must be
+    // pressed first).
+    let key_ok = village_ok_key(ok_key_pressed(), ok_key_released());
+    let ok = button(btn_x, btn_y, btn_w, btn_h, &label, true) || key_ok;
     // The close box and Esc sound as the button does (tools/difftest/AV.md §5).
     let esc = key(KeyCode::Escape);
-    if closed || esc {
+    if closed || esc || key_ok {
         cue(Cue::Button);
     }
     if !(ok || closed || esc) {
         return None;
     }
+    VILLAGE_KEY.with(|k| k.set(false));
     // Closing plays `Item-Gold` too when the tribute was taken (0x4c604a).
     if view.tribute_paid {
         cue(Cue::Gold);
@@ -1859,7 +1886,16 @@ fn with_back(bar: Option<Screen>, view: &BuildingView) -> Option<Screen> {
 
 #[cfg(test)]
 mod tests {
-    use super::tab_state;
+    use super::{tab_state, village_ok_key};
+
+    #[test]
+    fn the_village_ok_takes_a_key_pressed_while_it_is_up() {
+        // 0x4cd81c: the key-down presses «Ок», its release clicks it.
+        assert!(!village_ok_key(false, true), "a release without a press while open");
+        assert!(!village_ok_key(true, false));
+        assert!(village_ok_key(false, true));
+        assert!(!village_ok_key(false, true), "once");
+    }
 
     #[test]
     fn a_tab_lights_under_the_mouse_as_the_original() {
