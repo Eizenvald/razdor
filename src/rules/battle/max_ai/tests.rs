@@ -746,3 +746,123 @@ fn threads_never_change_the_choice_at_a_fixed_depth() {
         }
     }
 }
+
+/// A battle AI level of the round robin.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Level {
+    /// «Как в оригинале»: the original's AI, the improved setting off.
+    Original,
+    /// «Улучшенный»: the original's AI with `OptValue9`.
+    Improved,
+    /// «Максимум» at the harness's fixed budget (`TEST_BUDGET`: 4 actions ahead, 600
+    /// positions), its tables kept for the battle.
+    Max,
+}
+
+impl Level {
+    const ALL: [Level; 3] = [Level::Original, Level::Improved, Level::Max];
+
+    fn name(self) -> &'static str {
+        match self {
+            Level::Original => "original",
+            Level::Improved => "improved",
+            Level::Max => "max",
+        }
+    }
+
+    /// The battle's AI level (`ai_level`) while this level plays `team`'s move. The only
+    /// thing the level changes is the kill test of the side that moves: one blow for the
+    /// original's computer side, all its actions for the improved one; the player's side at
+    /// the normal level already counts all its actions (the original's), so the original's
+    /// play on the player's side takes level 0 (one blow for both sides, the simulation's)
+    /// to play as the original's computer side does. Max's search runs at level 2, as the
+    /// game sets it (the setting implies the improved AI).
+    fn ai_level(self, team: Team) -> u8 {
+        match (self, team) {
+            (Level::Original, Team::Enemy) => 1,
+            (Level::Original, Team::Player) => 0,
+            (Level::Improved, Team::Enemy) => 2,
+            (Level::Improved, Team::Player) => 1,
+            (Level::Max, _) => 2,
+        }
+    }
+}
+
+/// One game of the round robin: `player` plays the player's side, `enemy` the computer's.
+/// Gives the battle at its end and Max's decision times.
+fn duel(mut b: Battle, player: Level, enemy: Level) -> (Battle, Vec<Duration>) {
+    b.begin();
+    let tables = [MaxTables::default(), MaxTables::default()];
+    let mut times = Vec::new();
+    for _ in 0..AUTO_PLAY_STEPS {
+        let Some(id) = b.active() else { break };
+        let team = b.fighters[id].team;
+        let level = if team == Team::Player { player } else { enemy };
+        b.ai_level = level.ai_level(team);
+        if level == Level::Max {
+            let r = b.max_choice_with(TEST_BUDGET, Some(&tables[team.index()]), None).unwrap();
+            times.push(r.elapsed);
+            b.play_max_move(r.choice);
+        } else {
+            b.auto_step();
+        }
+    }
+    (b, times)
+}
+
+/// The three battle AI levels head to head on 40 positions (with `RAZDOR_DT_DIR` every
+/// few of the install's sets: hero vs map armies, map armies of near strength, custom
+/// battles; else the demo's): each pair, every position with each level on each side.
+/// Prints a table per pair: games, wins of each, ends by the turn limit (the player's side
+/// wins those) and games that never ended, the average share of its worth each keeps, and
+/// Max's decision times at its fixed budget. A few minutes: run by hand with `--ignored`.
+#[test]
+#[ignore]
+fn round_robin_of_the_ai_levels() {
+    let set: Battles = match real_sets() {
+        Some(sets) => sets.into_iter().flat_map(|(_, s)| {
+            let step = (s.len() / 13).max(1);
+            s.into_iter().step_by(step).take(14)
+        }).take(40).collect(),
+        None => synthetic_battles(40),
+    };
+    println!("| pair (a vs b) | games | a wins | b wins | turn limit | unfinished | a's worth left | b's worth left | Max's decisions: median / 95% / max |");
+    println!("|---|---|---|---|---|---|---|---|---|");
+    for (i, &a) in Level::ALL.iter().enumerate() {
+        for &b in &Level::ALL[i + 1..] {
+            let (mut games, mut wins, mut limit, mut unfinished, mut left) = (0, [0; 2], 0, 0, [0.0; 2]);
+            let mut times = Vec::new();
+            for (_, battle) in &set {
+                // a on the player's side, then a on the computer's.
+                for (player, enemy, a_team) in [(a, b, Team::Player), (b, a, Team::Enemy)] {
+                    let (end, t) = duel(battle.clone(), player, enemy);
+                    games += 1;
+                    times.extend(t);
+                    for (k, team) in [a_team, a_team.other()].into_iter().enumerate() {
+                        wins[k] += u32::from(won(end.outcome(), team));
+                        left[k] += worth_left(&end, team);
+                    }
+                    limit += u32::from(end.end_reason() == Some(EndReason::TurnLimit));
+                    unfinished += u32::from(end.outcome() == Outcome::Ongoing);
+                }
+            }
+            times.sort();
+            let at = |q: f64| times.get(((times.len() as f64 - 1.0) * q).round() as usize).map_or("—".to_string(), |d| format!("{:.0} ms", d.as_secs_f64() * 1000.0));
+            let g = games.max(1) as f64;
+            println!(
+                "| {} vs {} | {games} | {} ({:.0}%) | {} ({:.0}%) | {limit} | {unfinished} | {:.2} | {:.2} | {} / {} / {} |",
+                a.name(),
+                b.name(),
+                wins[0],
+                100.0 * wins[0] as f64 / g,
+                wins[1],
+                100.0 * wins[1] as f64 / g,
+                left[0] / g,
+                left[1] / g,
+                at(0.5),
+                at(0.95),
+                at(1.0)
+            );
+        }
+    }
+}

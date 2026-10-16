@@ -13,9 +13,16 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
   games on the install's armies) Max wins 60% where the original wins 50%, and never ends
   below the original's score; the deeper minimax adds no wins there over the one-ply rollouts
   (the same tally at 4 plies / 600 nodes and at 150 ms). How much the minimax helps against a
-  human, and whether 150 ms per action feels slow in long battles, needs players' reports.
-  Q and W keep the original's AI for the enemy (the hero's auto-battle), so a battle finished
-  with Q is easier than one played to the end: the owner may want Max there too.
+  human needs players' reports. Q and W keep the original's AI for the enemy (the hero's
+  auto-battle), so a battle finished with Q is easier than one played to the end: the owner
+  may want Max there too. Since the optimisations (tables, thinking ahead, threads; battle-ai
+  flow §8) the pause per action is ~0.6 ms median and the depth reached about doubled, but
+  against the original's AI the wins stay the same and the worth kept dips a little when the
+  search goes deeper (the timeline harness, 12 battles: 0.71 left at depth 5.6, 0.67 at 7.5):
+  the minimax assumes the best reply where the original replies by its rules, which only the
+  rollouts model. Weighting the deeper plies by the original's own reply (an expectimax with
+  the original's move as the likely one) might do better against both; not tried. The cut
+  rollouts (`MaxBudget::short_rollouts`) are off for the same lack of gain.
 
 - **Battle end on a counterblow** (2026-10-16, the battle-end timing). The original queues a
   counterblow's first effect without the 0x100 flag (4c43e8, 4c57bc), so Battle_Step runs

@@ -239,6 +239,24 @@ With the threads, the timeline with thinking ahead reaches depth 7.47 (5.93 on o
 5.64 without thinking ahead), the pause per enemy action stays mean 11.4 ms, median 0.6 ms,
 95% 50 ms (a search begun during a 0.1 s animation still gets its 150 ms), Max wins 10 of 12
 battles either way. The 95% is the searches asked for a position that was not foreseen.
+
+The three levels head to head (`round_robin_of_the_ai_levels`, ignored, ~12 s: 40 positions
+from the install's three sets, each with each level on each side; Max at `TEST_BUDGET`; the
+original's level on the player's side is played at `ai_level` 0 so it counts kills as the
+computer's side does, `Level::ai_level`), 2026-10-17:
+
+| pair (a vs b) | games | a wins | b wins | turn limit | unfinished | a's worth left | b's worth left | Max's decisions: median / 95% / max |
+|---|---|---|---|---|---|---|---|---|
+| original vs improved | 80 | 40 (50%) | 40 (50%) | 2 | 0 | 0.33 | 0.33 | — |
+| original vs max | 80 | 33 (41%) | 47 (59%) | 5 | 0 | 0.32 | 0.41 | 2 / 19 / 48 ms |
+| improved vs max | 80 | 33 (41%) | 47 (59%) | 5 | 0 | 0.32 | 0.41 | 2 / 19 / 48 ms |
+
+The improved level changed no game here (its kill test, all actions instead of one blow,
+decided nothing these positions turned on), so it plays as the original's. A first full run
+at the game's 150 ms (152 positions, stopped by the owner as too long) gave the same picture:
+original vs improved 152 / 152 of 304, worth 0.30 each; original vs max 118 / 186 (61% for
+Max), worth 0.28 / 0.39; improved vs max 119 / 185, 0.28 / 0.39; Max's decisions 150 ms
+median.
 Evidence: `src/rules/battle/max_ai/tests.rs` plays each position with the original on both
 sides and with Max on each side (`max_beats_the_original_on_synthetic_battles` always;
 `max_beats_the_original_on_real_armies` on the install: hero vs map armies, map armies of near
