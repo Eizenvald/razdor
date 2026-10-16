@@ -126,20 +126,28 @@ pub fn api_base(endpoint: &str) -> String {
 
 /// The instructions sent with every batch: the fixed rules, then the player's style, if any.
 pub fn system_prompt(s: &Settings) -> String {
-    let mut out = rules(&s.language, s.any_script);
+    let style = s.style.trim();
+    let mut out = rules_styled(&s.language, s.any_script, !style.is_empty());
     let notes = s.notes.trim();
     if !notes.is_empty() {
         out.push_str(&format!("\n\nWhat the player tells you about these maps (use it to understand who is who and to choose words):\n{notes}"));
     }
-    let style = s.style.trim();
     if !style.is_empty() {
-        out.push_str(&format!("\n\nThe player's wishes for the style (follow them, but never break the rules above):\n{style}"));
+        out.push_str(&format!(
+            "\n\nTHE STYLE OF THIS TRANSLATION, chosen by the player: it decides the tone, the voice and the wording of every text. \
+Only the technical rules above (the keys, placeholders, lines, markup marks and letters) come before it:\n{style}"
+        ));
     }
     out
 }
 
 /// The fixed rules sent with every batch, for translating into `language`.
 pub fn rules(language: &str, any_script: bool) -> String {
+    rules_styled(language, any_script, false)
+}
+
+/// [`rules`]; with the player's own style (`styled`) the default tone line gives way to it.
+fn rules_styled(language: &str, any_script: bool, styled: bool) -> String {
     let lang = match language.trim() {
         "" => "English",
         l => l,
@@ -157,6 +165,11 @@ Cyrillic letters, digits and plain punctuation (straight quotes, '-', '...'); wr
 their accents, and a language with another script in Latin letters (a common romanisation).{cyrillic}"
         )
     };
+    let tone = if styled {
+        "Style: the player's style given below decides the tone and wording; keep each text about as long as the Russian unless the style says otherwise."
+    } else {
+        "Style: medieval fantasy, plain and vivid, the tone of the original. Keep it about as long as the Russian."
+    };
     format!(
         "You translate texts of the Russian fantasy strategy game \"Discord Times\" (\"Времена раздора\") into \
 {lang} for its {lang} edition.
@@ -170,18 +183,24 @@ Keep exactly, in the same places:
 - <br> and line breaks (\\n): the same number of lines;
 - the markup characters * | @ ^ (they style a line; keep each where it stands, usually at the line's start).
 
-Style: medieval fantasy, plain and vivid, the tone of the original. Keep it about as long as the Russian. \
+{tone} \
 Names: translate names that have a meaning (\"Проклятое озеро\" -> \"Cursed Lake\" in English); \
 transliterate personal names (\"Иван\" -> \"Ivan\"). Use the glossary's {lang} for the names it lists. \
 {letters}"
     )
 }
 
-/// The user message for `texts` (the batch's Russian, in order, numbered from 1).
-pub fn user_prompt(texts: &[&str], glossary: &[(String, String)]) -> String {
+/// The user message for `texts` (the batch's Russian, in order, numbered from 1), with the
+/// glossary in `language` and the player's style repeated at its end (models follow what
+/// stands in the message itself more closely than the instructions).
+pub fn user_prompt(texts: &[&str], glossary: &[(String, String)], language: &str, style: &str) -> String {
+    let lang = match language.trim() {
+        "" => "English",
+        l => l,
+    };
     let mut out = String::new();
     if !glossary.is_empty() {
-        out.push_str("Glossary (Russian = English):\n");
+        out.push_str(&format!("Glossary (Russian = {lang}):\n"));
         for (ru, en) in glossary {
             out.push_str(&format!("{ru} = {en}\n"));
         }
@@ -189,8 +208,11 @@ pub fn user_prompt(texts: &[&str], glossary: &[(String, String)]) -> String {
     }
     let obj: serde_json::Map<String, Value> =
         texts.iter().enumerate().map(|(k, t)| ((k + 1).to_string(), Value::String(prepare(t).text))).collect();
-    out.push_str("Translate:\n");
+    out.push_str(&format!("Translate into {lang}:\n"));
     out.push_str(&serde_json::to_string_pretty(&Value::Object(obj)).unwrap_or_default());
+    if !style.trim().is_empty() {
+        out.push_str(&format!("\n\nWrite every text in this style: {}", style.trim()));
+    }
     out
 }
 
@@ -377,8 +399,8 @@ mod tests {
 
     #[test]
     fn the_prompt_numbers_texts_and_hides_tokens() {
-        let p = user_prompt(&["Привет, #HERONAME", "Да"], &[("Иван".into(), "Ivan".into())]);
-        assert!(p.starts_with("Glossary (Russian = English):\nИван = Ivan\n\nTranslate:\n"));
+        let p = user_prompt(&["Привет, #HERONAME", "Да"], &[("Иван".into(), "Ivan".into())], "English", "");
+        assert!(p.starts_with("Glossary (Russian = English):\nИван = Ivan\n\nTranslate into English:\n"));
         let json = &p[p.find('{').unwrap()..];
         let v: Value = serde_json::from_str(json).unwrap();
         assert_eq!(v, json!({"1": "Привет, {0}", "2": "Да"}));
@@ -427,7 +449,11 @@ mod tests {
         assert_eq!(system_prompt(&plain), rules("English", false));
         let styled = Settings { style: " Archaic, like Tolkien ".into(), notes: "Ivan is a king.".into(), ..Settings::default() };
         let p = system_prompt(&styled);
-        assert!(p.starts_with(&rules("English", false)) && p.ends_with("Archaic, like Tolkien") && p.contains("Ivan is a king."));
+        assert!(p.ends_with("Archaic, like Tolkien") && p.contains("Ivan is a king."));
+        // The player's style replaces the default tone instead of trailing after it.
+        assert!(!p.contains("the tone of the original") && p.contains("THE STYLE OF THIS TRANSLATION"));
+        let u = user_prompt(&["Да"], &[], "German", " Archaic ");
+        assert!(u.contains("Translate into German:") && u.ends_with("Write every text in this style: Archaic"));
     }
 
     #[test]

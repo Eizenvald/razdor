@@ -176,7 +176,7 @@ impl View {
         self.list(Rect::new(12.0, 48.0, LIST_W, sh - 60.0));
         let right = Rect::new(LIST_W + 24.0, 48.0, sw - LIST_W - 36.0, sh - 60.0);
         let y = self.settings_panel(right);
-        let y = self.job_panel(Rect::new(right.x, y + 10.0, right.w, 150.0));
+        let y = self.job_panel(Rect::new(right.x, y + 10.0, right.w, 186.0));
         self.log_panel(Rect::new(right.x, y + 10.0, right.w, right.y + right.h - y - 10.0));
         self.script_dialog();
         widgets::set_input_blocked(false);
@@ -340,6 +340,26 @@ impl View {
         r.y + h
     }
 
+    /// Puts into the log what the model is told for the chosen item: the instructions (rules,
+    /// context, style) and the start of the first batch.
+    fn show_request(&mut self) {
+        let Some((job, _)) = self.job.as_ref() else { return };
+        let s = translate::llm::Settings { language: job.language.clone(), any_script: job.any_script, ..self.settings.clone() };
+        let rules = translate::llm::system_prompt(&s);
+        let batch = job.next_batch(s.batch_chars(), s.batch_items());
+        let texts: Vec<&str> = batch.iter().take(3).map(|&i| job.entries[i].src.as_str()).collect();
+        let user = translate::llm::user_prompt(&texts, &job.glossary(&batch, 40), &job.language, &s.style);
+        let mut lines = vec![(tr("— the instructions sent with every batch —").to_string(), ACCENT)];
+        let width = screen_width() - LIST_W - 60.0;
+        for l in rules.lines().chain(std::iter::once("")).chain(user.lines()) {
+            for w in widgets::wrap(l, width, 15.0) {
+                lines.push((w, INK));
+            }
+        }
+        let mut sh = self.shared.lock().unwrap();
+        sh.log.extend(lines);
+    }
+
     /// The warning before the language's own letters are chosen: the original cannot show them.
     fn script_dialog(&mut self) {
         if !self.script_popup {
@@ -432,8 +452,22 @@ impl View {
             self.confirm_fresh = true;
             self.log(tr("Press again to translate everything anew (with the style and model set now)."), ACCENT);
         }
-        if !complete && done > 0 && !busy {
-            text_fit(tr("Untranslated texts stay in Russian in the written maps."), r.x + 12.0, y + 50.0, r.w - 24.0, 14.0, DIM);
+        // Debugging: what is sent, and the log of every request and raw answer.
+        let dy = y + 42.0;
+        if button(r.x + 12.0, dy, w, 26.0, tr("Show the request"), true) {
+            self.show_request();
+        }
+        let log = self.job.as_ref().and_then(|(_, p)| p.as_deref()).map(translate::request_log);
+        if button(r.x + 22.0 + w, dy, w, 26.0, tr("Request log"), log.as_ref().is_some_and(|l| l.exists())) {
+            if let Some(l) = log {
+                razdor::update::open_in_browser(&l.to_string_lossy());
+            }
+        }
+        let otherwise = self.job.as_ref().is_some_and(|(j, _)| j.made_otherwise(&self.settings));
+        if otherwise && !busy {
+            text_fit(tr("The model, style or context changed after these texts were translated: they stay as they were until «Translate again»."), r.x + 12.0, dy + 44.0, r.w - 24.0, 14.0, ACCENT);
+        } else if !complete && done > 0 && !busy {
+            text_fit(tr("Untranslated texts stay in Russian in the written maps."), r.x + 12.0, dy + 44.0, r.w - 24.0, 14.0, DIM);
         }
         r.y + r.h
     }
@@ -457,15 +491,17 @@ impl View {
                 sh.log.push((line, color));
             };
             let result = translate::run(&mut job, path.as_deref(), &s, &stop, |job, e| {
-                let line = match e {
-                    Event::Sending { items, first } => (trf!("Sending {items}: {first}...", items, first), DIM),
+                let lines = match e {
+                    Event::Sending { items, first } => vec![(trf!("Sending {items}: {first}...", items, first), DIM)],
                     Event::Answer { taken, of, seconds } => {
-                        (trf!("Taken {taken} of {of} in {s} s", taken, of, s = format!("{seconds:.1}")), if taken == of { GREEN } else { RED })
+                        vec![(trf!("Taken {taken} of {of} in {s} s", taken, of, s = format!("{seconds:.1}")), if taken == of { GREEN } else { RED })]
                     }
-                    Event::Failed(why) => (trf!("Failed: {why}", why), RED),
+                    Event::Failed(why) => vec![(trf!("Failed: {why}", why), RED)],
+                    // Why each refused text was refused (the answer itself is in the request log).
+                    Event::Refused(texts) => texts.into_iter().map(|(text, why)| (trf!("Refused «{text}…»: {why}", text, why), RED)).collect(),
                 };
                 let mut sh = shared.lock().unwrap();
-                sh.log.push(line);
+                sh.log.extend(lines);
                 sh.job = Some(job.clone());
             });
             match result {

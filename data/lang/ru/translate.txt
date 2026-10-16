@@ -67,3 +67,10 @@ Done; {n} texts given up (Retry given up). = Готово; не удалось �
 Translated copies exist already: press again to replace them. = Переведённые копии уже есть: нажмите ещё раз, чтобы заменить их.
 Written: {f} = Записано: {f}
 Not written: {why} = Не записано: {why}
+
+# Debugging
+Refused «{text}…»: {why} = Не принят «{text}…»: {why}
+Show the request = Показать запрос
+Request log = Журнал запросов
+The model, style or context changed after these texts were translated: they stay as they were until «Translate again». = Модель, стиль или контекст изменились после перевода: готовые тексты останутся прежними до «Перевести заново».
+— the instructions sent with every batch — = — указания, которые получает модель с каждой пачкой —

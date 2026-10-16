@@ -33,6 +33,7 @@ Without arguments: the window.
   --notes <text>             what the model should know about the maps (context)
   --style <text>             your wishes for the translation's style (added to the rules)
   --fresh                    translate everything again (forget the saved translations)
+  --show-prompt              print the instructions the model gets, then stop
   --save-settings            keep these settings for next time
   --no-write                 translate only; write the maps later";
 
@@ -130,6 +131,11 @@ fn cli(args: &[String]) -> Option<i32> {
     println!("{what}; {} strings, {} done; model {} at {}, context {}", job.entries.len(), job.done(), s.model, s.endpoint, s.context);
     if let Some(p) = &path {
         println!("progress file: {}", p.display());
+        println!("request log: {}", translate::request_log(p).display());
+    }
+    if has("--show-prompt") {
+        println!("{}", translate::llm::system_prompt(&translate::llm::Settings { language: job.language.clone(), any_script: job.any_script, ..s.clone() }));
+        return Some(0);
     }
     if has("--fresh") {
         job.forget_all();
@@ -141,6 +147,11 @@ fn cli(args: &[String]) -> Option<i32> {
         translate::Event::Sending { items, first } => println!("[{}/{total}] sending {items}: {first}…", job.done()),
         translate::Event::Answer { taken, of, seconds } => println!("    took {taken}/{of} in {seconds:.1} s"),
         translate::Event::Failed(why) => println!("    failed: {why}"),
+        translate::Event::Refused(texts) => {
+            for (t, why) in texts {
+                println!("    refused «{t}…»: {why}");
+            }
+        }
     });
     if let Err(why) = result {
         eprintln!("Stopped: {why}");

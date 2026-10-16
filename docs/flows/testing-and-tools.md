@@ -158,7 +158,12 @@ install they run against (`razdor::dt::install::locate`), replacing older copies
   `Name_<lang>-native.DTm` (`job::copy_suffix`), and such strings are stored as UTF-8 in the
   unchanged `.DTm` layout (`dt::text::encode_any`; `dt::text::decode` reads valid UTF-8 holding
   a character cp1251 lacks as UTF-8, everything else as cp1251). The player's context for the
-  model is `Settings::notes` (`--notes`).
+  model is `Settings::notes` (`--notes`). The player's style replaces the default tone line
+  (`llm::rules_styled`) and is repeated at the end of every batch (`llm::user_prompt`).
+  Debugging: `translate::request_log` (`<job>.log` beside the job file) gets every request and
+  raw answer and the refusals; `Event::Refused` puts each refused text and its reason in the
+  window's log; "Show the request" / `--show-prompt` show the instructions; `Job::made_with`
+  keeps the model, style and context the texts were made with (`Job::made_otherwise`).
 
 ## Traps
 

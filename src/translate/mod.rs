@@ -55,6 +55,25 @@ pub enum Event {
     Answer { taken: usize, of: usize, seconds: f32 },
     /// The request or the answer failed as a whole.
     Failed(String),
+    /// Texts of the batch whose answers were refused: the start of each, and why.
+    Refused(Vec<(String, String)>),
+}
+
+/// The request log of a job: every request and the model's raw answer, next to its progress
+/// file (`<job>.log`), for finding out why a text is refused or a style not followed.
+pub fn request_log(job_path: &Path) -> PathBuf {
+    job_path.with_extension("log")
+}
+
+/// Appends `text` to the request log, starting it again past 4 MB.
+fn log_request(path: Option<&Path>, text: &str) {
+    use std::io::Write;
+    let Some(p) = path.map(request_log) else { return };
+    let fresh = std::fs::metadata(&p).is_ok_and(|m| m.len() > 4 << 20);
+    let file = std::fs::OpenOptions::new().create(true).append(!fresh).write(true).truncate(fresh).open(&p);
+    if let Ok(mut f) = file {
+        let _ = writeln!(f, "{text}");
+    }
 }
 
 /// Translates what is left of `job`, saving it to `path` after every answer, until it is
@@ -72,16 +91,43 @@ pub fn run(job: &mut Job, path: Option<&Path>, s: &Settings, stop: &AtomicBool, 
         }
         let glossary = job.glossary(&batch, 40);
         let texts: Vec<&str> = batch.iter().map(|&i| job.entries[i].src.as_str()).collect();
-        let prompt = llm::user_prompt(&texts, &glossary);
+        let prompt = llm::user_prompt(&texts, &glossary, &job.language, &s.style);
         report(job, Event::Sending { items: batch.len(), first: texts[0].chars().take(60).collect() });
         let t0 = std::time::Instant::now();
         // The job's own language and letters.
         let rules = llm::system_prompt(&Settings { language: job.language.clone(), any_script: job.any_script, ..s.clone() });
-        match llm::chat(s, &rules, &prompt).and_then(|a| llm::parse_answer(&a)) {
+        if job.made_with.is_none() || job.done() == 0 {
+            job.made_with = Some(job::MadeWith::of(s));
+        }
+        let asked = llm::chat(s, &rules, &prompt);
+        log_request(
+            path,
+            &format!(
+                "===== {} (unix s) | model {} | {} texts\n--- system\n{rules}\n--- user\n{prompt}\n--- answer\n{}\n",
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()),
+                s.model,
+                batch.len(),
+                match &asked {
+                    Ok(a) => a.as_str(),
+                    Err(e) => e.as_str(),
+                }
+            ),
+        );
+        match asked.and_then(|a| llm::parse_answer(&a)) {
             Ok(answers) => {
                 failures_in_a_row = 0;
                 let taken = job.accept(&batch, &answers);
                 report(job, Event::Answer { taken, of: batch.len(), seconds: t0.elapsed().as_secs_f32() });
+                let refused: Vec<(String, String)> = batch
+                    .iter()
+                    .map(|&i| &job.entries[i])
+                    .filter(|e| e.en.is_none())
+                    .map(|e| (e.src.chars().take(50).collect(), e.last_error.clone()))
+                    .collect();
+                if !refused.is_empty() {
+                    log_request(path, &format!("--- refused\n{}\n", refused.iter().map(|(t, w)| format!("{t}: {w}")).collect::<Vec<_>>().join("\n")));
+                    report(job, Event::Refused(refused));
+                }
             }
             Err(why) => {
                 failures_in_a_row += 1;

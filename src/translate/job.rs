@@ -118,10 +118,35 @@ pub struct Job {
     pub any_script: bool,
     pub maps: Vec<JobMap>,
     pub entries: Vec<Entry>,
+    /// The model, style and context the translations were made with (none for a job from
+    /// before this was kept): when they change, the window says the texts are the old ones.
+    #[serde(default)]
+    pub made_with: Option<MadeWith>,
     /// Names translated elsewhere (the game data's units, items and spells), offered in the
     /// glossary like the job's own; not saved with the job.
     #[serde(skip)]
     pub outside_glossary: Vec<(String, String)>,
+}
+
+/// What a job's translations were made with.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MadeWith {
+    pub model: String,
+    pub style: String,
+    pub notes: String,
+}
+
+impl MadeWith {
+    pub fn of(s: &super::llm::Settings) -> MadeWith {
+        MadeWith { model: s.model.trim().into(), style: s.style.trim().into(), notes: s.notes.trim().into() }
+    }
+}
+
+impl Job {
+    /// The translations were made with another model, style or context than `s`.
+    pub fn made_otherwise(&self, s: &super::llm::Settings) -> bool {
+        self.done() > 0 && self.made_with.as_ref().is_some_and(|m| *m != MadeWith::of(s))
+    }
 }
 
 /// An entry is given up on (left for "retry") after this many refused answers.
@@ -256,6 +281,7 @@ impl Job {
 
     /// Takes over the English of `old` for the strings both jobs share.
     pub fn take_over(&mut self, old: &Job) {
+        self.made_with = old.made_with.clone();
         let known: HashMap<&str, &Entry> = old.entries.iter().map(|e| (e.src.as_str(), e)).collect();
         for e in &mut self.entries {
             if let Some(o) = known.get(e.src.as_str()) {
@@ -285,6 +311,7 @@ impl Job {
 
     /// Forgets every translation, to translate all again (another model or style).
     pub fn forget_all(&mut self) {
+        self.made_with = None;
         for e in &mut self.entries {
             (e.en, e.tries) = (None, 0);
             e.last_error.clear();
