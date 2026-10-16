@@ -58,9 +58,12 @@ struct Chrome {
     visual_images: HashMap<String, Option<Image>>,
     animations: HashMap<String, Option<Vec<Texture2D>>>,
     texts: Option<Option<Ini>>,
-    /// `Eng_DiscordTimes.ini` made by razdor-translate (the install's, else Razdor's copy), read in
-    /// English (`razdor::dt::english`).
-    english_texts: Option<Option<Ini>>,
+    /// The data language's `<Prefix>_DiscordTimes.ini` made by razdor-translate (for English
+    /// the install's, else Razdor's copy), by the prefix it was read for
+    /// (`razdor::dt::english`, `super::language::data_prefix`).
+    english_texts: Option<(String, Option<Ini>)>,
+    /// `Eng_DiscordTimes.ini` for what another language's file lacks.
+    english_fallback: Option<Option<Ini>>,
 }
 
 thread_local! {
@@ -71,7 +74,7 @@ thread_local! {
 pub fn set_install(dir: PathBuf) {
     gfx::prefetch(dir.clone(), WINDOWS_AHEAD.iter().map(|n| format!("Graphics/{n}")).collect());
     CHROME.with(|c| {
-        *c.borrow_mut() = Some(Chrome { dir, textures: HashMap::new(), visual_textures: HashMap::new(), visual_images: HashMap::new(), animations: HashMap::new(), texts: None, english_texts: None })
+        *c.borrow_mut() = Some(Chrome { dir, textures: HashMap::new(), visual_textures: HashMap::new(), visual_images: HashMap::new(), animations: HashMap::new(), texts: None, english_texts: None, english_fallback: None })
     });
 }
 
@@ -575,16 +578,23 @@ pub fn ui_text(section: &str, key: &str) -> Option<String> {
     })
 }
 
-/// In English, the install's interface text translated by razdor-translate, if there is one
+/// In a language other than Russian, the install's interface text translated into it by
+/// razdor-translate, else into English (the interface is English then), if there is one
 /// (Razdor's own: the original reads only the Russian file).
 fn english_of(c: &mut Chrome, section: &str, key: &str) -> Option<String> {
-    if razdor::i18n::lang() != razdor::i18n::Lang::En {
-        return None;
+    let prefix = super::language::data_prefix()?;
+    if c.english_texts.as_ref().is_none_or(|(p, _)| *p != prefix) {
+        let ini = razdor::dt::english::data_ini(&c.dir, &prefix, SETTINGS_FILE);
+        c.english_texts = Some((prefix.clone(), ini));
     }
-    if c.english_texts.is_none() {
-        c.english_texts = Some(razdor::dt::english::english_ini(&c.dir, SETTINGS_FILE));
+    let own = c.english_texts.as_ref()?.1.as_ref().and_then(|i| i.section(section)?.get_nonempty(key).map(str::to_string));
+    if own.is_some() || prefix.eq_ignore_ascii_case(razdor::dt::english::ENGLISH) {
+        return own;
     }
-    c.english_texts.as_ref()?.as_ref()?.section(section)?.get_nonempty(key).map(str::to_string)
+    if c.english_fallback.is_none() {
+        c.english_fallback = Some(razdor::dt::english::english_ini(&c.dir, SETTINGS_FILE));
+    }
+    c.english_fallback.as_ref()?.as_ref()?.section(section)?.get_nonempty(key).map(str::to_string)
 }
 
 /// An interface text of the install as written, its marks kept (`#\` line breaks, `*` `|`

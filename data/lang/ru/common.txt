@@ -1,8 +1,8 @@
 # Razdor interface in Russian: our own translation. "English = Russian", one per line;
 # \n is a line break, {name} a value filled in by the game. See src/i18n.rs.
 
-# Words used on many screens, and the language switch
-Interface language (F2) = Язык интерфейса (F2)
+# Words used on many screens, and the language list
+Language (F2). Razdor's own texts exist in English and Russian only: with another language the game's texts (units, items, spells, its windows) are in it, the rest in English. = Язык (F2). Свои тексты Раздора есть только на английском и русском: с другим языком тексты игры (воины, предметы, заклинания, её окна) на нём, остальное на английском.
 
 # The main menu
 Options = Настройки

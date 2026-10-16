@@ -1,20 +1,49 @@
 //! The install's own texts (unit, item and spell names and descriptions, the game's interface
-//! texts) for the translator, and the English files it writes for Razdor: `Eng_Units.ini`
-//! and the like next to the Russian ones, with the same sections and only the translated
-//! keys. The Russian files stay as they are (the original reads only them, and unit upgrades
-//! name their targets by the Russian name, 0x4e0448); Razdor reads the English ones in English
+//! texts) for the translator, and the files it writes for Razdor in the translator's target
+//! language: `Eng_Units.ini` (English) or `<Prefix>_Units.ini` ([`data_prefix`]) and the
+//! like next to the Russian ones, with the same sections and only the translated keys, the
+//! first line naming the language (`crate::dt::english::HEADER`). The Russian files stay as
+//! they are (the original reads only them, and unit upgrades name their targets by the
+//! Russian name, 0x4e0448); Razdor reads a language's files when the player picks it
 //! (`crate::dt::english`).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use super::job::Job;
+use super::job::{copy_suffix, Job};
 use super::text::has_cyrillic;
+use crate::dt::english::{data_path, ENGLISH, HEADER};
 use crate::dt::install::{find_path, ARTEFACTS_FILE, SETTINGS_FILE, SPELLS_FILE, UNITS_FILE};
 
+/// The prefix of a language's data files: `Eng` for English (the files Razdor had before
+/// languages), else [`copy_suffix`] with a capital (`Hindi-native`, `German`). Never the
+/// Russian files' `Rus`.
+pub fn data_prefix(language: &str, any_script: bool) -> String {
+    let s = copy_suffix(language, any_script);
+    if s == "en" {
+        return ENGLISH.to_string();
+    }
+    let mut c = s.chars();
+    let p: String = c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default();
+    let russian = UNITS_FILE.split('_').next().unwrap_or_default();
+    if p.eq_ignore_ascii_case(russian) { format!("{p}-tr") } else { p }
+}
+
+/// A language's name for Razdor's language list: as the player wrote it with a capital, and
+/// "(native letters)" with its own letters (`Hindi (native letters)`).
+pub fn language_name(language: &str, any_script: bool) -> String {
+    if copy_suffix(language, any_script) == "en" {
+        return "English".to_string();
+    }
+    let l = language.trim();
+    let mut c = l.chars();
+    let name: String = c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default();
+    if any_script { format!("{name} (native letters)") } else { name }
+}
+
 /// A data file: the Russian one, and the keys translated (`None`: every value with
-/// Cyrillic in it) with whether each is a name. Its English copy is
-/// [`crate::dt::english::english_file`].
+/// Cyrillic in it) with whether each is a name. Its translated copy is
+/// [`crate::dt::english::data_file`].
 pub struct DataFile {
     pub rus: &'static str,
     keys: Option<&'static [(&'static str, bool)]>,
@@ -92,63 +121,89 @@ pub fn install_texts(install: &Path) -> DataTexts {
     out
 }
 
-/// The job for the install's texts: the saved one's English kept.
-pub fn open_job(data: &DataTexts) -> (Job, Option<PathBuf>) {
+/// The job for the install's texts into `language` (with its own letters when
+/// `any_script`): the saved one's translations kept.
+pub fn open_job(data: &DataTexts, language: &str, any_script: bool) -> (Job, Option<PathBuf>) {
     let mut job = Job::from_texts(data.texts.iter().map(|t| (t.value.trim(), t.name)));
-    let path = data_job_path();
+    job.language = language.trim().to_string();
+    job.any_script = any_script;
+    if job.language.is_empty() {
+        job.language = "English".to_string();
+    }
+    let path = data_job_path(&job.language, any_script);
     if let Some(old) = path.as_deref().and_then(Job::load) {
         job.take_over(&old);
     }
     (job, path)
 }
 
-/// Where the game data's job is kept (its name cannot be a map's: maps end in `.DTm`).
-pub fn data_job_path() -> Option<PathBuf> {
-    Some(Job::dir()?.join("_game data.json"))
+/// Where the game data's job in `language` is kept (its name cannot be a map's: maps end in
+/// `.DTm`): `_game data.json` for English (as before languages), else
+/// `_game data.<suffix>.json`, like maps' ([`Job::path_for`]).
+pub fn data_job_path(language: &str, any_script: bool) -> Option<PathBuf> {
+    let name = match copy_suffix(language, any_script).as_str() {
+        "en" => "_game data.json".to_string(),
+        l => format!("_game data.{l}.json"),
+    };
+    Some(Job::dir()?.join(name))
 }
 
-/// The contents of each English file: every section of the Russian file in its order (so
-/// Razdor pairs them by place: names repeat), with the translated keys under it, CR LF lines,
-/// cp1251. A text not translated yet is left out (Razdor then shows the Russian).
-pub fn english_files(job: &Job, data: &DataTexts) -> Vec<(usize, Vec<u8>)> {
+/// The contents of each file of the job's language: the [`HEADER`] line naming it, then every
+/// section of the Russian file in its order (so Razdor pairs them by place: names repeat),
+/// with the translated keys under it, CR LF lines. Each line is cp1251 when it can be, else
+/// UTF-8 (`crate::dt::text::encode_any`), so the section names stay as in the Russian file.
+/// A text not translated yet is left out (Razdor then shows the Russian).
+pub fn data_files(job: &Job, data: &DataTexts) -> Vec<(usize, Vec<u8>)> {
     let mut out = Vec::new();
     for (i, sections) in data.sections.iter().enumerate() {
         let mut any = false;
-        let mut text = String::from("; English texts for Razdor, made by razdor-translate from the Russian file.\r\n");
+        let mut lines = vec![format!("{HEADER}{}", language_name(&job.language, job.any_script))];
         for (no, name) in sections.iter().enumerate() {
-            text.push_str(&format!("\r\n[{name}]\r\n"));
+            lines.push(String::new());
+            lines.push(format!("[{name}]"));
             for t in data.texts.iter().filter(|t| t.file == i && t.section_no == no) {
                 let core = t.value.trim();
                 let Some(en) = job.english_of(core) else { continue };
                 let lead = &t.value[..t.value.len() - t.value.trim_start().len()];
                 let trail = &t.value[lead.len() + core.len()..];
-                text.push_str(&format!("{}={lead}{en}{trail}\r\n", t.key));
+                lines.push(format!("{}={lead}{en}{trail}", t.key));
                 any = true;
             }
         }
         if any {
-            out.push((i, crate::dt::text::encode_any(&text)));
+            let mut bytes = Vec::new();
+            for l in &lines {
+                bytes.extend(crate::dt::text::encode_any(l));
+                bytes.extend_from_slice(b"\r\n");
+            }
+            out.push((i, bytes));
         }
     }
     out
 }
 
-/// Writes the English files next to the Russian ones; returns them.
+/// Writes the job's language's files next to the Russian ones; returns them.
 pub fn write(job: &Job, data: &DataTexts, install: &Path) -> Result<Vec<PathBuf>, String> {
+    let prefix = data_prefix(&job.language, job.any_script);
     let mut written = Vec::new();
-    for (i, bytes) in english_files(job, data) {
-        let rus = find_path(install, FILES[i].rus).map_err(|e| e.to_string())?;
-        let target = rus.with_file_name(crate::dt::english::english_file(FILES[i].rus));
+    for (i, bytes) in data_files(job, data) {
+        let target = data_path(install, &prefix, FILES[i].rus).ok_or_else(|| format!("{}: not found", FILES[i].rus))?;
         crate::editor::files::write_atomically(&target, &bytes).map_err(|e| format!("{}: {e}", target.display()))?;
         written.push(target);
     }
     Ok(written)
 }
 
-/// The names of the game data already translated (Russian, English), for the glossary of
-/// map jobs: a map's texts then call a unit what its card calls it.
-pub fn glossary() -> Vec<(String, String)> {
-    let Some(job) = data_job_path().as_deref().and_then(Job::load) else { return Vec::new() };
+/// The language's units file exists in the install (the data is translated into it).
+pub fn translated(install: &Path, language: &str, any_script: bool) -> bool {
+    data_path(install, &data_prefix(language, any_script), UNITS_FILE).is_some_and(|p| p.exists())
+}
+
+/// The names of the game data already translated into `language` (Russian, translation),
+/// for the glossary of map jobs in that language: a map's texts then call a unit what its
+/// card calls it.
+pub fn glossary(language: &str, any_script: bool) -> Vec<(String, String)> {
+    let Some(job) = data_job_path(language, any_script).as_deref().and_then(Job::load) else { return Vec::new() };
     let mut seen = BTreeMap::new();
     for e in job.entries.iter().filter(|e| e.name) {
         if let Some(en) = &e.en {
@@ -193,7 +248,7 @@ mod tests {
         let batch: Vec<usize> = (0..job.entries.len()).collect();
         let answers: HashMap<String, String> = [("1", "Healing"), ("2", "Lightning")].map(|(k, v)| (k.to_string(), v.to_string())).into();
         assert_eq!(job.accept(&batch, &answers), 2);
-        let files = english_files(&job, &data);
+        let files = data_files(&job, &data);
         let text = crate::dt::text::decode(&files[0].1);
         assert!(text.ends_with("\r\n[Заклинание]\r\nName=Healing\r\n\r\n[Заклинание]\r\nName=Lightning\r\n"), "{text:?}");
     }
@@ -211,12 +266,48 @@ mod tests {
         };
         let answers: HashMap<String, String> = batch.iter().map(|&i| ((i + 1).to_string(), en(&job.entries[i].src).to_string())).collect();
         assert_eq!(job.accept(&batch, &answers), 4);
-        let files = english_files(&job, &data);
+        let files = data_files(&job, &data);
         assert_eq!(files.len(), 1);
         let text = crate::dt::text::decode(&files[0].1);
         assert!(
             text.ends_with("\r\n[Unit1]\r\nName=Swordsman\r\nDescript=A warrior with a sword.#\\Sturdy.\r\n\r\n[Empty]\r\n\r\n[Unit2]\r\nName=Knight\r\nDescript= A mounted warrior\r\n"),
             "{text:?}"
         );
+        assert!(text.starts_with("; Razdor translation: English\r\n"), "{text:?}");
+    }
+
+    #[test]
+    fn each_language_has_its_prefix_name_and_job_file() {
+        assert_eq!(data_prefix("English", false), "Eng");
+        assert_eq!(data_prefix("", true), "Eng", "English has no native-letters copy");
+        assert_eq!(data_prefix("Hindi", true), "Hindi-native");
+        assert_eq!(data_prefix("german", false), "German");
+        assert_eq!(data_prefix("Rus", false), "Rus-tr", "never the Russian files");
+        assert_eq!(language_name("hindi", true), "Hindi (native letters)");
+        assert_eq!(language_name("German", false), "German");
+        assert_eq!(language_name("en", false), "English");
+        let name = |l: &str, n: bool| data_job_path(l, n).map(|p| p.file_name().unwrap().to_string_lossy().into_owned());
+        if Job::dir().is_some() {
+            assert_eq!(name("English", false).as_deref(), Some("_game data.json"), "English keeps its file");
+            assert_eq!(name("Hindi", true).as_deref(), Some("_game data.hindi-native.json"));
+        }
+    }
+
+    #[test]
+    fn a_native_letters_file_keeps_its_sections_in_cp1251_and_reads_back() {
+        let data = data_of(2, "[Заклинание]\nName=Лечение\n[Заклинание]\nName=Молния\n");
+        let mut job = Job::from_texts(data.texts.iter().map(|t| (t.value.trim(), t.name)));
+        (job.language, job.any_script) = ("Hindi".into(), true);
+        let batch: Vec<usize> = (0..job.entries.len()).collect();
+        let answers: HashMap<String, String> = [("1", "उपचार"), ("2", "बिजली")].map(|(k, v)| (k.to_string(), v.to_string())).into();
+        assert_eq!(job.accept(&batch, &answers), 2);
+        let bytes = &data_files(&job, &data)[0].1;
+        assert!(bytes.starts_with(b"; Razdor translation: Hindi (native letters)\r\n"));
+        let section = crate::dt::text::encode("[Заклинание]");
+        assert!(bytes.windows(section.len()).any(|w| w == section.as_slice()), "section names stay cp1251");
+        let ini = crate::dt::ini::Ini::from_cp1251(bytes);
+        let names: Vec<&str> = ini.sections.iter().filter_map(|s| s.get("Name")).collect();
+        assert_eq!(names, ["उपचार", "बिजली"]);
+        assert_eq!(ini.sections[0].name, "Заклинание");
     }
 }

@@ -62,7 +62,7 @@ xvfb-run -a -s "-screen 0 1280x800x24" target/release/razdor
 - `RAZDOR_SNAPSHOT=<png>` saves the frame after `RAZDOR_SNAPSHOT_FRAMES` (default 20) and
   quits. Helpers: `RAZDOR_MOUSE=x,y` (hover looks, tooltips), `RAZDOR_SCENE_QUIET=1` (drop
   the scenario's messages), `RAZDOR_SCENE_DEBUG=1`, `RAZDOR_SCENE_SPELLS`,
-  `RAZDOR_SCENE_POTION`, `RAZDOR_SCENE_FILTER`, `RAZDOR_SCENE_CONSOLE`,
+  `RAZDOR_SCENE_POTION`, `RAZDOR_SCENE_FILTER`, `RAZDOR_SCENE_LANGUAGE` (the language list open), `RAZDOR_SCENE_CONSOLE`,
   `RAZDOR_SCENE_ITEMS=<id>,…` (items in the hero's pack).
 - A map scene starts its map as a new game: later campaign maps may end at once by their
   own defeat event (nothing carried over) — not a bug.
@@ -129,11 +129,16 @@ install they run against (`razdor::dt::install::locate`), replacing older copies
   next chapter's copy. Progress is saved after every answer to
   `<data dir>/razdor/translate/<first map>.json` and taken over by a later job.
 - `src/translate/data.rs`: the "Game data" item (`--data`): the names and descriptions of
-  units, items and spells and every Russian interface text, translated into `Eng_*.ini` next to
-  the Russian files (`razdor::dt::english::english_file`), only the translated keys under the
-  same sections; references by name (`NextUnitN`) are never touched. Its names join every map
-  job's glossary (`Job::outside_glossary`, `data::glossary`). `translate::Target` writes either
-  kind.
+  units, items and spells and every Russian interface text, translated into the target
+  language (and letters) like maps, into `<Prefix>_*.ini` next to the Russian files
+  (`data::data_prefix`: `Eng` for English, else `job::copy_suffix` with a capital,
+  `Hindi-native`; `razdor::dt::english::data_file`), only the translated keys under the same
+  sections, the first line naming the language for Razdor's list (`dt::english::HEADER`,
+  `data::language_name`), each line cp1251 when it can be so section names match; references
+  by name (`NextUnitN`) are never touched. Each language has its own job file
+  (`data::data_job_path`; English keeps `_game data.json`). Its names join the glossary of
+  every map job in the same language (`Job::outside_glossary`, `data::glossary`).
+  `translate::Target` writes either kind.
 - `src/translate/text.rs`: what the model must keep (`#\`, CR LF, `#` words as `{N}`, the
   markup marks) and the checks on each answer; a refused string is retried alone, given up
   after `job::MAX_TRIES`.
@@ -147,8 +152,8 @@ install they run against (`razdor::dt::install::locate`), replacing older copies
   language has its own copies (`job::translated_file`, `Name_<lang>.DTm`) and job file
   (`Job::path_for`); answers must fit Windows-1251 (`text::in_cp1251`), and Cyrillic counts as
   untranslated unless the language is a Cyrillic one. A broken JSON answer keeps its
-  well-formed pairs (`llm::parse_answer`); only the rest is asked again. The game data is always
-  English (`Job::language`). With "any script" (`Settings::any_script`, `--any-script`, Razdor
+  well-formed pairs (`llm::parse_answer`); only the rest is asked again. The game data follows the
+  same language (`Job::language`). With "any script" (`Settings::any_script`, `--any-script`, Razdor
   only, behind a warning) answers keep the language's own letters, the copies are
   `Name_<lang>-native.DTm` (`job::copy_suffix`), and such strings are stored as UTF-8 in the
   unchanged `.DTm` layout (`dt::text::encode_any`; `dt::text::decode` reads valid UTF-8 holding

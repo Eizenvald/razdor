@@ -336,9 +336,16 @@ pub fn frame() -> Option<Pick> {
     if link(tr("Custom battle"), x, y, false) {
         pick = Some(Pick::Custom);
     }
-    let lang = format!("{} / {}", Lang::En.label(), Lang::Ru.label());
-    if link(&lang, screen_width() - 16.0 * k, y, true) {
-        super::language::toggle();
+    // The language list (Razdor's): the current language; a click opens the list over it.
+    let lang = super::language::current_label();
+    let size = 18.0 * k;
+    let lw = measure(&lang, size).width;
+    let anchor = Rect::new(screen_width() - 16.0 * k - lw, y - size, lw, size * 1.3);
+    if link(&lang, screen_width() - 16.0 * k, y, true) || super::snapshot::open_language_list() {
+        super::language::open_list(anchor, k);
+    }
+    if super::widgets::mouse_in(anchor.x, anchor.y, anchor.w, anchor.h) {
+        super::widgets::tooltip(&[(super::language::hint().to_string(), super::widgets::INK)]);
     }
     // This program's version, small in the corner above the language switch.
     let version = concat!("v", env!("CARGO_PKG_VERSION"));
@@ -747,9 +754,16 @@ fn advanced_window(audio: &mut super::audio::Settings, over_map: bool) -> bool {
     if row(tr("Font"), font_label, &mut y) {
         audio.font = audio.font.next();
     }
-    let lang = format!("{} / {}", Lang::En.label(), Lang::Ru.label());
-    if row(tr("Language"), &lang, &mut y) {
-        super::language::toggle();
+    // The language list (Razdor's): Russian, English and the translations of the data found
+    // in the install; the button opens it.
+    chrome::shadow_text(tr("Language"), rx, y + 18.0 * k, 14.0 * k, chrome::CREAM);
+    let lw = (rw - 100.0 * k).max(bw);
+    let lr = Rect::new(rx + rw - lw, y, lw, 28.0 * k);
+    if row_button(lr, &super::language::current_label()) || super::snapshot::open_language_list() {
+        super::language::open_list(lr, k);
+    }
+    for (i, line) in wrap(super::language::hint(), rw, 12.0 * k).iter().enumerate() {
+        chrome::shadow_text(line, rx, y + 48.0 * k + i as f32 * 17.0 * k, 12.0 * k, WHITE);
     }
     let ok = Rect::new(inner.x + inner.w - 120.0 * k, inner.y + inner.h - 44.0 * k, 96.0 * k, 28.0 * k);
     let ok_label = own("Buttons", "Ok", n_("OK"));

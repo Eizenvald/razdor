@@ -17,7 +17,8 @@ const HELP: &str = "razdor-translate: English copies of Discord Times maps, by a
 Without arguments: the window.
   --list                     the install's maps and campaigns
   --data                     translate the game data (units, items, spells, the game's
-                             texts) into Eng_*.ini files for Razdor in English
+                             texts) into files for Razdor in the --language (Eng_*.ini
+                             for English, e.g. Hindi-native_*.ini)
   --map <name>               translate this map (with its whole campaign), then write the
                              English copies into the game's maps folder, replacing older ones
                              (the name: a file name, its stem, or the start of it)
@@ -26,8 +27,7 @@ Without arguments: the window.
   --key <key>                API key (or the RAZDOR_LLM_KEY variable)
   --context <tokens>         the model's context window: sizes the batches
   --reasoning <effort>       reasoning_effort to send ('' to send none)
-  --language <name>          the language to translate into (default English; maps only:
-                             the game data is always English)
+  --language <name>          the language to translate into (default English)
   --any-script               the language's own letters (umlauts, Devanagari...), Razdor
                              only: the original shows them garbled
   --notes <text>             what the model should know about the maps (context)
@@ -118,7 +118,7 @@ fn cli(args: &[String]) -> Option<i32> {
     }
     let (mut job, path, target, what) = if data {
         let data = translate::data::install_texts(&install);
-        let (job, path) = translate::data::open_job(&data);
+        let (job, path) = translate::data::open_job(&data, &s.language, s.any_script);
         (job, path, translate::Target::Data { install: install.clone(), data }, "the game data".to_string())
     } else {
         let at = found.flatten().expect("a map was found");

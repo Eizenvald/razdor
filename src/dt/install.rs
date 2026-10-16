@@ -166,6 +166,15 @@ impl DtInstall {
         })
     }
 
+    /// The translation of the data in files with prefix `prefix` (`Eng`: the English loaded
+    /// with the install; another language's read now), if there is one (Razdor's own).
+    pub fn dictionary(&self, prefix: &str) -> Option<std::borrow::Cow<'_, super::english::Dictionary>> {
+        if prefix.eq_ignore_ascii_case(super::english::ENGLISH) {
+            return self.english.as_ref().map(std::borrow::Cow::Borrowed);
+        }
+        super::english::Dictionary::load_prefix(&self.dir, prefix).map(std::borrow::Cow::Owned)
+    }
+
     /// Load the install named by `RAZDOR_DT_DIR`.
     pub fn from_env() -> Result<DtInstall, DtError> {
         let Some(dir) = locate() else {

@@ -169,22 +169,20 @@ impl Content {
         Content::new(dt.units.clone(), dt.artefacts.clone(), dt.spells.clone(), options, formation)
     }
 
-    /// [`Content::from_dt`] with the names and descriptions in English when `english` and the
-    /// install has English texts (`crate::dt::english`; Razdor's own, not the original's).
-    pub fn from_dt_in(dt: &DtInstall, english: bool) -> Content {
+    /// [`Content::from_dt`] with the names and descriptions in the data language `data` (the
+    /// prefix of its files, `Eng` for English; `None`: the install's Russian) where the
+    /// install has its texts, English where another language's files lack one
+    /// (`crate::dt::english`; Razdor's own, not the original's).
+    pub fn from_dt_in(dt: &DtInstall, data: Option<&str>) -> Content {
         let mut c = Content::from_dt(dt);
-        if english {
-            if let Some(d) = &dt.english {
-                d.apply(&mut c.units, &mut c.items, &mut c.spells);
-            }
-        }
+        c.translate_data(dt, data);
         c
     }
 
-    /// This content with the names and descriptions of `dt`'s data in Russian, or in English
-    /// when `english` and the install has English texts; everything else kept (a running
-    /// game after an EN / RU switch).
-    pub fn retitled(&self, dt: &DtInstall, english: bool) -> Content {
+    /// This content with the names and descriptions of `dt`'s data in Russian, or in the data
+    /// language `data` (as [`Content::from_dt_in`]); everything else kept (a running game
+    /// after the language was changed).
+    pub fn retitled(&self, dt: &DtInstall, data: Option<&str>) -> Content {
         let mut c = self.clone();
         for u in &mut c.units {
             if let Some(d) = dt.units.iter().find(|d| d.id == u.id) {
@@ -201,12 +199,22 @@ impl Content {
                 s.name = d.name.clone();
             }
         }
-        if english {
-            if let Some(d) = &dt.english {
-                d.apply(&mut c.units, &mut c.items, &mut c.spells);
+        c.translate_data(dt, data);
+        c
+    }
+
+    /// The Russian names and descriptions swapped for language `data`'s, then, for a language
+    /// other than English, the ones it lacks for English (the interface is English then).
+    fn translate_data(&mut self, dt: &DtInstall, data: Option<&str>) {
+        let Some(p) = data else { return };
+        if let Some(d) = dt.dictionary(p) {
+            d.apply(&mut self.units, &mut self.items, &mut self.spells);
+        }
+        if !p.eq_ignore_ascii_case(crate::dt::english::ENGLISH) {
+            if let Some(d) = dt.english.as_ref() {
+                d.apply(&mut self.units, &mut self.items, &mut self.spells);
             }
         }
-        c
     }
 
     /// The built-in demo: `data/units.ini`, `data/items.ini` and `data/spells.ini` (our own

@@ -19,9 +19,10 @@ except what the screen value, the `App` fields and a few `thread_local!`s hold.
    folder), `single_instance` (a lock file), `razdor::update::init`, the window size
    (`ui::snapshot::size`, `RAZDOR_SIZE`).
 2. `main`: `ui::widgets::load_font` (TrueType faces bundled in `data/fonts/`),
-   `ui::language::init` (EN/RU, `razdor::i18n`), `Content::builtin` (the demo content),
+   `ui::language::init` (the saved language, `razdor::i18n`), `Content::builtin` (the demo content),
    `Assets::load` (`src/ui/assets.rs`) which finds the install (`DtArt::from_env` →
    `razdor::dt::install::locate`) and, when there is one, calls
+   `ui::language::set_install` (the install's data translations join the language list),
    `ui::chrome::set_install` (starts decoding window art ahead, see
    [assets-and-drawing.md](assets-and-drawing.md)), `razdor::rules::save::set_install` and
    `razdor::rules::save::warm_meta_cache` (see [saves.md](saves.md)).
@@ -132,14 +133,28 @@ Input goes through `src/ui/input.rs` (mouse/keys with gamepad emulation from
 - The original's interface texts are read from the install, never copied:
   `chrome::ui_text`, `chrome::ui_markup` (with the original's `#\ * | @ ^` marks, drawn by
   `widgets::markup_rows`), `chrome::ui_line`, `chrome::options_value` (`[Options]`).
-- English data texts (Razdor's own, made by `razdor-translate`): `razdor::dt::english`
-  reads `Eng_*.ini` next to the Russian files, else Razdor's copies in `data/lang/en/game/`
-  (`english::bundled`; a file whose sections do not line up with the install's is not used). In English, `chrome::ui_text` and
-  `chrome::ui_markup` take a translated text first, and the install's unit, item and spell
-  names and descriptions are swapped in by Russian text (`Content::from_dt_in`; on an EN / RU
-  switch `App::follow_language` retitles the content and the game under way with
-  `Content::retitled`). The Russian data is always loaded as it is: upgrades match units by
-  their Russian name.
+- The language list (`src/ui/language.rs`, Razdor's own): «Русский», «English», then each
+  translation of the data in the install (`razdor::dt::english::discover`: a
+  `<Prefix>_Units.ini` whose first line is `english::HEADER` and the language's name). The
+  choice is a data language, the prefix of its files (`language::data_prefix`: `None` for
+  Russian, `Eng`, `Hindi-native`); Razdor's own texts (`razdor::i18n`) are Russian for
+  «Русский» and English for every other entry (`language::interface_of`). Saved in
+  `settings.json` as "ru", "en" or the prefix (`language::code_of`, `language::initial`; a
+  prefix whose files are gone becomes English, `language::resolve`). The main menu's corner
+  link and the advanced settings' «Язык» button open it (`language::open_list`, the editor's
+  drop-down list `widgets::open_list` drawn by `widgets::draw_popup` at the end of
+  `App::frame`; while it is open the screen takes no input); `App::follow_language` takes the
+  pick (`language::follow_pick`); F2 steps through it (`language::cycle`).
+- Translated data texts (Razdor's own, made by `razdor-translate`): `razdor::dt::english`
+  reads a language's files next to the Russian ones (`english::data_ini`); English is
+  `Eng_*.ini`, else Razdor's copies in `data/lang/en/game/` (`english::bundled`; a file whose
+  sections do not line up with the install's is not used). In another language than
+  Russian, `chrome::ui_text` and `chrome::ui_markup` take that language's text first, then
+  English; the install's unit, item and spell names and descriptions are swapped in by
+  Russian text, that language's first, English for the rest (`Content::from_dt_in`,
+  `DtInstall::dictionary`; on a change `App::follow_language` retitles the content and the
+  game under way with `Content::retitled`). The Russian data is always loaded as it is:
+  upgrades match units by their Russian name.
 - Fonts: the settings' «Шрифт» (`dt_font::FontMode`): the install's bitmap sheets by default,
   or the bundled TrueType faces (`widgets::load_font`); see `assets-and-drawing.md` §Fonts.
   Pick a face with `dt_font::with_face`; measure with `widgets::measure`, since widths

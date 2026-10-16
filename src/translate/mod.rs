@@ -4,7 +4,7 @@
 //!
 //! - [`text`]: one string to the model and back (placeholders, checks).
 //! - [`job`]: the strings of a map or campaign, batches, progress, the English maps.
-//! - [`data`]: the install's own texts (units, items, spells, interface) and their English
+//! - [`data`]: the install's own texts (units, items, spells, interface) and their translated
 //!   files for Razdor.
 //! - [`llm`]: the API and its settings.
 
@@ -41,10 +41,9 @@ pub fn open_job(maps: &[(String, Scenario)], language: &str, any_script: bool) -
     if let Some(old) = path.as_deref().and_then(Job::load) {
         job.take_over(&old);
     }
-    // The game data's names (English): a map's texts call a unit what its card calls it.
-    if job::lang_suffix(language) == "en" {
-        job.outside_glossary = data::glossary();
-    }
+    // The game data's names in the same language (and letters), when it has been translated:
+    // a map's texts call a unit what its card calls it.
+    job.outside_glossary = data::glossary(language, any_script);
     (job, path)
 }
 
@@ -76,7 +75,7 @@ pub fn run(job: &mut Job, path: Option<&Path>, s: &Settings, stop: &AtomicBool, 
         let prompt = llm::user_prompt(&texts, &glossary);
         report(job, Event::Sending { items: batch.len(), first: texts[0].chars().take(60).collect() });
         let t0 = std::time::Instant::now();
-        // The job's own language (the game data is always English).
+        // The job's own language and letters.
         let rules = llm::system_prompt(&Settings { language: job.language.clone(), any_script: job.any_script, ..s.clone() });
         match llm::chat(s, &rules, &prompt).and_then(|a| llm::parse_answer(&a)) {
             Ok(answers) => {
@@ -124,18 +123,18 @@ pub fn write_maps(job: &Job, maps_dir: &Path, overwrite: bool) -> Result<Vec<Pat
     Ok(written)
 }
 
-/// Where a job's English goes.
+/// Where a job's translation goes.
 #[derive(Clone, Debug)]
 pub enum Target {
     /// English copies of maps, in this maps folder.
     Maps(PathBuf),
-    /// English files of the install's data, next to its Russian ones.
+    /// The data files of the job's language, next to the install's Russian ones.
     Data { install: PathBuf, data: data::DataTexts },
 }
 
 impl Target {
     /// Writes `job`'s English; returns the files written. Maps that exist are replaced only
-    /// with `overwrite`; the data's English files are always replaced.
+    /// with `overwrite`; the data's files are always replaced.
     pub fn write(&self, job: &Job, overwrite: bool) -> Result<Vec<PathBuf>, String> {
         match self {
             Target::Maps(dir) => write_maps(job, dir, overwrite),

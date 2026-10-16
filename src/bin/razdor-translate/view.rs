@@ -73,6 +73,9 @@ impl View {
             install.as_deref().map(translate::install_maps).unwrap_or_default().into_iter().map(|(f, _, s)| (f, s)).collect();
         let items = items(&maps);
         let settings = Settings::load();
+        if let Some(dir) = install.as_deref() {
+            crate::ui::language::set_install(dir);
+        }
         let v = View {
             install: install.clone(),
             maps_dir,
@@ -143,7 +146,7 @@ impl View {
         if self.items[i].data {
             let Some(install) = self.install.clone() else { return };
             let data = translate::data::install_texts(&install);
-            self.job = Some(translate::data::open_job(&data));
+            self.job = Some(translate::data::open_job(&data, &self.settings.language, self.settings.any_script));
             self.target = Some(translate::Target::Data { install, data });
             return;
         }
@@ -167,18 +170,22 @@ impl View {
         let (sw, sh) = (screen_width(), screen_height());
         text(tr("Map translator"), 16.0, 30.0, 24.0, ACCENT);
         text_fit(tr("Translated copies of the install's maps, made by a language model"), 230.0, 29.0, sw - 360.0, 15.0, DIM);
-        crate::ui::language::switch_button(sw - 110.0, 8.0, 94.0, 28.0);
+        // An open language list takes the window's input.
+        widgets::set_input_blocked(widgets::popup_open());
+        crate::ui::language::picker_box(Rect::new(sw - 170.0, 8.0, 154.0, 28.0));
         self.list(Rect::new(12.0, 48.0, LIST_W, sh - 60.0));
         let right = Rect::new(LIST_W + 24.0, 48.0, sw - LIST_W - 36.0, sh - 60.0);
         let y = self.settings_panel(right);
         let y = self.job_panel(Rect::new(right.x, y + 10.0, right.w, 150.0));
         self.log_panel(Rect::new(right.x, y + 10.0, right.w, right.y + right.h - y - 10.0));
         self.script_dialog();
+        widgets::set_input_blocked(false);
+        widgets::draw_popup();
         widgets::fields_end_frame();
         // Another language: the chosen maps' job in it (its own progress and copies).
         if let (Some(i), Some((job, _))) = (self.selected, self.job.as_ref()) {
             let want = self.settings.language.trim();
-            if !self.items[i].data && !widgets::typing() && !self.running() && (job.language != want || job.any_script != self.settings.any_script) && !want.is_empty() {
+            if !widgets::typing() && !self.running() && (job.language != want || job.any_script != self.settings.any_script) && !want.is_empty() {
                 self.select(i);
             }
         }
@@ -218,17 +225,17 @@ impl View {
             if hover && widgets::clicked() {
                 clicked = Some(i);
             }
+            let suffix = job::copy_suffix(&self.settings.language, self.settings.any_script);
             let english = if item.data {
-                self.install.as_ref().is_some_and(|d| d.join(razdor::dt::english::english_file(razdor::dt::install::UNITS_FILE)).exists())
+                self.install.as_ref().is_some_and(|d| translate::data::translated(d, &self.settings.language, self.settings.any_script))
             } else {
-                let suffix = job::copy_suffix(&self.settings.language, self.settings.any_script);
                 self.maps_dir.as_ref().is_some_and(|d| item.chapters.iter().all(|&k| d.join(job::copy_file(&self.maps[k].0, &suffix)).exists()))
             };
-            let tag = if item.data { "en".to_string() } else { job::copy_suffix(&self.settings.language, self.settings.any_script) };
+            let tag = suffix;
             let title = if english { format!("{}  [{}]", item.title, tag.to_uppercase()) } else { item.title.clone() };
             text_fit(&title, row.x + 8.0, row.y + 19.0, row.w - 16.0, 17.0, if english { GREEN } else { INK });
             let sub = if item.data {
-                tr("Units, items, spells and the game's texts: for Razdor in English").to_string()
+                tr("Units, items, spells and the game's texts: for Razdor in that language").to_string()
             } else if item.chapters.len() > 1 {
                 trf!("Campaign: {n} chapters", n = item.chapters.len())
             } else {

@@ -840,6 +840,8 @@ struct Popup {
     scroll: usize,
     filter: String,
     edit: TextEdit,
+    /// Its size against the editor's (rows, text): the game's windows pass `chrome::k()`.
+    scale: f32,
 }
 
 thread_local! {
@@ -1358,14 +1360,7 @@ pub fn checkbox(x: f32, y: f32, max_w: f32, label: &str, value: bool) -> Option<
 /// A drop-down list: shows the option with value `current` (or its number) and opens a list
 /// to pick from (type to filter, wheel to scroll). Returns the value picked.
 pub fn dropdown(key: &str, x: f32, y: f32, w: f32, current: i64, options: &[(i64, String)]) -> Option<i64> {
-    let id = field_id(key);
-    let picked = PICKED.with(|p| match p.get() {
-        Some((pid, v)) if pid == id => {
-            p.set(None);
-            Some(v)
-        }
-        _ => None,
-    });
+    let picked = take_pick(key);
     let h = 24.0;
     let hover = mouse_in(x, y, w, h);
     let label = options.iter().find(|o| o.0 == current).map_or(format!("#{current}"), |o| o.1.clone());
@@ -1378,19 +1373,43 @@ pub fn dropdown(key: &str, x: f32, y: f32, w: f32, current: i64, options: &[(i64
     text(&shown, x + 5.0, y + 17.0, 16.0, INK);
     draw_triangle(vec2(x + w - 15.0, y + 9.0), vec2(x + w - 5.0, y + 9.0), vec2(x + w - 10.0, y + 16.0), DIM);
     if hover && clicked() {
-        claim();
-        clear_focus();
-        let rows = options.len().min(POPUP_ROWS) as f32;
-        let ph = rows * POPUP_ROW_H + 30.0;
-        let py = if y + h + ph > screen_height() { (y - ph).max(0.0) } else { y + h };
-        let pw = w.max(220.0);
-        let px = x.min(screen_width() - pw).max(0.0);
-        let at = options.iter().position(|o| o.0 == current).unwrap_or(0);
-        POPUP.with(|p| {
-            *p.borrow_mut() = Some(Popup { id, rect: Rect::new(px, py, pw, ph), options: options.to_vec(), scroll: at.saturating_sub(POPUP_ROWS / 2), filter: String::new(), edit: TextEdit::at_end() })
-        });
+        open_list(key, Rect::new(x, y, w, h), current, options, 1.0);
     }
     picked.filter(|v| *v != current)
+}
+
+/// Opens the drop-down list of `key` under `anchor` (over it when there is no room below),
+/// sized by `scale`; the value picked comes from [`take_pick`]. For a drop-down drawn its own
+/// way (the game's language list).
+pub fn open_list(key: &str, anchor: Rect, current: i64, options: &[(i64, String)], scale: f32) {
+    claim();
+    clear_focus();
+    let rows = options.len().min(POPUP_ROWS) as f32;
+    let ph = (rows * POPUP_ROW_H + 30.0) * scale;
+    let (y, h) = (anchor.y, anchor.h);
+    let py = if y + h + ph > screen_height() { (y - ph).max(0.0) } else { y + h };
+    let pw = anchor.w.max(220.0 * scale);
+    let px = anchor.x.min(screen_width() - pw).max(0.0);
+    let at = options.iter().position(|o| o.0 == current).unwrap_or(0);
+    let popup = Popup { id: field_id(key), rect: Rect::new(px, py, pw, ph), options: options.to_vec(), scroll: at.saturating_sub(POPUP_ROWS / 2), filter: String::new(), edit: TextEdit::at_end(), scale };
+    POPUP.with(|p| *p.borrow_mut() = Some(popup));
+}
+
+/// The value picked in the drop-down list of `key` since the last call, if any.
+pub fn take_pick(key: &str) -> Option<i64> {
+    let id = field_id(key);
+    PICKED.with(|p| match p.get() {
+        Some((pid, v)) if pid == id => {
+            p.set(None);
+            Some(v)
+        }
+        _ => None,
+    })
+}
+
+/// The drop-down list of `key` is open.
+pub fn list_open(key: &str) -> bool {
+    POPUP.with(|p| p.borrow().as_ref().is_some_and(|pop| pop.id == field_id(key)))
 }
 
 pub fn popup_open() -> bool {
@@ -1422,19 +1441,21 @@ pub fn draw_popup() {
         draw_rectangle(r.x + 4.0, r.y + 4.0, r.w, r.h, Color::new(0.0, 0.0, 0.0, 0.4));
         draw_rectangle(r.x, r.y, r.w, r.h, Color::new(0.1, 0.09, 0.08, 0.98));
         draw_rectangle_lines(r.x, r.y, r.w, r.h, 2.0, ACCENT);
+        let s = pop.scale;
+        let row_h = POPUP_ROW_H * s;
         let hint = if pop.filter.is_empty() { razdor::i18n::tr("type to filter").to_string() } else { razdor::trf!("filter: {filter}", filter = pop.filter) };
-        text(&hint, r.x + 8.0, r.y + 19.0, 15.0, DIM);
+        text(&hint, r.x + 8.0 * s, r.y + 19.0 * s, 15.0 * s, DIM);
         for (i, (v, label)) in shown.iter().skip(pop.scroll).take(POPUP_ROWS).enumerate() {
-            let ry = r.y + 26.0 + i as f32 * POPUP_ROW_H;
-            let hover = Rect::new(r.x, ry, r.w, POPUP_ROW_H).contains(Vec2::from(pointer()));
+            let ry = r.y + 26.0 * s + i as f32 * row_h;
+            let hover = Rect::new(r.x, ry, r.w, row_h).contains(Vec2::from(pointer()));
             if hover {
-                draw_rectangle(r.x + 2.0, ry, r.w - 4.0, POPUP_ROW_H, Color::new(0.4, 0.3, 0.15, 1.0));
+                draw_rectangle(r.x + 2.0, ry, r.w - 4.0, row_h, Color::new(0.4, 0.3, 0.15, 1.0));
             }
             let mut l = label.clone();
-            while measure(&l, 16.0).width > r.w - 16.0 && !l.is_empty() {
+            while measure(&l, 16.0 * s).width > r.w - 16.0 * s && !l.is_empty() {
                 l.pop();
             }
-            text(&l, r.x + 8.0, ry + 16.0, 16.0, INK);
+            text(&l, r.x + 8.0 * s, ry + 16.0 * s, 16.0 * s, INK);
             if hover && is_mouse_button_pressed(MouseButton::Left) {
                 PICKED.with(|k| k.set(Some((pop.id, *v))));
                 close = true;
@@ -1442,8 +1463,8 @@ pub fn draw_popup() {
         }
         if shown.len() > POPUP_ROWS {
             let frac = pop.scroll as f32 / max_scroll.max(1) as f32;
-            let track = r.h - 30.0;
-            draw_rectangle(r.x + r.w - 5.0, r.y + 26.0 + frac * (track - 20.0), 3.0, 20.0, DIM);
+            let track = r.h - 30.0 * s;
+            draw_rectangle(r.x + r.w - 5.0, r.y + 26.0 * s + frac * (track - 20.0 * s), 3.0, 20.0 * s, DIM);
         }
         let outside = is_mouse_button_pressed(MouseButton::Left) && !r.contains(Vec2::from(pointer()));
         if outside || is_key_pressed(KeyCode::Escape) {

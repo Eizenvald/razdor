@@ -197,6 +197,7 @@ impl Assets {
         let dt = DtArt::from_env();
         if let Some(d) = &dt {
             super::chrome::set_install(d.install.dir.clone());
+            super::language::set_install(&d.install.dir);
             razdor::rules::save::set_install(&d.install.dir);
             razdor::rules::save::warm_meta_cache();
         }

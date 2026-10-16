@@ -8,7 +8,7 @@ No Discord Times install found: start Razdor once to choose it. = Игра «В�
 No maps = Нет карт
 Campaign: {n} chapters = Кампания: глав — {n}
 Game data = Данные игры
-Units, items, spells and the game's texts: for Razdor in English = Воины, предметы, заклинания и тексты игры: для Раздора на английском
+Units, items, spells and the game's texts: for Razdor in that language = Воины, предметы, заклинания и тексты игры: для Раздора на этом языке
 
 # The model's settings
 Language model (OpenAI-compatible API) = Языковая модель (API, совместимый с OpenAI)

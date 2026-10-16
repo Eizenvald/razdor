@@ -14,7 +14,7 @@
 //! (army screen, market); `RAZDOR_SCENE_QUIET=1` drops
 //! the scenario's messages every frame, to see the screen under them; `RAZDOR_MOUSE=x,y`
 //! puts the pointer there (`RAZDOR_MOUSE_RIGHT=1` also holds the right button there: the map's tooltips); `RAZDOR_SCENE_SPELLS=<id>,…` puts those spells on every unit; `RAZDOR_SCENE_POTION=1` gives every unit of the army a
-//! drunk potion. `replay:<step>` with `RAZDOR_REPLAY=<actions.jsonl>`: the diff
+//! drunk potion. `RAZDOR_SCENE_LANGUAGE=1` opens the language list (`title`, `options:advanced`, `settings:<map>:advanced`). `replay:<step>` with `RAZDOR_REPLAY=<actions.jsonl>`: the diff
 //! test's action list played to that step. `RAZDOR_SCENE_BATTLE_EXIT=1` opens a battle
 //! scene's leave-battle window.
 //!
@@ -110,6 +110,21 @@ pub fn size() -> Option<(i32, i32)> {
 /// The scenario's messages are dropped every frame (`RAZDOR_SCENE_QUIET`).
 pub fn quiet() -> bool {
     std::env::var("RAZDOR_SCENE_QUIET").is_ok_and(|v| !v.is_empty())
+}
+
+thread_local! {
+    /// `RAZDOR_SCENE_LANGUAGE` has opened the language list.
+    static LANGUAGE_OPENED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// `RAZDOR_SCENE_LANGUAGE=1`: the first language button drawn (the main menu's, the advanced
+/// settings') opens its list, once.
+pub fn open_language_list() -> bool {
+    if LANGUAGE_OPENED.with(|o| o.get()) || !std::env::var("RAZDOR_SCENE_LANGUAGE").is_ok_and(|v| v == "1") {
+        return false;
+    }
+    LANGUAGE_OPENED.with(|o| o.set(true));
+    true
 }
 
 /// `RAZDOR_MOUSE=x,y`: the pointer stands there (tooltips, hover looks).

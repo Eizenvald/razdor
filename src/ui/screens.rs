@@ -98,7 +98,7 @@ pub fn scenario_select(scenarios: &[ScenarioEntry], has_install: bool) -> Option
     clear_background(Color::from_rgba(24, 22, 20, 255));
     text_centered("RAZDOR", screen_width() / 2.0, 80.0, 64.0, ACCENT);
     text_centered(tr("Choose a scenario"), screen_width() / 2.0, 114.0, 24.0, DIM);
-    super::language::switch_button(screen_width() - 136.0, 20.0, 116.0, 36.0);
+    super::language::picker_box(Rect::new(screen_width() - 196.0, 20.0, 176.0, 36.0));
     let (x, w) = (60.0, screen_width() - 120.0);
     let row_h = 52.0;
     let top = 140.0;

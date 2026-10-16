@@ -178,8 +178,9 @@ pub struct App {
     console: console::Console,
     /// The console holds the keys this frame (open, or just closed by them).
     console_held: bool,
-    /// The interface language the demo content was built in.
-    lang: razdor::i18n::Lang,
+    /// The interface language the demo content was built in, and the data language the
+    /// install's content was (`language::data_prefix`).
+    lang: (razdor::i18n::Lang, Option<String>),
     /// "Выход" was picked in the main menu: the process ends after this frame.
     pub quit: bool,
     /// The update window (`update_view`) is over the screen this frame.
@@ -193,8 +194,8 @@ impl App {
         // original reads `OptValue10` (interface.md §16): F = 100 instead of 120.
         let impossible = audio.settings.impossible;
         let dt_content = assets.dt.as_ref().map(|d| {
-            // In English, the names made by razdor-translate when the install has them.
-            let mut c = Content::from_dt_in(&d.install, razdor::i18n::lang() == razdor::i18n::Lang::En);
+            // In another language, the names made by razdor-translate when the install has them.
+            let mut c = Content::from_dt_in(&d.install, language::data_prefix().as_deref());
             if let Some(on) = impossible {
                 c.options.difficulty_factor = if on { 100 } else { 120 };
             }
@@ -236,7 +237,7 @@ impl App {
             custom: None,
             console: console::Console::default(),
             console_held: false,
-            lang: razdor::i18n::lang(),
+            lang: (razdor::i18n::lang(), language::data_prefix()),
             quit: false,
             update_open: false,
         };
@@ -291,23 +292,25 @@ impl App {
         matches!(self.screen, Screen::CustomSetup | Screen::CustomBattle(_))
     }
 
-    /// After an EN / RU switch: the demo's names and descriptions in the new language (for
-    /// the next new game or load; a running game keeps its content).
+    /// After the language changed: the demo's names and descriptions in the new interface
+    /// language (for the next new game or load; a running demo game keeps its content), the
+    /// install's in the new data language.
     fn follow_language(&mut self) {
-        let now = razdor::i18n::lang();
+        language::follow_pick();
+        let now = (razdor::i18n::lang(), language::data_prefix());
         if now != self.lang {
-            self.lang = now;
+            self.lang = now.clone();
             let demo_game = self.game.as_ref().is_some_and(|g| Arc::ptr_eq(&g.content, &self.demo));
             self.demo = Arc::new(Content::builtin());
-            // The install's names and descriptions in the new language (English from the
-            // files razdor-translate made, if any), for new games and the game under way.
+            // The install's names and descriptions in the new language (from the files
+            // razdor-translate made, if any), for new games and the game under way.
             if let Some(d) = self.assets.dt.as_ref() {
-                let en = now == razdor::i18n::Lang::En;
+                let data = now.1.as_deref();
                 if let Some(c) = self.dt_content.as_mut() {
-                    *c = Arc::new(c.retitled(&d.install, en));
+                    *c = Arc::new(c.retitled(&d.install, data));
                 }
                 if let Some(g) = self.game.as_mut().filter(|_| !demo_game) {
-                    g.content = Arc::new(g.content.retitled(&d.install, en));
+                    g.content = Arc::new(g.content.retitled(&d.install, data));
                 }
             }
         }
@@ -319,7 +322,7 @@ impl App {
             && !widgets::popup_open()
             && is_key_pressed(language::KEY)
         {
-            language::toggle();
+            language::cycle();
         }
         let Some(ed) = self.editor.as_mut() else {
             self.open_editor();
@@ -806,7 +809,7 @@ impl App {
         // A dialog or the key list on top: the screen below is drawn but takes no input.
         let guard = self.guard();
         // The flights of an event read in a building window take no input either.
-        widgets::set_input_blocked(!self.dialogs.is_empty() || self.help || held || self.map_view.back_to.is_some() || self.update_open);
+        widgets::set_input_blocked(!self.dialogs.is_empty() || self.help || held || self.map_view.back_to.is_some() || self.update_open || widgets::popup_open());
         let mut restart = false;
         let mut custom_round = false;
         let custom_content = self.custom_content();
@@ -935,7 +938,7 @@ impl App {
             next = self.custom_round();
         }
         // F1: the key list; F5 / F9: quick save and load (when the screen did not move on).
-        let pressed = |k: hotkeys::Global| next.is_none() && !widgets::input_swallowed() && hotkeys::allowed(place, k, guard) && is_key_pressed(k.key());
+        let pressed = |k: hotkeys::Global| next.is_none() && !widgets::input_swallowed() && !widgets::popup_open() && hotkeys::allowed(place, k, guard) && is_key_pressed(k.key());
         if self.help {
             if hotkeys::help_overlay(place) {
                 self.help = false;
@@ -943,7 +946,7 @@ impl App {
         } else if pressed(hotkeys::Global::Help) {
             self.help = true;
         } else if pressed(hotkeys::Global::Language) {
-            language::toggle();
+            language::cycle();
         } else if pressed(hotkeys::Global::QuickSave) {
             self.quick_save();
         } else if pressed(hotkeys::Global::QuickLoad) {
@@ -1019,6 +1022,13 @@ impl App {
         self.fly_from_building(next.is_some());
         self.console.draw();
         display::draw_notice();
+        // The language list over everything but the pointer (`language::open_list`).
+        if widgets::popup_open() {
+            let blocked = widgets::input_blocked();
+            widgets::set_input_blocked(false);
+            widgets::draw_popup();
+            widgets::set_input_blocked(blocked);
+        }
         // A newer release on offer, or how the update the player chose went.
         if self.update_open && next.is_none() && update_view::frame(matches!(self.screen, Screen::MainMenu | Screen::Options), &mut self.audio.settings.updates) {
             self.quit = true;
