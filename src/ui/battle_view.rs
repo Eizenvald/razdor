@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 use macroquad::prelude::*;
 
 use razdor::i18n::tr;
-use razdor::rules::battle::{ActionKind, Battle, EndReason, Fighter, Hit, MaxBudget, MaxMove, Outcome, Preview, Step, Team, XpAward};
+use razdor::rules::battle::{ActionKind, Battle, EndReason, Fighter, Hit, MaxPoll, MaxThinker, Outcome, Preview, Step, Team, XpAward};
 use razdor::av::Echo;
 use razdor::rules::content::{HeroClass, ItemId, Stat};
 use razdor::rules::custom::{Control, Session};
@@ -291,31 +291,11 @@ pub struct BattleView {
     /// The cards' curse and blessing signs by fighter: set as a magic or a blessing effect
     /// ends on the card, kept to the end of the battle (unit +0xc5 / +0xc9, 4b00c1).
     signs: Vec<Signs>,
-    /// «Максимум» thinking about the computer's unit on a worker thread (Razdor's).
-    thinking: Option<Thinking>,
-}
-
-/// Razdor's «Максимум» (the owner's request) searching for the computer's unit on a worker
-/// thread, so the frame never waits: the battle's moment it was asked for, and the answer
-/// to come (`Battle::max_choice`, within `razdor::rules::battle::MAX_AI_BUDGET`).
-struct Thinking {
-    moment: (usize, Option<usize>, i32, u32),
-    answer: std::sync::mpsc::Receiver<Option<MaxMove>>,
-}
-
-impl Thinking {
-    fn start(battle: &Battle, moment: (usize, Option<usize>, i32, u32)) -> Thinking {
-        let mut b = battle.clone();
-        b.log.clear();
-        // The Community patch's globals are the thread's own: the worker starts from these.
-        let globals = razdor::rules::battle::patch_globals();
-        let (tx, answer) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            razdor::rules::battle::set_patch_globals(globals);
-            let _ = tx.send(b.max_choice(MaxBudget::GAME).map(|r| r.choice));
-        });
-        Thinking { moment, answer }
-    }
+    /// Razdor's «Максимум» (the owner's request) for the computer's side: its searches run on
+    /// a worker thread ahead of the need, so the frame never waits (`MaxThinker`).
+    max: Option<MaxThinker>,
+    /// The battle's moment the last look ahead was for.
+    pondered: Option<(usize, Option<usize>, i32, u32)>,
 }
 
 /// A card's curse and blessing signs.
@@ -472,7 +452,8 @@ impl BattleView {
             watch: false,
             speed: SPEED.with(|s| s.get()),
             custom: false,
-            thinking: None,
+            max: None,
+            pondered: None,
         }
     }
 
@@ -587,25 +568,40 @@ impl BattleView {
         b.max_ai() && !self.watching() && b.active().is_some_and(|a| !self.human(b.fighters[a].team))
     }
 
-    /// «Максимум»'s move: the search starts on a worker thread and `None` comes back until
-    /// its answer has (the clock pointer shows meanwhile, the animations run on); then the
-    /// move is played. An answer for another moment of the battle is dropped; a worker that
-    /// failed leaves the move to the original's AI.
-    fn max_move(&mut self) -> Option<Option<Step>> {
-        let now = Self::moment(&self.battle);
-        if self.thinking.as_ref().is_some_and(|t| t.moment != now) {
-            self.thinking = None;
-        }
-        let t = self.thinking.get_or_insert_with(|| Thinking::start(&self.battle, now));
-        let answer = match t.answer.try_recv() {
-            Err(std::sync::mpsc::TryRecvError::Empty) => return None,
-            Ok(m) => m,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+    /// The side «Максимум» plays: the computer's, when a human plays the other.
+    fn max_side(&self) -> Option<Team> {
+        let ai = Team::BOTH.into_iter().find(|&t| !self.human(t))?;
+        (self.battle.max_ai() && self.human(ai.other())).then_some(ai)
+    }
+
+    /// «Максимум» looks ahead once per moment of the battle: its next decision starts on the
+    /// worker as soon as the action before it is applied (during that action's animation),
+    /// or, while the player is to act, the one after his expected reply.
+    fn max_think_ahead(&mut self) {
+        let Some(side) = self.max_side().filter(|_| self.battle.outcome() == Outcome::Ongoing) else {
+            if let Some(m) = &mut self.max {
+                m.rest();
+            }
+            return;
         };
-        self.thinking = None;
-        Some(match answer {
-            Some(m) => self.battle.play_max_move(m),
-            None => self.battle.hero_auto_step(),
+        let now = Self::moment(&self.battle);
+        if self.pondered == Some(now) {
+            return;
+        }
+        self.pondered = Some(now);
+        self.max.get_or_insert_with(|| MaxThinker::new(side)).think_ahead(&self.battle);
+    }
+
+    /// «Максимум»'s move: `None` while its search for this position runs (the clock pointer
+    /// shows meanwhile, the animations run on); then the move is played. A search for another
+    /// position is dropped; a worker that failed leaves the move to the original's AI.
+    fn max_move(&mut self) -> Option<Option<Step>> {
+        let side = self.max_side()?;
+        let t = self.max.get_or_insert_with(|| MaxThinker::new(side));
+        Some(match t.poll(&self.battle) {
+            MaxPoll::Thinking => return None,
+            MaxPoll::Ready(r) => self.battle.play_max_move(r.choice),
+            MaxPoll::Failed => self.battle.hero_auto_step(),
         })
     }
 
@@ -725,6 +721,7 @@ impl BattleView {
             }
         }
 
+        self.max_think_ahead();
         let over = self.end_shown();
         if over && self.xp.is_none() && !self.custom {
             // What the player's units gain: only a victory pays (experience.md §3).

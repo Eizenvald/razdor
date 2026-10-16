@@ -111,7 +111,7 @@ pub enum Outcome {
 }
 
 /// Why a finished battle ended.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum EndReason {
     /// A side has no units left.
     Wiped,
@@ -168,7 +168,7 @@ impl ActionKind {
 
 /// Stat changes: of a blessing (positive) or curse (negative), or a unit's per-turn
 /// modifiers (`actions` unused there).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Buff {
     /// Added to melee and ranged attack (only those the unit has).
     pub attack: i32,
@@ -213,7 +213,7 @@ pub enum Preview {
 }
 
 /// The battle AI's view of a unit (4836cc).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum AiRole {
     Warrior,
     Shooter,
@@ -446,7 +446,7 @@ pub struct XpAward {
 }
 
 /// A side as the battle began, for the XP pool.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct SideStart {
     pub strength: i64,
     pub hp: i64,
@@ -481,7 +481,7 @@ enum Plan {
 /// The Community `Splash` state, globals in `.mod` (c26f16 …): the kind of action being
 /// splashed (0 for none), the primary target's side, row and column, the follow-ups made, the
 /// two neighbours already taken, and the attacker's column at its last melee hit (c273c4).
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Hash)]
 struct Splash {
     state: u8,
     line: Option<(Team, Row)>,
@@ -495,7 +495,7 @@ struct Splash {
 /// The Community patch's globals that outlive a battle (`.mod`), shared by every battle, the
 /// AI's off-screen ones included. Nothing resets them between battles and saves do not hold
 /// them, as in the original.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PatchGlobals {
     /// `Hunger`: the living count stored at each removal (c252e4) and the value the Hunger
     /// units last saw (c2525f). Both are 3 in the file.
@@ -3377,7 +3377,7 @@ fn berserk(f: &Fighter) -> i32 {
 }
 
 mod max_ai;
-pub use max_ai::{MaxBudget, MaxMove, MaxReport, MAX_AI_BUDGET};
+pub use max_ai::{MaxBudget, MaxControl, MaxMove, MaxPoll, MaxReport, MaxTables, MaxThinker, MAX_AI_BUDGET};
 
 #[cfg(test)]
 mod tests;

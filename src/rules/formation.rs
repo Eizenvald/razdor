@@ -47,7 +47,7 @@ impl Slot {
 }
 
 /// Shape of a side's formation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Formation {
     pub cols: u8,
     /// A third, reserve row behind the back row.

@@ -13,22 +13,33 @@ struct Played {
     outcome: Outcome,
     battle: Battle,
     decisions: Vec<Duration>,
+    reports: Vec<MaxReport>,
+}
+
+/// The harness searches without the battle's tables with `RAZDOR_MAX_NO_TABLES` set (to
+/// measure what they save).
+fn with_tables() -> bool {
+    std::env::var_os("RAZDOR_MAX_NO_TABLES").is_none()
 }
 
 fn play(mut b: Battle, max: Option<Team>, budget: MaxBudget) -> Played {
     b.begin();
     let mut decisions = Vec::new();
+    let mut reports = Vec::new();
+    let tables = MaxTables::default();
+    let tables = with_tables().then_some(&tables);
     for _ in 0..AUTO_PLAY_STEPS {
         let Some(id) = b.active() else { break };
         if Some(b.fighters[id].team) == max {
-            let r = b.max_choice(budget).unwrap();
+            let r = b.max_choice_with(budget, tables, None).unwrap();
             decisions.push(r.elapsed);
+            reports.push(r);
             b.play_max_move(r.choice);
         } else {
             b.auto_step();
         }
     }
-    Played { outcome: b.outcome(), battle: b, decisions }
+    Played { outcome: b.outcome(), battle: b, decisions, reports }
 }
 
 fn won(outcome: Outcome, team: Team) -> bool {
@@ -56,6 +67,12 @@ struct Tally {
     max_left: f64,
     orig_left: f64,
     decisions: Vec<Duration>,
+    /// Summed over the decisions: the depth reached, the positions searched, the rollouts.
+    depth: u64,
+    nodes: u64,
+    rollouts: u64,
+    tt_hits: u64,
+    rollout_hits: u64,
     /// Positions the original's side wins and Max's loses, or where Max keeps much less.
     worse: Vec<String>,
     /// Positions where Max ends below the original by its own score (none expected: each
@@ -84,6 +101,13 @@ impl Tally {
                 self.below.push(format!("{name}, Max as {team:?}"));
             }
             self.decisions.extend(m.decisions);
+            for r in &m.reports {
+                self.depth += r.depth as u64;
+                self.nodes += r.nodes;
+                self.rollouts += r.rollouts;
+                self.tt_hits += r.tt_hits;
+                self.rollout_hits += r.rollout_hits;
+            }
         }
     }
 
@@ -92,8 +116,10 @@ impl Tally {
         let mut d = self.decisions.clone();
         d.sort();
         let at = |q: f64| d.get(((d.len() as f64 - 1.0) * q).round() as usize).copied().unwrap_or_default();
+        let secs: f64 = d.iter().map(|x| x.as_secs_f64()).sum();
+        let k = d.len().max(1) as f64;
         println!(
-            "{title}: {} games; wins Max {} ({:.0}%) vs original {} ({:.0}%); worth left Max {:.2} vs original {:.2}; {} decisions, median {:?}, 95% {:?}, max {:?}",
+            "{title}: {} games; wins Max {} ({:.0}%) vs original {} ({:.0}%); worth left Max {:.2} vs original {:.2}; {} decisions, median {:?}, 95% {:?}, max {:?}; depth {:.2}, {:.0} nodes, {:.0} rollouts, {:.0} table hits and {:.0} cached rollouts per decision, {:.0} nodes/s",
             self.games,
             self.max_wins,
             100.0 * self.max_wins as f64 / n,
@@ -104,7 +130,13 @@ impl Tally {
             d.len(),
             at(0.5),
             at(0.95),
-            d.last().copied().unwrap_or_default()
+            d.last().copied().unwrap_or_default(),
+            self.depth as f64 / k,
+            self.nodes as f64 / k,
+            self.rollouts as f64 / k,
+            self.tt_hits as f64 / k,
+            self.rollout_hits as f64 / k,
+            self.nodes as f64 / secs.max(1e-9)
         );
         for w in &self.below {
             println!("  below the original's score: {w}");
@@ -298,6 +330,11 @@ fn real_armies(budget: MaxBudget) {
         all.max_left += t.max_left;
         all.orig_left += t.orig_left;
         all.decisions.extend(t.decisions);
+        all.depth += t.depth;
+        all.nodes += t.nodes;
+        all.rollouts += t.rollouts;
+        all.tt_hits += t.tt_hits;
+        all.rollout_hits += t.rollout_hits;
         all.below.extend(t.below);
     }
     all.report("real: all");
@@ -307,4 +344,188 @@ fn real_armies(budget: MaxBudget) {
     }
     assert!(all.below.is_empty(), "Max never ends below the original's score");
     assert!(all.max_wins >= all.orig_wins, "Max wins at least as often");
+}
+
+/// Positions along the battles of the demo's units played by the original's AI: every
+/// `every`-th action's, up to `n` of them.
+fn positions(battles: usize, every: usize, n: usize) -> Vec<(String, Battle)> {
+    let mut out = Vec::new();
+    for (name, mut b) in synthetic_battles(battles) {
+        b.begin();
+        for i in 0..AUTO_PLAY_STEPS {
+            if b.active().is_none() || out.len() >= n {
+                break;
+            }
+            if i % every == 0 {
+                out.push((format!("{name} at action {i}"), b.clone()));
+            }
+            b.auto_step();
+        }
+    }
+    out
+}
+
+/// The tables only save work: at the same fixed depth the choice and its score are the same
+/// without them, with fresh ones, and with ones that hold earlier searches (a shallower one of
+/// the same position, the positions before it, the other side's).
+#[test]
+fn tables_never_change_the_choice_at_a_fixed_depth() {
+    let depth = if cfg!(debug_assertions) { 2 } else { 3 };
+    let budget = MaxBudget::fixed(depth, u64::MAX);
+    let warm = MaxTables::default();
+    let mut compared = 0;
+    for (name, b) in positions(6, 5, 18) {
+        let cold = b.max_choice_with(budget, None, None).unwrap();
+        let fresh = b.max_choice_with(budget, Some(&MaxTables::default()), None).unwrap();
+        let _ = b.max_choice_with(MaxBudget::fixed(depth - 1, u64::MAX), Some(&warm), None);
+        let mut other = b.clone();
+        if let Some(id) = other.active() {
+            other.fighters[id].team = other.fighters[id].team.other();
+            let _ = other.max_choice_with(MaxBudget::fixed(depth - 1, u64::MAX), Some(&warm), None);
+        }
+        let warmed = b.max_choice_with(budget, Some(&warm), None).unwrap();
+        let again = b.max_choice_with(budget, Some(&warm), None).unwrap();
+        for (what, r) in [("fresh tables", fresh), ("warm tables", warmed), ("the same search again", again)] {
+            assert_eq!((r.choice, r.value, r.original_value), (cold.choice, cold.value, cold.original_value), "{name}: {what}");
+        }
+        assert!(again.nodes <= cold.nodes, "{name}: the tables save work");
+        compared += 1;
+    }
+    assert!(compared >= 10);
+}
+
+/// The key tells apart what the battle's future depends on and nothing else: a clone has
+/// the same key, its log does not count, a point of HP or a patch global does.
+#[test]
+fn the_state_key_sees_the_battle_and_the_patch_globals() {
+    let (_, mut b) = synthetic_battles(1).remove(0);
+    b.begin();
+    let k = b.max_key(Team::Enemy);
+    let mut c = b.clone();
+    assert_eq!(c.max_key(Team::Enemy), k);
+    c.log.push("x".into());
+    assert_eq!(c.max_key(Team::Enemy), k, "the log does not count");
+    assert_ne!(b.max_key(Team::Player), k, "the searching side does");
+    c.fighters[0].hp -= 1;
+    assert_ne!(c.max_key(Team::Enemy), k, "the HP does");
+    let g = patch_globals();
+    set_patch_globals(PatchGlobals { hunger_seen: g.hunger_seen + 1, ..g });
+    assert_ne!(b.max_key(Team::Enemy), k, "the patch's globals do");
+    set_patch_globals(g);
+    let mut d = b.clone();
+    d.auto_step();
+    assert_ne!(d.max_key(Team::Enemy), k);
+}
+
+/// The thinker on a worker, thinking ahead after every action: each answer is for the
+/// position on screen, never below the original's choice, and the battle ends.
+#[test]
+fn the_thinker_answers_for_the_position_on_screen() {
+    let (_, mut b) = synthetic_battles(2).remove(1);
+    b.begin();
+    let mut t = MaxThinker::new(Team::Enemy);
+    let mut answered = 0;
+    for _ in 0..AUTO_PLAY_STEPS {
+        let Some(id) = b.active() else { break };
+        t.think_ahead(&b);
+        if b.fighters[id].team != Team::Enemy {
+            b.auto_step();
+            continue;
+        }
+        let r = loop {
+            match t.poll(&b) {
+                MaxPoll::Thinking => std::thread::sleep(Duration::from_millis(1)),
+                MaxPoll::Ready(r) => break r,
+                MaxPoll::Failed => panic!("the worker failed"),
+            }
+        };
+        assert!(r.depth >= 1 || r.settled);
+        assert!(r.value >= r.original_value);
+        b.play_max_move(r.choice);
+        answered += 1;
+    }
+    assert_ne!(b.outcome(), Outcome::Ongoing);
+    assert!(answered > 0);
+    assert_eq!(t.pauses.len(), answered);
+}
+
+/// The battle on screen as a timeline: each action's animation (`anim`: an action, a step,
+/// a pass) and the player's time to think, with Max on the enemy's side thinking ahead
+/// (`ponder`) or only when asked. Gives the battle at its end and, per enemy action, the wait
+/// from the ask to the answer and the depth reached.
+fn timeline(mut b: Battle, ponder: bool, anim: [Duration; 3], player: Duration) -> (Battle, Vec<Duration>, Vec<u32>) {
+    b.begin();
+    let mut t = MaxThinker::new(Team::Enemy);
+    let mut depths = Vec::new();
+    for _ in 0..AUTO_PLAY_STEPS {
+        if ponder {
+            t.think_ahead(&b);
+        }
+        let Some(id) = b.active() else { break };
+        let step = if b.fighters[id].team == Team::Enemy {
+            loop {
+                match t.poll(&b) {
+                    MaxPoll::Thinking => std::thread::sleep(Duration::from_micros(500)),
+                    MaxPoll::Ready(r) => {
+                        depths.push(r.depth);
+                        break b.play_max_move(r.choice);
+                    }
+                    MaxPoll::Failed => break b.auto_step(),
+                }
+            }
+        } else {
+            std::thread::sleep(player);
+            b.auto_step()
+        };
+        if ponder {
+            t.think_ahead(&b);
+        }
+        std::thread::sleep(match step {
+            Some(Step::Act { .. }) => anim[0],
+            Some(Step::Move { .. }) => anim[1],
+            _ => anim[2],
+        });
+    }
+    t.rest();
+    (b, t.pauses, depths)
+}
+
+/// The pause per enemy action in game time, with thinking ahead and without, on battles of
+/// the demo's units and (with `RAZDOR_DT_DIR`) custom battles of the install's units: about
+/// the battle view's animations (an action ~0.55 s, a step and a pass 0.1 s) and a player who
+/// takes 0.5 s per action. Slow: run by hand with `--ignored`.
+#[test]
+#[ignore]
+fn max_pause_per_action_with_pondering() {
+    let anim = [Duration::from_millis(550), Duration::from_millis(100), Duration::from_millis(100)];
+    let player = Duration::from_millis(500);
+    let mut set = synthetic_battles(6);
+    if let Some(dir) = std::env::var_os(crate::dt::install::ENV_VAR) {
+        let dt = crate::dt::install::DtInstall::load(std::path::Path::new(&dir)).unwrap();
+        set.extend(custom_battles(&Content::from_dt(&dt), "custom", 6, 8, 11));
+    }
+    for ponder in [false, true] {
+        let (mut pauses, mut depths, mut wins, mut left) = (Vec::new(), Vec::new(), 0, 0.0);
+        for (_, b) in &set {
+            let (end, p, d) = timeline(b.clone(), ponder, anim, player);
+            wins += u32::from(won(end.outcome(), Team::Enemy));
+            left += worth_left(&end, Team::Enemy);
+            pauses.extend(p);
+            depths.extend(d);
+        }
+        pauses.sort();
+        let at = |q: f64| pauses.get(((pauses.len() as f64 - 1.0) * q).round() as usize).copied().unwrap_or_default();
+        let mean = pauses.iter().map(Duration::as_secs_f64).sum::<f64>() / pauses.len().max(1) as f64;
+        let depth = depths.iter().sum::<u32>() as f64 / depths.len().max(1) as f64;
+        println!(
+            "pondering {ponder}: {} battles, Max wins {wins}, worth left {:.2}; {} enemy actions, pause mean {:.1} ms, median {:?}, 95% {:?}, max {:?}; depth {depth:.2}",
+            set.len(),
+            left / set.len() as f64,
+            pauses.len(),
+            mean * 1000.0,
+            at(0.5),
+            at(0.95),
+            pauses.last().copied().unwrap_or_default()
+        );
+    }
 }

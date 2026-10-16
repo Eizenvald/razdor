@@ -91,7 +91,7 @@ pub fn is_percent_stat(s: Stat) -> bool {
 }
 
 /// A unit's battle role for its side's strength: set by whichever attack is largest.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Role {
     Melee,
     Shooter,

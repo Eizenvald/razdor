@@ -111,10 +111,13 @@ the original's AI above is untouched and still plays everything else (off-screen
 the pre-simulation, the world AI's simulated battles, Q and W, the rollouts below).
 
 ```
-BattleView::advance (computer's turn, Battle::max_ai set, nobody watching)   src/ui/battle_view.rs
-  └ BattleView::ai_move → Thinking: worker thread (patch globals copied in)
-       └ Battle::max_choice(MaxBudget::GAME) → MaxReport { choice, … }
-  frames later, the answer arrives → Battle::play_max_move(choice) → Step (as hero_auto_step's)
+BattleView::advance, every frame (Battle::max_ai set, a human plays the other side)  src/ui/battle_view.rs
+  └ max_think_ahead (once per moment) → MaxThinker::think_ahead: the next decision's position
+       (now, or after the player's expected reply) → worker thread (patch globals copied in)
+            └ Battle::max_choice_with(budget, Some(&tables), Some(&control)) → MaxReport
+BattleView::ai_move (computer's turn) → max_move → MaxThinker::poll(battle)
+  same position's search → its answer (or Thinking for a few frames); else a new search
+  → Battle::play_max_move(choice) → Step (as hero_auto_step's)
 ```
 
 `src/rules/battle/max_ai.rs`:
@@ -140,14 +143,55 @@ BattleView::advance (computer's turn, Battle::max_ai set, nobody watching)   src
 - The Community patch's globals (thread-local) are saved and put back around every simulated
   action; the worker thread starts from a copy of the screen's. The battle's own state is
   never touched (`max_choice` takes `&self`).
+- **Tables** (`max_ai/tables.rs`, `MaxTables`, one per battle in the `MaxThinker`, shared by
+  its searches): positions are keyed by `Battle::max_key`, a 128-bit hash (two SipHash
+  digests) of every field of `Battle` and `Fighter` that the future depends on (the fields are
+  destructured by name, so a new field does not build until it is placed), the patch's globals
+  and the searching side. The transposition table holds, per position, bounds of its score at
+  up to three (depth, leaf class) pairs and the best move; the leaf class is the distance from
+  the root when the subtree reaches past `ROLLOUT_PLIES`, else one class for all. The rollout
+  cache holds each rollout's score under the key of its start and of its first positions
+  (`ROLLOUT_KEYS`). Both are two generations (`Gen`): a full new generation replaces the old
+  one, at most about 40 MB in all.
+- **Same choice with or without tables**: at the root the order is the search's own (the
+  original's pick, then the previous iteration's best), never the table's; inside the tree
+  the table's best move is only tried first, and its bounds are used only at the same depth
+  and leaf class (or from an uncut search) and only when they settle the window. Alpha-beta
+  gives the same score inside the window whatever the order, so the choice of a search to
+  depth d is a function of the position alone (`tables_never_change_the_choice_at_a_fixed_depth`).
+  The clock only decides how deep the search gets; the uncut stop (all lines ended) only stops
+  when every deeper depth gives the same answer. So pondering or warm tables can only let a
+  decision reach a greater depth within its time, never change what a given depth picks.
+- **Early exit**: a single action (a pass) is played without a search; the search stops when
+  every line ended within the depth (the battle's end proven either way) or only the original's
+  choice is left after depth 1 (`MaxReport::settled`).
+- **Thinking ahead** (`max_ai/ponder.rs`, `MaxThinker`): `think_ahead` after each moment of the
+  battle starts the next decision's search on a worker at once: the position itself when the
+  computer's unit acts next (during the last action's animation), else the position after the
+  player's expected moves (the table's best move, or the original AI's), so the answer is ready
+  if he plays it. `poll` (the battle needs the move) uses that search when its key matches the
+  battle's, else stops it and starts one for the real position (the tables keep what it found).
+  The search ends `MAX_AI_BUDGET` after it began, or at once if it began that long ago (the
+  deepest completed depth decides); unasked, it stops at `PONDER_LIMIT`.
 
-UI: `BattleView` keeps the job (`Thinking`) with the battle's moment it was asked for; an answer
-for another moment (a cheat, Q) is dropped. The clock pointer already shows while the computer's
+UI: `BattleView` keeps the `MaxThinker` for the computer's side (`max_side`); a battle that is
+over or watched (W) stops its search. The clock pointer already shows while the computer's
 side acts; the frame never waits. Settings: «Сила ИИ в бою» in «Ещё…» (`main_menu::AiStrength`):
 «как в оригинале», «улучшенный» (the original's `OptValue9`, kept in sync with its checkbox) or
 «максимум (Раздор)» (`Settings::max_ai`, which implies the improved level for the base AI);
 `Game::max_ai` → `Battle::set_max_ai` in `Game::start_battle`; the custom battle's AI button
 cycles the three.
+
+Measured (2026-10-16, E-cores, release; `…_in_game_time` and `max_pause_per_action_with_pondering`
+with `--ignored`; `RAZDOR_MAX_NO_TABLES` turns the tables off in the harness):
+
+| | before the tables | tables | tables + thinking ahead |
+|---|---|---|---|
+| real armies, 150 ms per decision: depth reached (mean) | 3.35 | 3.82 | — |
+| rollouts played per decision (+ found in the cache) | 4396 | 1381 (+1366) | — |
+| Max's wins / original's, 256 games | 154 / 128 | 156 / 128 | — |
+| timeline (anim 0.55 s / 0.1 s, player 0.5 s), 12 battles: pause per enemy action mean / median / 95% | median 150 ms (old harness) | 110 / 150 / 150 ms | 10.7 ms / 0.6 ms / 50 ms |
+| timeline: depth reached (mean) | — | 4.62 | 5.93 |
 
 Evidence: `src/rules/battle/max_ai/tests.rs` plays each position with the original on both
 sides and with Max on each side (`max_beats_the_original_on_synthetic_battles` always;

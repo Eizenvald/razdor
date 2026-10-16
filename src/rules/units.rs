@@ -13,7 +13,7 @@ use super::formation::{Row, Slot};
 use super::items::{self, SLOTS};
 
 /// Effective stats of a unit: numbers by [`Stat`] plus magic, nature and bonuses.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Stats {
     values: [i32; Stat::ALL.len()],
     pub magic: Option<MagicSchool>,
