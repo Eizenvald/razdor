@@ -4,7 +4,7 @@
 //! e.g. `xvfb-run -s "-screen 0 1024x768x24" razdor` with `RAZDOR_SIZE=1024x768`.
 //!
 //! Scenes (`<map>` is a map file name of the install without `.DTm`, e.g. `РК3-Столица`):
-//! `title`, `update` (a made-up release on offer), `authors[:<seconds>]`, `options[:advanced]`, `scenarios[:<map>]`, `tutorial`, `load[:manual|auto[:<row>]]`, `editor[:<map>[:<text to find>]]`, `classes:<map>`, `map:<map>[:x,y]`, `minimap:<map>`, `walk:<map>:dx,dy` (the
+//! `title`, `fonts` (sample lines in many scripts), `update` (a made-up release on offer), `authors[:<seconds>]`, `options[:advanced]`, `scenarios[:<map>]`, `tutorial`, `load[:manual|auto[:<row>]]`, `editor[:<map>[:<text to find>]]`, `classes:<map>`, `map:<map>[:x,y]`, `minimap:<map>`, `walk:<map>:dx,dy` (the
 //! hero sets off that many cells away), `building:<map>:<n>`
 //! (the hero in the n-th building; `:barracks`, `:garrison`, `:market`, `:sanctuary` open that tab; `:market-pack` the market's pack list), `army:<map>[:<n>[:<unit id>[:<level>]]]` (squad member n selected, made that unit at that level), `journal:<map>` / `hero:<map>[:<tab>]`, `spells:<map>`,
 //! `menu:<map>`, `defeat:<map>` (the lost battle's report), `settings:<map>[:advanced]`, `battle:<map>:<n>` (against the n-th army), `custom` (the custom battle
@@ -31,6 +31,67 @@ use super::battle_view::BattleView;
 use super::building_view::BuildingView;
 use super::saves::{Back, LoadView};
 use super::{App, Screen};
+
+thread_local! {
+    /// The `fonts` scene is on.
+    static FONTS_SCENE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// The `fonts` scene's lines: one per script a translated map may carry.
+const FONT_SAMPLES: &[&str] = &[
+    "English: The hero enters the town of Ravenhold.",
+    "Русский: Герой входит в город «Вороний холм» — 120 золота.",
+    "Deutsch: Größere Übermacht, schöne Grüße aus Köln.",
+    "Ελληνικά: Ο ήρωας μπαίνει στην πόλη.",
+    "हिन्दी: नायक शहर में प्रवेश करता है।",
+    "中文: 英雄进入了城镇。",
+    "日本語: 勇者は町に入った。カタカナ",
+    "Tiếng Việt: Người anh hùng vào thành phố.",
+];
+
+/// Draws the `fonts` scene over the frame: the samples in each of the interface's faces,
+/// with a line under each as wide as `widgets::measure` says (drawing and measuring must
+/// agree), centred and shortened copies, and the fallback chain.
+pub fn draw_overlay() {
+    use super::dt_font::{with_face, Face};
+    use super::widgets;
+    use macroquad::prelude::*;
+    if !FONTS_SCENE.with(|f| f.get()) {
+        return;
+    }
+    draw_rectangle(0.0, 0.0, screen_width(), screen_height(), Color::new(0.08, 0.07, 0.06, 1.0));
+    let mut y = 22.0;
+    let mode = format!("{:?}", super::dt_font::mode());
+    // A developer's caption (snapshots only), not an interface text.
+    let caption = format!("mode {mode}; chain: {}", super::script_font::chain_names().join(", "));
+    widgets::text(&caption, 10.0, y, 13.0, widgets::DIM);
+    y += 8.0;
+    for (face, size) in [(Face::Body, 18.0), (Face::Title, 18.0), (Face::Subtitle, 16.0)] {
+        with_face(face, || {
+            for (i, s) in FONT_SAMPLES.iter().enumerate() {
+                y += size * 1.35;
+                let x = if i % 2 == 0 { 10.0 } else { 20.0 };
+                let w = widgets::measure(s, size).width;
+                draw_line(x, y + 3.0, x + w, y + 3.0, 1.0, Color::new(0.9, 0.3, 0.2, 0.8));
+                if face == Face::Title {
+                    super::chrome::shadow_text(s, x, y, size, widgets::INK);
+                } else {
+                    widgets::text(s, x, y, size, widgets::INK);
+                }
+            }
+        });
+    }
+    // Centred and shortened to a box: the box's edges must hold the text.
+    y += 30.0;
+    for (i, s) in FONT_SAMPLES.iter().enumerate().skip(4).take(3) {
+        let bx = 10.0;
+        let by = y + (i - 4) as f32 * 26.0;
+        draw_rectangle_lines(bx, by - 18.0, 260.0, 24.0, 1.0, widgets::DIM);
+        widgets::text_fit(s, bx + 2.0, by, 256.0, 18.0, widgets::ACCENT);
+        draw_rectangle_lines(300.0, by - 18.0, 400.0, 24.0, 1.0, widgets::DIM);
+        widgets::text_centered(s, 500.0, by, 18.0, widgets::ACCENT);
+    }
+}
 
 /// Where to save the snapshot and after how many frames.
 pub fn target() -> Option<(String, u64)> {
@@ -174,6 +235,11 @@ fn try_stage(app: &mut App, scene: &str) -> Result<(), String> {
     let kind = parts.next().unwrap_or_default();
     match kind {
         "title" => return Ok(()),
+        // `fonts`: sample lines in many scripts over the title screen (`draw_overlay`).
+        "fonts" => {
+            FONTS_SCENE.with(|f| f.set(true));
+            return Ok(());
+        }
         // `update`: the title screen with a made-up newer release on offer.
         "update" => {
             super::update_view::stage_offer();

@@ -25,6 +25,7 @@ pub mod minimap;
 pub mod new_game;
 pub mod saves;
 pub mod screens;
+pub mod script_font;
 pub mod snapshot;
 pub mod spell_badges;
 pub mod spellbook;

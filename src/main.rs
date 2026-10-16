@@ -155,6 +155,7 @@ async fn main() {
         }
         app.frame();
         app.draw_fps();
+        ui::snapshot::draw_overlay();
         // The original draws its pointer last, over everything (0x474a81).
         ui::cursor::draw();
         if quiet {

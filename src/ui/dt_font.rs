@@ -200,10 +200,36 @@ impl BitmapFont {
         if NATIVE_METRICS.with(Cell::get) { raw } else { whole_scale(raw) }
     }
 
-    /// Width of `s` at `size`, with `fallback` giving the width of a character not in the sheet.
-    pub fn width(&self, s: &str, size: f32, fallback: &dyn Fn(char) -> f32) -> f32 {
+    /// `s` cut into single characters the sheet has (`Ok`) and runs of characters it lacks
+    /// (`Err`), so that a word in another script reaches the fallback whole and is shaped as
+    /// one (`script_font`).
+    fn pieces<'s>(&self, s: &'s str) -> Vec<Result<char, &'s str>> {
+        let mut out = Vec::new();
+        let mut missing: Option<usize> = None;
+        for (i, c) in s.char_indices() {
+            if self.glyphs.contains_key(&c) {
+                if let Some(start) = missing.take() {
+                    out.push(Err(&s[start..i]));
+                }
+                out.push(Ok(c));
+            } else if missing.is_none() {
+                missing = Some(i);
+            }
+        }
+        if let Some(start) = missing {
+            out.push(Err(&s[start..]));
+        }
+        out
+    }
+
+    /// Width of `s` at `size`, with `fallback` giving the width of a run of characters not in
+    /// the sheet.
+    pub fn width(&self, s: &str, size: f32, fallback: &dyn Fn(&str) -> f32) -> f32 {
         let k = self.scale(size);
-        s.chars().map(|c| self.glyphs.get(&c).map_or_else(|| fallback(c), |g| g.w as f32 * k)).sum()
+        self.pieces(s).into_iter().map(|p| match p {
+            Ok(c) => self.glyphs[&c].w as f32 * k,
+            Err(run) => fallback(run),
+        }).sum()
     }
 
     /// Capital height at `size` (what `TextDimensions::offset_y` gives for centring).
@@ -211,9 +237,9 @@ impl BitmapFont {
         self.cap * self.scale(size)
     }
 
-    /// Draws `s` with its baseline at `y`; `fallback` draws a character not in the sheet and
-    /// returns its width.
-    pub fn draw(&self, s: &str, x: f32, y: f32, size: f32, color: Color, fallback: &dyn Fn(char, f32, f32) -> f32) {
+    /// Draws `s` with its baseline at `y`; `fallback` draws a run of characters not in the
+    /// sheet and returns its width.
+    pub fn draw(&self, s: &str, x: f32, y: f32, size: f32, color: Color, fallback: &dyn Fn(&str, f32, f32) -> f32) {
         self.draw_cells(self, s, vec2(x, y), size, (color, 0.0), fallback);
     }
 
@@ -221,13 +247,20 @@ impl BitmapFont {
     /// same places) from `at` on this font's pen positions, in `color`, `offset` sheet pixels
     /// down and right. The
     /// pen and the cell tops sit on whole screen pixels.
-    fn draw_cells(&self, sheet: &BitmapFont, s: &str, at: Vec2, size: f32, (color, offset): (Color, f32), fallback: &dyn Fn(char, f32, f32) -> f32) {
+    fn draw_cells(&self, sheet: &BitmapFont, s: &str, at: Vec2, size: f32, (color, offset): (Color, f32), fallback: &dyn Fn(&str, f32, f32) -> f32) {
         let (x, y) = (at.x, at.y);
         let k = self.scale(size);
         let texture = if k.fract() == 0.0 { &sheet.texture } else { &sheet.smooth };
         let mut pen = x.round();
         let top = (y - self.baseline * k).round() + offset * k;
-        for c in s.chars() {
+        for piece in self.pieces(s) {
+            let c = match piece {
+                Ok(c) => c,
+                Err(run) => {
+                    pen += fallback(run, pen, y);
+                    continue;
+                }
+            };
             match (self.glyphs.get(&c), sheet.glyphs.get(&c)) {
                 (Some(g), Some(cell)) => {
                     if c != ' ' {
@@ -238,7 +271,7 @@ impl BitmapFont {
                     pen += g.w as f32 * k;
                 }
                 (Some(g), None) => pen += g.w as f32 * k,
-                (None, _) => pen += fallback(c, pen, y),
+                (None, _) => {}
             }
         }
     }
@@ -363,9 +396,7 @@ pub fn draw_shadow(s: &str, x: f32, y: f32, size: f32, alpha: f32) -> bool {
             let mut shadows = shadows.borrow_mut();
             let shadow = shadows.entry(face).or_insert_with(|| super::chrome::image(face.shadow_file()).and_then(BitmapFont::from_sheet));
             let Some(shadow) = shadow.as_ref() else { return false };
-            font.draw_cells(shadow, s, vec2(x, y), size, (Color::new(0.0, 0.0, 0.0, alpha), 1.0), &|c, _, _| {
-                super::widgets::measure_ttf(c.encode_utf8(&mut [0; 4]), size).width
-            });
+            font.draw_cells(shadow, s, vec2(x, y), size, (Color::new(0.0, 0.0, 0.0, alpha), 1.0), &|run, _, _| super::widgets::measure_ttf(run, size).width);
             true
         })
     })

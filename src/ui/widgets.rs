@@ -18,6 +18,8 @@ thread_local! {
     static FACE_FONTS: RefCell<[[Option<Font>; 4]; 1]> = const { RefCell::new([[None, None, None, None]]) };
     /// `RAZDOR_FONT*` files, which win in every mode.
     static OWN_FONTS: RefCell<[Option<Font>; 4]> = const { RefCell::new([None, None, None, None]) };
+    /// The files of `OWN_FONTS` (`script_font` reads which characters they have).
+    static OWN_DATA: RefCell<[Option<&'static [u8]>; 4]> = const { RefCell::new([None, None, None, None]) };
 }
 
 /// The fonts that ship with Razdor (`data/fonts`, licences next to them), by font mode
@@ -25,7 +27,7 @@ thread_local! {
 /// mode draws the install's own bitmap sheets and needs none of them.
 /// Modern: PT Serif (OFL) for text and bold, Becker Medium (free for personal and commercial
 /// use) for titles, Kurale (OFL) for buttons and names.
-const MODE_FILES: [[&[u8]; 4]; 1] = [
+static MODE_FILES: [[&[u8]; 4]; 1] = [
     [
         include_bytes!("../../data/fonts/PT_Serif-Regular.ttf"),
         include_bytes!("../../data/fonts/PT_Serif-Bold.ttf"),
@@ -44,14 +46,17 @@ const OWN_VARS: [&str; 4] = ["RAZDOR_FONT", "RAZDOR_FONT_BOLD", "RAZDOR_FONT_TIT
 
 /// PT Sans, the font for characters the original's sheets lack and for everything when no
 /// face is set.
-const FALLBACK_FILE: &[u8] = include_bytes!("../../data/fonts/PT_Sans-Regular.ttf");
+pub(crate) static FALLBACK_FILE: &[u8] = include_bytes!("../../data/fonts/PT_Sans-Regular.ttf");
 
 pub async fn load_font() {
     for (i, var) in OWN_VARS.iter().enumerate() {
-        let own = match std::env::var(var) {
-            Ok(path) => load_ttf_font(&path).await.map_err(|e| razdor::diag!("{var}={path}: {e}")).ok(),
+        // Kept for good: `script_font` reads the file's coverage while it is the face.
+        let data: Option<&'static [u8]> = match std::env::var(var) {
+            Ok(path) => std::fs::read(&path).map_err(|e| razdor::diag!("{var}={path}: {e}")).ok().map(|d| &*Box::leak(d.into_boxed_slice())),
             Err(_) => None,
         };
+        let own = data.and_then(|d| load_ttf_font_from_bytes(d).map_err(|e| razdor::diag!("{var}: {e}")).ok());
+        OWN_DATA.with(|f| f.borrow_mut()[i] = own.as_ref().and(data));
         OWN_FONTS.with(|f| f.borrow_mut()[i] = own);
     }
     for (m, files) in MODE_FILES.iter().enumerate() {
@@ -78,6 +83,25 @@ pub fn face_font(i: usize, mode: super::dt_font::FontMode) -> Option<Font> {
         super::dt_font::FontMode::Modern => 0,
     };
     FACE_FONTS.with(|f| f.borrow()[m].get(i).cloned().flatten())
+}
+
+/// Characters a bundled font maps to the wrong glyph: Becker's Latin-1 letters (Ä, ö, ß…)
+/// are Cyrillic letters (a font made for Windows-1251), so those come from the fallback
+/// chain (`script_font`).
+pub(crate) fn wrong_glyphs(data: &'static [u8]) -> &'static [std::ops::RangeInclusive<char>] {
+    const BECKER: &[std::ops::RangeInclusive<char>] = &['\u{C0}'..='\u{FF}'];
+    if std::ptr::eq(data, MODE_FILES[0][2]) { BECKER } else { &[] }
+}
+
+/// The file of [`face_font`]`(i, mode)`.
+pub(crate) fn face_data(i: usize, mode: super::dt_font::FontMode) -> Option<&'static [u8]> {
+    if let Some(own) = OWN_DATA.with(|f| f.borrow().get(i).copied().flatten()) {
+        return Some(own);
+    }
+    match mode {
+        super::dt_font::FontMode::Original => None,
+        super::dt_font::FontMode::Modern => MODE_FILES[0].get(i).copied(),
+    }
 }
 
 /// How much bigger or smaller the current mode's face is drawn than the size asked for
@@ -134,18 +158,35 @@ fn transliterate(s: &str) -> String {
         .collect()
 }
 
-/// Runs `f` with the font to use for `s` (`None` = the built-in one) and the text to draw.
-/// The TrueType font draws everything when there is one, as the original uses one smooth
-/// font for all its texts.
-fn with_font<R>(s: &str, f: impl FnOnce(Option<&Font>, &str) -> R) -> R {
+/// Runs `f` with the font to use for `s` (`None` = the built-in one), its file (for the
+/// characters it has, `script_font`) and the text to draw. The TrueType font draws
+/// everything when there is one, as the original uses one smooth font for all its texts.
+fn with_font<R>(s: &str, f: impl FnOnce(Option<&Font>, Option<&'static [u8]>, &str) -> R) -> R {
     if let Some(font) = super::dt_font::current_ttf() {
-        return f(Some(&font), &with_missing(s));
+        let data = face_data(super::dt_font::face().index(), super::dt_font::mode());
+        return f(Some(&font), data, &with_missing(s));
     }
+    let data = OWN_DATA.with(|d| d.borrow()[0]).unwrap_or(FALLBACK_FILE);
     FONT.with(|font| match font.borrow().as_ref() {
-        Some(font) => f(Some(font), s),
-        None if s.is_ascii() => f(None, s),
-        None => f(None, &transliterate(s)),
+        Some(font) => f(Some(font), Some(data), s),
+        None if s.is_ascii() => f(None, None, s),
+        None => f(None, None, &transliterate(s)),
     })
+}
+
+/// The size of text drawn in runs side by side: their widths added, from the highest ink
+/// to the lowest.
+fn joined(parts: impl Iterator<Item = TextDimensions>) -> TextDimensions {
+    let (mut width, mut top, mut bottom) = (0.0f32, f32::MIN, f32::MAX);
+    for d in parts {
+        width += d.width;
+        top = top.max(d.offset_y);
+        bottom = bottom.min(d.offset_y - d.height);
+    }
+    if top < bottom {
+        return TextDimensions { width, height: 0.0, offset_y: 0.0 };
+    }
+    TextDimensions { width, height: top - bottom, offset_y: top }
 }
 
 /// The pixel size a TrueType text is drawn at: above 14 px only even sizes, so the glyph
@@ -157,12 +198,40 @@ fn ttf_size(size: f32) -> u16 {
 
 pub fn measure_ttf(s: &str, size: f32) -> TextDimensions {
     let size = size * if super::dt_font::current_ttf().is_some() { face_scale() } else { 1.0 };
-    with_font(s, |font, s| measure_text(s, font, ttf_size(size), 1.0))
+    with_font(s, |font, data, s| {
+        let px = ttf_size(size);
+        // A character the font lacks comes from the fallback chain (`script_font`).
+        match data.and_then(|d| super::script_font::runs(d, s)) {
+            None => measure_text(s, font, px, 1.0),
+            Some(runs) => joined(runs.into_iter().map(|(r, pick)| match pick {
+                super::script_font::Pick::Primary => measure_text(&s[r], font, px, 1.0),
+                super::script_font::Pick::Fallback(i) => super::script_font::measure(i, &s[r], px),
+            })),
+        }
+    })
 }
 
 fn text_ttf(s: &str, x: f32, y: f32, size: f32, color: Color) {
     let size = size * if super::dt_font::current_ttf().is_some() { face_scale() } else { 1.0 };
-    with_font(s, |font, s| {
+    with_font(s, |font, data, s| {
+        let px = ttf_size(size);
+        if let Some(runs) = data.and_then(|d| super::script_font::runs(d, s)) {
+            // Runs side by side, each moving the pen by its measured width, so the text is
+            // as wide as `measure_ttf` says.
+            let mut pen = x;
+            for (r, pick) in runs {
+                let run = &s[r];
+                pen += match pick {
+                    super::script_font::Pick::Primary => {
+                        let w = measure_text(run, font, px, 1.0).width;
+                        draw_text_ex(run, pen, y, TextParams { font, font_size: px, color, ..Default::default() });
+                        w
+                    }
+                    super::script_font::Pick::Fallback(i) => super::script_font::draw(i, run, pen, y, px, color),
+                };
+            }
+            return;
+        }
         // Measuring first puts the string's new glyphs into the atlas before any is drawn:
         // macroquad sends the whole atlas to the GPU again at each draw after a glyph was
         // added, so drawing straight away sent it once per new letter (freezes once the
@@ -177,7 +246,7 @@ fn text_ttf(s: &str, x: f32, y: f32, size: f32, color: Color) {
 pub fn measure(s: &str, size: f32) -> TextDimensions {
     let size = super::dt_font::native_size(super::dt_font::face(), size);
     let bitmap = super::dt_font::with_current(|f| {
-        let width = f.width(s, size, &|c| measure_ttf(c.encode_utf8(&mut [0; 4]), size).width);
+        let width = f.width(s, size, &|run| measure_ttf(run, size).width);
         let cap = f.cap_height(size);
         TextDimensions { width, height: size, offset_y: cap }
     });
@@ -574,10 +643,9 @@ pub fn text(s: &str, x: f32, y: f32, size: f32, color: Color) {
     let size = super::dt_font::native_size(super::dt_font::face(), size);
     let color = super::typography::color(color);
     let drawn = super::dt_font::with_current(|f| {
-        f.draw(s, x, y, size, color, &|c, px, py| {
-            let ch = c.encode_utf8(&mut [0; 4]).to_string();
-            text_ttf(&ch, px, py, size, color);
-            measure_ttf(&ch, size).width
+        f.draw(s, x, y, size, color, &|run, px, py| {
+            text_ttf(run, px, py, size, color);
+            measure_ttf(run, size).width
         })
     });
     if drawn.is_none() {

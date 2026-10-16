@@ -120,6 +120,23 @@ All text goes through `widgets::measure` / `widgets::text` in the current face
   PT Serif, Becker, Kurale); `MODE_MISSING` swaps the few
   characters a face lacks for look-alikes.
 - `RAZDOR_FONT*` files win in every mode.
+- Any script (Razdor's own, for maps translated by `razdor-translate`): `widgets::measure_ttf`
+  and `text_ttf` ask `script_font::runs` for the text's runs by font. `None` (the current
+  TrueType font has every character and none is of a complex script, `script_font::complex`)
+  is the fast path: drawn by macroquad as before. Otherwise each run is the current font
+  (`Pick::Primary`, macroquad) or a font shaped by rustybuzz and rasterised by glyph index
+  into cached textures (`Pick::Fallback`, `script_font::draw` / `measure`, same baseline and
+  macroquad's display-scale rounding). The chain (`Chain::new`, `fallback_for`): PT Sans,
+  Noto Sans (subset: Latin extended, Greek, Vietnamese), Noto Sans Devanagari, then system
+  fonts found once per missing character (`system_candidates`: `fc-match -s :charset=…` on
+  Linux, script fonts of `C:\Windows\Fonts` and `/System/Library/Fonts`); CJK is never
+  bundled. A complex script's run (Devanagari, Arabic…) is shaped even in the current font
+  (Kurale has Devanagari). Spaces and marks stay in the run before them (`sticky`), so a
+  Hindi sentence is shaped whole. A font's empty or wrong glyphs do not count
+  (`has_glyph`; `widgets::wrong_glyphs`: Becker's Latin-1 letters are Cyrillic). In the
+  original's mode `BitmapFont::pieces` hands the sheet's missing characters to the fallback
+  as whole runs, not one by one. The `fonts` snapshot scene (`snapshot::draw_overlay`) shows
+  samples in many scripts in each face with their measured widths underlined.
 
 Traps: never call `widgets::measure`/`text` from inside a `with_current` closure (it holds the
 sheet cache's borrow; use `measure_ttf`). Sheet widths change with the mode, so lay text out
