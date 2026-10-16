@@ -1078,7 +1078,13 @@ Effects and sounds by action:
 After a hostile magic effect the target's card shows a curse badge; after a blessing a
 blessing badge. **code** (4b00c1)
 
-**End.** After a win and the experience share, the triumph music starts its crossfade at
+**End.** The rules decide the battle as the last action is applied (0x48a5c4), before its
+animations play; the screen handles the end only in Battle_Step (0x4c57bc), which calls the end
+(0x4c50ec) when it finds the battle over. Battle_Step runs only as a queued animation finishes:
+the action effect's end (0x4b0135, after writing the sides back and popping the queue; an
+effect queued with the 0x100 flag skips it), a pass's 100 ms pause (0x4afbcc), a card's slide
+(0x4b0591). So nothing of the end (experience, hold, cursor, report) shows while the killing
+blow's slide and effect play. **code** After a win and the experience share, the triumph music starts its crossfade at
 once, the battle screen stays up for 2.5 s with the busy pointer, then closes, and 250 ms
 later the chained event step (the result report) runs. After a defeat the battle screen
 closes at once, the defeat music starts and the defeat report follows after 250 ms. **code**
@@ -1251,7 +1257,7 @@ parity rule they are candidates to hide or remove, not bugs to copy.
 | 24 | Battle input timing | Matches: acts on the press of a card (the hover hint is presentation) | Acts on the press of a card; hover hint predicts the effect | 12 |
 | 25 | AI pacing | 0.45 s delay before each AI action | No delay: the AI acts as soon as the previous animation ends | 12 |
 | 26 | Strike animation | Matches: the action's sprite (`army-1..5` cut by `army-alpha`) slides between the cards' centres, 1.8 ms a px, capped by the Community `AnimationSpeed` at (100 − s)·5 ms, then the `[BattleEffects]` effect with the sound for 350 ms or (100 − s)·3 ms; a counterblow or preventive strike adds the slide back and the effect and sound on the actor, a DeathCurse death of the killer the sorcery on it; pass 0.1 s; moves 0.25 s (Razdor's). The cards show the action's result as the effect on the target ends (`Fx::shown`); the actor's card waits for the counterblow's or sorcery's effect on it too (Razdor's) | Slide 1.8 ms per px (capped) + 350 ms effect; counters add a second slide and effect; pass 100 ms; card slide ≤ 200 ms; the sides are written back as the target's effect ends | 12 |
-| 27 | Battle end |  Matches: a win holds the screen 2.5 s with the experience on the cards, then the screen closes and the report follows 250 ms later (`Dialog::not_before`); a defeat closes the screen at once and the defeat report (the event window's defeat look) follows 250 ms later, its OK to the main menu; a battle nobody won shows Razdor's result box  | 2.5 s hold with the busy pointer, then the screen closes and the report follows 250 ms later | 12 |
+| 27 | Battle end |  Matches: the end shows only after the last action's slide and effect (and its echo) have played (`end_shows`; the original's Battle_Step 0x4c57bc runs 0x4c50ec as the effect ends, 0x4b0135); a win holds the screen 2.5 s with the experience on the cards, then the screen closes and the report follows 250 ms later (`Dialog::not_before`); a defeat closes the screen at once and the defeat report (the event window's defeat look) follows 250 ms later, its OK to the main menu; a battle nobody won shows Razdor's result box  | 2.5 s hold with the busy pointer, then the screen closes and the report follows 250 ms later | 12 |
 | 28 | Music crossfade | Matches: 2 s linear crossfades on screen changes (a battle and its end included), 4 s for the rotation's picks, the first track without one, a track fading out brought back from its level; timed by the frames' lengths (`jukebox::Fade`); tracks loop until changed | 2000 ms crossfade on screen changes, 4000 ms in the rotation; tracks loop | 13 |
 | 29 | Map music order | Matches: `rules::music::rotate` with the game's generator, timed per pick; checked by the map and its windows, the map waiting while the triumph plays | Uniform pick among eight (the seven map tracks and `BkgAuthors`), never the previous pick, changed on a timer per track (40–122.8 s, see §13) | 13 |
 | 30 | First map track | Matches: `BkgMap2`, its first change from the load's draw (`Game::take_music_wait`) | Always `BkgMap2` | 13 |

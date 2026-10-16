@@ -8,6 +8,13 @@ from reports and recent work. `docs/PLAYTEST_NOTES.md` keeps the player-facing s
 
 ## Open
 
+- **Battle end on a counterblow** (2026-10-16, the battle-end timing). The original queues a
+  counterblow's first effect without the 0x100 flag (4c43e8, 4c57bc), so Battle_Step runs
+  after the effect on the target, before the slide back and the effect on the actor. If the
+  counterblow kills the last unit, the end (0x4c50ec: experience on the cards, the 2.5 s hold
+  queued behind the rest) starts while the counter still plays. Razdor shows the end only after
+  the whole action (`end_shows`). Not traced on the original under Wine.
+
 - **Disabled button look** (2026-10-15, the market's list buttons). Razdor greys a disabled
   button as its `Up` art at 0.9 of its luminance with a grey caption (`chrome::marble_button`).
   The original's Button.Draw (0x479bbc) uses the widget's own disabled picture +0x53; for the

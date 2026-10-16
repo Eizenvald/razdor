@@ -125,7 +125,10 @@ act_with(target, kind) / move_active(to) / pass() / own_cell() / skip()
 2. `Game::battle_write_back(&battle)` after every frame's action (0x4c4f8c / 0x4c57bc): HP
    into the squad and into the enemy army's troops (`ai::write_hp`).
 3. `draw`, `controls` (Quick battle / Finish automatically / Watch / Speed / Take over).
-4. Over: a victory holds 2.5 s (`BATTLE_END_HOLD_MS`) then `close_won`; a defeat closes at
+4. Over (`end_shown`, `end_shows`): only once no `Fx` plays, as the original handles the end
+   in Battle_Step (0x4c57bc → 0x4c50ec), run as the last animation ends (0x4b0135); the rules
+   are over at the killing blow, but until its slide and effect end the strip keeps the blow's
+   line, the window its close button and the pointer the acting side's. Then a victory holds 2.5 s (`BATTLE_END_HOLD_MS`) then `close_won`; a defeat closes at
    once (`close_lost`: the defeat report `Dialog::defeat` 250 ms later, its OK to the main
    menu); a draw shows `result_overlay`. All call `Game::resolve_battle`.
 
